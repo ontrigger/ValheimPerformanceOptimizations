@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace ValheimPerformanceOptimizations
 {
-    public class PrefabPatches
+    [HarmonyPatch]
+    public static class PrefabPatches
     {
         private const float LeafParticleCullHeight = 0.79f;
 
@@ -19,7 +20,6 @@ namespace ValheimPerformanceOptimizations
         {
             "straw_roof", "straw_roof_worn", "Grill_mat", "meadbase", "poison",
             "poisonres_potion", "stamina_potion"
-            
         }.Select(material => material + " (Instance)").ToList();
 
         private static readonly List<string> PrefabsWithDisabledInstancing = new List<string>
@@ -49,7 +49,10 @@ namespace ValheimPerformanceOptimizations
             psRenderer.enableGPUInstancing = true;
 
             var lodGroup = prefab.GetComponent<LODGroup>();
-            if (!lodGroup) return;
+            if (!lodGroup)
+            {
+                return;
+            }
 
             var lods = lodGroup.GetLODs();
             var lod0 = lods[0];
@@ -65,7 +68,10 @@ namespace ValheimPerformanceOptimizations
 
             newLods[0] = lod0;
             newLods[1] = new LOD(prevHeight, noParticleRenderers);
-            for (var index = 1; index < lods.Length; index++) newLods[index + 1] = lods[index];
+            for (var index = 1; index < lods.Length; index++)
+            {
+                newLods[index + 1] = lods[index];
+            }
 
             lodGroup.SetLODs(newLods);
         }
@@ -77,32 +83,59 @@ namespace ValheimPerformanceOptimizations
                 var materials = renderer.materials;
                 foreach (var material in materials)
                 {
-                    if (!MaterialsWithDisabledInstancing.Contains(material.name)) continue;
-                    
+                    if (!MaterialsWithDisabledInstancing.Contains(material.name))
+                    {
+                        continue;
+                    }
+
                     material.enableInstancing = true;
                 }
             }
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "Awake")]
-        public static class ZNetScene_Awake_Patch
+        private static int PatchPrefabs(this IReadOnlyDictionary<int, GameObject> allPrefabs, IEnumerable<string> prefabNames, Action<GameObject> patcher)
         {
-            private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
+            var totalPatched = 0;
+            foreach (var prefabName in prefabNames)
             {
-                foreach (var prefab in __instance.m_prefabs)
-                    if (PrefabsWithLeafParticles.Contains(prefab.name))
-                        PatchPrefabWithLeaves(prefab);
-
-                foreach (var prefabName in PrefabsWithDisabledInstancing)
+                if (allPrefabs.TryGetValue(prefabName.GetStableHashCode(), out var prefab))
                 {
-                    GameObject prefab;
-                    if (___m_namedPrefabs.TryGetValue(prefabName.GetStableHashCode(), out prefab))
-                    {
-                        ValheimPerformanceOptimizations.Logger.LogInfo("Patching prefab " + prefab.name);
-                        PatchPrefabWithUninstancedMaterials(prefab);
-                    }
+                    patcher(prefab);
+                    totalPatched += 1;
                 }
             }
+
+            return totalPatched;
+        }
+
+
+        [HarmonyPatch(typeof(ZNetScene), "Awake")]
+        private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
+        {
+            /*foreach (var prefab in __instance.m_prefabs)
+            {
+                if (PrefabsWithLeafParticles.Contains(prefab.name))
+                {
+                    PatchPrefabWithLeaves(prefab);
+                }
+            }
+
+            foreach (var prefabName in PrefabsWithDisabledInstancing)
+            {
+                GameObject prefab;
+                if (___m_namedPrefabs.TryGetValue(prefabName.GetStableHashCode(), out prefab))
+                {
+                    PatchPrefabWithUninstancedMaterials(prefab);
+                }
+            }*/
+
+            var namedPrefabs = __instance.m_namedPrefabs;
+
+            var patched = 0;
+            patched += namedPrefabs.PatchPrefabs(PrefabsWithLeafParticles, PatchPrefabWithLeaves);
+            patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
+            
+            ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
         }
     }
 }
