@@ -74,6 +74,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CharacterPatches.cs" />
+    <Compile Include="ClutterSystemPatches.cs" />
     <Compile Include="EffectAreaPatches.cs" />
     <Compile Include="PiecePatches.cs" />
     <Compile Include="PrefabPatches.cs" />
