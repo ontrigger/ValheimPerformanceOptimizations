@@ -24,6 +24,9 @@ namespace ValheimPerformanceOptimizations
                 return false;
             }
 
+            // in shelter one extra comfort
+            __result += 1;
+
             List<Piece> nearbyPieces = SE_Rested.GetNearbyPieces(player.transform.position);
             Dictionary<Piece.ComfortGroup, int> maxByComfortGroup = new Dictionary<Piece.ComfortGroup, int>();
             Dictionary<string, Piece> unsorted = new Dictionary<string, Piece>();
