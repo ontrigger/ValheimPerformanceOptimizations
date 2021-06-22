@@ -1,46 +1,136 @@
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations
 {
     /// <summary>
     ///     The large terrain lod is being rendered into the shadowmap for all shadowed lights
     ///     yet doesn't survive the depth test, making it an entirely useless computation
-    ///     This patch adds a new layer to the terrain and forces all lights with a Light* script
-    ///     to not render the terrain into their shadowmap regardless of whether they can cast shadows or not
-    ///     Unfortunately, this patch wont do jack shit for lights without these components, and I don't want
-    ///     to hook into the location spawn method just to patch them, the location system is slow as shit as is.
+    ///     This patch simply disables shadow casting for the terrain lod.
     /// </summary>
     [HarmonyPatch]
     public static class LargeTerrainShadowPatch
     {
-        private const int TerrainLodLayer = 30;
+        private static readonly int ClearedMaskTex = Shader.PropertyToID("_ClearedMaskTex");
 
-        [HarmonyPatch(typeof(ZNetScene), "Awake")]
-        private static void Postfix(ZNetScene __instance)
+        [HarmonyPatch(typeof(Heightmap), "Render")]
+        private static bool Prefix(Heightmap __instance)
         {
+            if (!__instance.IsVisible()) return false;
+
+            if (__instance.m_dirty)
+            {
+                __instance.m_dirty = false;
+                __instance.m_materialInstance.SetTexture(ClearedMaskTex, __instance.m_paintMask);
+                __instance.RebuildRenderMesh();
+            }
+
+            if (__instance.m_renderMesh)
+            {
+                var matrix = Matrix4x4.TRS(__instance.transform.position, Quaternion.identity, Vector3.one);
+
+                var shadowCastingMode = __instance.m_isDistantLod ? ShadowCastingMode.Off : ShadowCastingMode.On;
+
+                Graphics.DrawMesh(__instance.m_renderMesh, matrix, __instance.m_materialInstance,
+                                  __instance.gameObject.layer, null, 0,
+                                  null, shadowCastingMode);
+            }
+
+            return false;
+        }
+    }
+
+    // TODO: this can be reused to render lower LODs for vegetation, like trees
+    public class VPOTerrainLodShadowRenderer : MonoBehaviour
+    {
+        public const int TerrainLodLayer = 30;
+
+        public static VPOTerrainLodShadowRenderer Instance;
+
+        private Light directionalLight;
+
+        private Heightmap heightmap;
+
+        private int shadowCascadeCount = -1;
+        private int shadowCasterPass = -1;
+
+        private CommandBuffer shadowPassCommandBuffer;
+
+        private Matrix4x4 terrainTransform;
+
+        private void Awake()
+        {
+            Instance = this;
+
+            shadowPassCommandBuffer = new CommandBuffer {name = "Last cascade terrain pass"};
+
+            directionalLight = GetComponent<Light>();
+            //directionalLight.cullingMask &= ~(1 << TerrainLodLayer);
+
             var gameMain = GameObject.Find("_GameMain");
+
             var terrainLod = gameMain.transform.Find("Terrain_lod");
+
             terrainLod.gameObject.layer = TerrainLodLayer;
 
-            // don't render it into the directional shadows either, nobody will notice
-            var directionalLightTransform = gameMain.transform.Find("Directional Light");
-            var directionalLight = directionalLightTransform.GetComponent<Light>();
-            directionalLight.cullingMask &= ~(1 << TerrainLodLayer);
+            heightmap = terrainLod.GetComponent<Heightmap>();
 
-            //gameMain.AddComponent<VPOSmokeRenderer>();
+            //SetShadowCascadeCount(QualitySettings.shadowCascades);
         }
 
-        [HarmonyPatch(typeof(LightLod), "Awake")]
-        private static void Postfix(LightLod __instance, Light ___m_light)
+        public void HeightmapChanged()
         {
-            ___m_light.cullingMask &= ~(1 << TerrainLodLayer);
+            ValheimPerformanceOptimizations.Logger.LogInfo("HEIGHTMAP CHANGED");
+            UpdateCommandBuffer();
+            SetShadowCascadeCount(QualitySettings.shadowCascades);
         }
 
-        [HarmonyPatch(typeof(LightFlicker), "Awake")]
-        private static void Postfix(LightFlicker __instance, Light ___m_light)
+        public void SetShadowCascadeCount(int cascadeCount)
         {
-            ___m_light.cullingMask &= ~(1 << TerrainLodLayer);
+            if (shadowCascadeCount == cascadeCount) return;
+
+            shadowCascadeCount = QualitySettings.shadowCascades;
+
+            directionalLight.RemoveCommandBuffer(LightEvent.BeforeShadowMapPass, shadowPassCommandBuffer);
+
+            directionalLight.AddCommandBuffer(
+                LightEvent.BeforeShadowMapPass,
+                shadowPassCommandBuffer,
+                GetShadowMapPass(shadowCascadeCount)
+            );
+        }
+
+        private void UpdateCommandBuffer()
+        {
+            if (shadowCasterPass == -1)
+            {
+                shadowCasterPass = heightmap.m_materialInstance.FindPass("ShadowCaster");
+            }
+
+            terrainTransform.SetTRS(heightmap.transform.position, Quaternion.identity, Vector3.one);
+
+            shadowPassCommandBuffer.Clear();
+            //shadowPassCommandBuffer.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
+
+            shadowPassCommandBuffer.DrawMesh(
+                heightmap.m_renderMesh, terrainTransform,
+                heightmap.m_materialInstance, 0, shadowCasterPass);
+        }
+
+        private static ShadowMapPass GetShadowMapPass(int shadowCascadeCount)
+        {
+            switch (shadowCascadeCount)
+            {
+                case 2:
+                    return ShadowMapPass.DirectionalCascade1;
+                case 3:
+                    return ShadowMapPass.DirectionalCascade2;
+                case 4:
+                    return ShadowMapPass.DirectionalCascade3;
+                default:
+                    return ShadowMapPass.DirectionalCascade3;
+            }
         }
     }
 }
