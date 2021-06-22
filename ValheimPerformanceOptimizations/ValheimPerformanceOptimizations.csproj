@@ -75,12 +75,12 @@
   <ItemGroup>
     <Compile Include="CharacterPatches.cs" />
     <Compile Include="ClutterSystemPatches.cs" />
+    <Compile Include="Debug\RuntimeDebugDraw.cs" />
+    <Compile Include="Debug\Utils.cs" />
     <Compile Include="EffectAreaPatches.cs" />
     <Compile Include="PiecePatches.cs" />
     <Compile Include="PrefabPatches.cs" />
     <Compile Include="SE_RestedPatches.cs" />
-    <Compile Include="Unused\RuntimeDebugDraw.cs" />
-    <Compile Include="Unused\SmokePatches.cs" />
     <Compile Include="ValheimPerformanceOptimizations.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TerrainPatches.cs" />
