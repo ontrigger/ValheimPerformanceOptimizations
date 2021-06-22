@@ -7,11 +7,11 @@ using UnityEngine;
 namespace ValheimPerformanceOptimizations
 {
     /// <summary>
-    /// The original GetWaterLevel method used OverlapSphere to check if a point
-    /// intersected a WaterVolume bounds
-    /// This patch skips this expensive check by caching the WaterVolume for each zone
-    /// and getting it via simple Vector2i dict lookup
-    /// This is probably the most massive CPU speedup due to this method being used in 15 places
+    ///     The original GetWaterLevel method used OverlapSphere to check if a point
+    ///     intersected a WaterVolume bounds
+    ///     This patch skips this expensive check by caching the WaterVolume for each zone
+    ///     and getting it via simple Vector2i dict lookup
+    ///     This is probably the most massive CPU speedup due to this method being used in 15 places
     /// </summary>
     [HarmonyPatch]
     public static class GetWaterLevelPatch
@@ -38,12 +38,12 @@ namespace ValheimPerformanceOptimizations
                 {
                     __result = components.WaterVolume.GetWaterSurface(p, waveFactor);
                     return false;
-                };
+                }
 
                 __result = -10000f;
                 return false;
             }
-            
+
             // fallback in case the zone wasn't found somehow
             var hitCount = Physics.OverlapSphereNonAlloc(p, 0f, WaterVolume.tempColliderArray, WaterVolume.m_waterVolumeMask);
             for (var i = 0; i < hitCount; i++)
@@ -60,10 +60,10 @@ namespace ValheimPerformanceOptimizations
             return false;
         }
     }
-    
+
     /// <summary>
-    /// The water planes are being rendered even when they are fully below the terrain
-    /// This patch makes water render only if the lowest point of its terrain intersects with the water level
+    ///     The water planes are being rendered even when they are fully below the terrain
+    ///     This patch makes water render only if the lowest point of its terrain intersects with the water level
     /// </summary>
     [HarmonyPatch]
     public static class WaterVolumeVisibilityPatch
@@ -96,28 +96,16 @@ namespace ValheimPerformanceOptimizations
             });
         }
     }
-    
+
     /// <summary>
-    /// Cache components for each zone
+    ///     Cache components for each zone
     /// </summary>
     public class VPOZoneTracker : MonoBehaviour
     {
-        public struct CachedZoneComponents
-        {
-            public Heightmap Heightmap;
-            public WaterVolume WaterVolume;
-
-            public CachedZoneComponents(Heightmap heightmap, WaterVolume waterVolume)
-            {
-                Heightmap = heightmap;
-                WaterVolume = waterVolume;
-            }
-        }
-        
-        public Vector2i ZonePosition => ZoneSystem.instance.GetZone(transform.position);
-
         private static readonly Dictionary<Vector2i, CachedZoneComponents> ZoneComponentsByLocation =
             new Dictionary<Vector2i, CachedZoneComponents>();
+
+        public Vector2i ZonePosition => ZoneSystem.instance.GetZone(transform.position);
 
         private void Awake()
         {
@@ -126,7 +114,7 @@ namespace ValheimPerformanceOptimizations
                 Heightmap = GetComponentInChildren<Heightmap>(),
                 WaterVolume = GetComponentInChildren<WaterVolume>()
             };
-            
+
             ZoneComponentsByLocation.Add(ZonePosition, cachedData);
         }
 
@@ -138,8 +126,20 @@ namespace ValheimPerformanceOptimizations
         public static bool GetZoneComponents(Vector3 worldPos, out CachedZoneComponents components)
         {
             var zonePosition = ZoneSystem.instance.GetZone(worldPos);
-            
+
             return ZoneComponentsByLocation.TryGetValue(zonePosition, out components);
+        }
+
+        public struct CachedZoneComponents
+        {
+            public Heightmap Heightmap;
+            public WaterVolume WaterVolume;
+
+            public CachedZoneComponents(Heightmap heightmap, WaterVolume waterVolume)
+            {
+                Heightmap = heightmap;
+                WaterVolume = waterVolume;
+            }
         }
     }
 }

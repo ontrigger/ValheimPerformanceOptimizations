@@ -6,12 +6,11 @@ using UnityEngine;
 namespace ValheimPerformanceOptimizations
 {
     /// <summary>
-    /// CalculateComfortLevel used to get all nearby pieces and then sorted them by comfortGroup and name.
-    /// It tired to calculate the max comfort level of a piece in a very complicated way.
-    /// And GetNearbyPieces() + sort was done every time, even if the list wasn't used.
-    ///
-    /// If a piece is in a comfortGroup, only the highest m_comfort of this group is used. If no comfortGroup is given,
-    /// the name is once added
+    ///     CalculateComfortLevel used to get all nearby pieces and then sorted them by comfortGroup and name.
+    ///     It tired to calculate the max comfort level of a piece in a very complicated way.
+    ///     And GetNearbyPieces() + sort was done every time, even if the list wasn't used.
+    ///     If a piece is in a comfortGroup, only the highest m_comfort of this group is used. If no comfortGroup is given,
+    ///     the name is once added
     /// </summary>
     [HarmonyPatch(typeof(SE_Rested), "CalculateComfortLevel")]
     public static class CalculateComfortLevelPatch
@@ -28,10 +27,10 @@ namespace ValheimPerformanceOptimizations
             __result += 1;
 
             List<Piece> nearbyPieces = SE_Rested.GetNearbyPieces(player.transform.position);
-            Dictionary<Piece.ComfortGroup, int> maxByComfortGroup = new Dictionary<Piece.ComfortGroup, int>();
-            Dictionary<string, Piece> unsorted = new Dictionary<string, Piece>();
+            var maxByComfortGroup = new Dictionary<Piece.ComfortGroup, int>();
+            var unsorted = new Dictionary<string, Piece>();
 
-            foreach (Piece piece in nearbyPieces)
+            foreach (var piece in nearbyPieces)
             {
                 if (piece.m_comfortGroup == 0)
                 {

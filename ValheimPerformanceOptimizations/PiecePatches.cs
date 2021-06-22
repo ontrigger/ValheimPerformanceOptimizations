@@ -5,7 +5,7 @@ using UnityEngine;
 namespace ValheimPerformanceOptimizations
 {
     /// <summary>
-    /// The original used Vector3.Distance and caused large spikes in bases
+    ///     The original used Vector3.Distance and caused large spikes in bases
     /// </summary>
     [HarmonyPatch(typeof(Piece), "GetAllPiecesInRadius")]
     public static class GetAllPiecesPatch
@@ -18,7 +18,7 @@ namespace ValheimPerformanceOptimizations
             {
                 Piece.ghostLayer = LayerMask.NameToLayer("ghost");
             }
-            
+
             var colliders = Physics.OverlapSphere(p, radius, PieceLayer, QueryTriggerInteraction.Ignore);
             foreach (var collider1 in colliders)
             {

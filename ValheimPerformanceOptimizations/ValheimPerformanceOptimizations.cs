@@ -2,7 +2,6 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
-using UnityEngine;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -13,13 +12,13 @@ namespace ValheimPerformanceOptimizations
 
         private static ValheimPerformanceOptimizations _instance;
         private Harmony _harmony;
-        
-        internal new static ManualLogSource Logger { get; private set; }
 
         private ValheimPerformanceOptimizations()
         {
             Logger = base.Logger;
         }
+
+        internal new static ManualLogSource Logger { get; private set; }
 
         private void Awake()
         {

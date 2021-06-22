@@ -84,7 +84,6 @@
     <Compile Include="ValheimPerformanceOptimizations.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TerrainPatches.cs" />
-    <Compile Include="WearNTearPatches.cs" />
     <Compile Include="WaterVolumePatches.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

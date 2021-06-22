@@ -93,7 +93,9 @@ namespace ValheimPerformanceOptimizations
             }
         }
 
-        private static int PatchPrefabs(this IReadOnlyDictionary<int, GameObject> allPrefabs, IEnumerable<string> prefabNames, Action<GameObject> patcher)
+        private static int PatchPrefabs(
+            this IReadOnlyDictionary<int, GameObject> allPrefabs, IEnumerable<string> prefabNames,
+            Action<GameObject> patcher)
         {
             var totalPatched = 0;
             foreach (var prefabName in prefabNames)
@@ -134,7 +136,7 @@ namespace ValheimPerformanceOptimizations
             var patched = 0;
             patched += namedPrefabs.PatchPrefabs(PrefabsWithLeafParticles, PatchPrefabWithLeaves);
             patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
-            
+
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
         }
     }

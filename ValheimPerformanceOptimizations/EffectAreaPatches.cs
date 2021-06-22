@@ -99,8 +99,6 @@ namespace ValheimPerformanceOptimizations
             }
         }
 
-        private new void OnTriggerStay(Collider collider)
-        {
-        }
+        private new void OnTriggerStay(Collider collider) { }
     }
 }
