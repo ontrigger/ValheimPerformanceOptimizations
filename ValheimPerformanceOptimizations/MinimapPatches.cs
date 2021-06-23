@@ -16,7 +16,7 @@ namespace ValheimPerformanceOptimizations
         private static bool Prefix(Minimap __instance)
         {
             // try to load existing textures
-            if (File.Exists(ForestMaskTexturePath()) && File.Exists(MapTexturePath()) && File.Exists(HeightTexturePath()))
+            if (ImageFilesExists())
             {
                 __instance.m_forestMaskTexture.LoadImage(File.ReadAllBytes(ForestMaskTexturePath()));
                 __instance.m_mapTexture.LoadImage(File.ReadAllBytes(MapTexturePath()));
@@ -30,11 +30,21 @@ namespace ValheimPerformanceOptimizations
 
         private static void Postfix(Minimap __instance)
         {
-            // write computed files to file
-            Directory.CreateDirectory(GetMinimapSavePath());
-            File.WriteAllBytes(ForestMaskTexturePath(), __instance.m_forestMaskTexture.EncodeToPNG());
-            File.WriteAllBytes(MapTexturePath(), __instance.m_mapTexture.EncodeToPNG());
-            File.WriteAllBytes(HeightTexturePath(), __instance.m_heightTexture.EncodeToPNG());
+            if (!ImageFilesExists())
+            {
+                // write computed files to file
+                Directory.CreateDirectory(GetMinimapSavePath());
+                File.WriteAllBytes(ForestMaskTexturePath(), __instance.m_forestMaskTexture.EncodeToPNG());
+                File.WriteAllBytes(MapTexturePath(), __instance.m_mapTexture.EncodeToPNG());
+                File.WriteAllBytes(HeightTexturePath(), __instance.m_heightTexture.GetRawTextureData());
+            }
+        }
+
+        public static bool ImageFilesExists()
+        {
+            return File.Exists(ForestMaskTexturePath()) &&
+                   File.Exists(MapTexturePath()) &&
+                   File.Exists(HeightTexturePath());
         }
 
         public static string GetMinimapSavePath()
@@ -59,7 +69,7 @@ namespace ValheimPerformanceOptimizations
 
         public static string HeightTexturePath()
         {
-            return GetMinimapSavePath() + "/" + GetBaseFileName() + "_heightTexture.png";
+            return GetMinimapSavePath() + "/" + GetBaseFileName() + "_heightTexture.raw";
         }
     }
 }
