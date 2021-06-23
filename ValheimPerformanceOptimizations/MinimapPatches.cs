@@ -1,7 +1,6 @@
 ﻿using System.IO;
 using System.IO.Compression;
 using HarmonyLib;
-using UnityEngine;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -16,7 +15,7 @@ namespace ValheimPerformanceOptimizations
         private static bool Prefix(Minimap __instance)
         {
             // try to load existing textures
-            if (File.Exists(FilePath()))
+            if (File.Exists(MinimapTextureFilePath()))
             {
                 LoadFromFile(__instance);
                 return false;
@@ -28,20 +27,20 @@ namespace ValheimPerformanceOptimizations
 
         private static void Postfix(Minimap __instance)
         {
-            if (!File.Exists(FilePath()))
+            if (!File.Exists(MinimapTextureFilePath()))
             {
                 // write computed textures to file
-                Directory.CreateDirectory(MinimapSaveFolderPath());
+                Directory.CreateDirectory(MinimapTextureFolderPath());
                 SaveToFile(__instance);
             }
         }
 
         private static void SaveToFile(Minimap minimap)
         {
-            using (FileStream fileStream = File.Create(FilePath()))
-            using (GZipStream compressionStream = new GZipStream(fileStream, CompressionMode.Compress))
+            using (var fileStream = File.Create(MinimapTextureFilePath()))
+            using (var compressionStream = new GZipStream(fileStream, CompressionMode.Compress))
             {
-                ZPackage package = new ZPackage();
+                var package = new ZPackage();
                 package.Write(minimap.m_forestMaskTexture.GetRawTextureData());
                 package.Write(minimap.m_mapTexture.GetRawTextureData());
                 package.Write(minimap.m_heightTexture.GetRawTextureData());
@@ -53,12 +52,12 @@ namespace ValheimPerformanceOptimizations
 
         private static void LoadFromFile(Minimap minimap)
         {
-            using (FileStream fileStream = File.OpenRead(FilePath()))
-            using (GZipStream decompressionStream = new GZipStream(fileStream, CompressionMode.Decompress))
-            using (MemoryStream resultStream = new MemoryStream())
+            using (var fileStream = File.OpenRead(MinimapTextureFilePath()))
+            using (var decompressionStream = new GZipStream(fileStream, CompressionMode.Decompress))
+            using (var resultStream = new MemoryStream())
             {
                 decompressionStream.CopyTo(resultStream);
-                ZPackage package = new ZPackage(resultStream.ToArray());
+                var package = new ZPackage(resultStream.ToArray());
 
                 minimap.m_forestMaskTexture.LoadRawTextureData(package.ReadByteArray());
                 minimap.m_forestMaskTexture.Apply();
@@ -69,13 +68,13 @@ namespace ValheimPerformanceOptimizations
             }
         }
 
-        public static string FilePath()
+        public static string MinimapTextureFilePath()
         {
-            string file = ZNet.m_world.m_name + "_" + ZNet.m_world.m_seed + "_" + Version.GetVersionString() + ".map";
-            return MinimapSaveFolderPath() + "/" + file;
+            var file = ZNet.m_world.m_name + "_" + ZNet.m_world.m_seed + "_" + Version.GetVersionString() + ".map";
+            return MinimapTextureFolderPath() + "/" + file;
         }
 
-        public static string MinimapSaveFolderPath()
+        public static string MinimapTextureFolderPath()
         {
             return World.GetWorldSavePath() + "/minimap";
         }

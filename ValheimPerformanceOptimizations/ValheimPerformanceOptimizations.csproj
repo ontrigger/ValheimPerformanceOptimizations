@@ -78,6 +78,7 @@
     <Compile Include="Debug\RuntimeDebugDraw.cs" />
     <Compile Include="Debug\Utils.cs" />
     <Compile Include="EffectAreaPatches.cs" />
+    <Compile Include="MinimapPatches.cs" />
     <Compile Include="PiecePatches.cs" />
     <Compile Include="PrefabPatches.cs" />
     <Compile Include="SE_RestedPatches.cs" />
