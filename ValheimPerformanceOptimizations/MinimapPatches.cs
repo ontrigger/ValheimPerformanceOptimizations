@@ -1,10 +1,6 @@
-﻿using System.Diagnostics;
-using System.IO;
-using System.Reflection;
-using System.Threading.Tasks;
+﻿using System.IO;
 using HarmonyLib;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace ValheimPerformanceOptimizations
 {
