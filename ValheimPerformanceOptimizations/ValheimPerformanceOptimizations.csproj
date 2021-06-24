@@ -35,41 +35,44 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="0Harmony, Version=2.4.2.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\0Harmony.dll</HintPath>
     </Reference>
     <Reference Include="assembly_utils, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\publicized_assemblies\assembly_utils_publicized.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\publicized_assemblies\assembly_utils_publicized.dll</HintPath>
     </Reference>
     <Reference Include="assembly_valheim, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\publicized_assemblies\assembly_valheim_publicized.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\publicized_assemblies\assembly_valheim_publicized.dll</HintPath>
     </Reference>
     <Reference Include="BepInEx, Version=5.4.11.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\BepInEx.dll</HintPath>
     </Reference>
     <Reference Include="BepInEx.Harmony, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\BepInEx\core\BepInEx.Harmony.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\BepInEx.Harmony.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.ParticleSystemModule.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.ParticleSystemModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.ImageConversionModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.PhysicsModule.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.PhysicsModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.TextRenderingModule.dll</HintPath>
+      <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -88,6 +91,7 @@
     <Compile Include="WaterVolumePatches.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Import Project="../Environment.props" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
          Other similar extension points exist, see Microsoft.Common.targets.
     <Target Name="BeforeBuild">
