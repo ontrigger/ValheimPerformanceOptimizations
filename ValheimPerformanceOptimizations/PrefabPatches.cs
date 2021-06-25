@@ -31,6 +31,8 @@ namespace ValheimPerformanceOptimizations
             "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor"
         };
 
+        private static bool _isPatched;
+
         /// <summary>
         ///     Some trees have leaf particles attached to them.
         ///     These particles get rendered at insane distances
@@ -114,22 +116,7 @@ namespace ValheimPerformanceOptimizations
         [HarmonyPatch(typeof(ZNetScene), "Awake")]
         private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
         {
-            /*foreach (var prefab in __instance.m_prefabs)
-            {
-                if (PrefabsWithLeafParticles.Contains(prefab.name))
-                {
-                    PatchPrefabWithLeaves(prefab);
-                }
-            }
-
-            foreach (var prefabName in PrefabsWithDisabledInstancing)
-            {
-                GameObject prefab;
-                if (___m_namedPrefabs.TryGetValue(prefabName.GetStableHashCode(), out prefab))
-                {
-                    PatchPrefabWithUninstancedMaterials(prefab);
-                }
-            }*/
+            if (_isPatched) { return; }
 
             var namedPrefabs = __instance.m_namedPrefabs;
 
@@ -138,6 +125,8 @@ namespace ValheimPerformanceOptimizations
             patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
 
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
+            
+            _isPatched = true;
         }
     }
 }

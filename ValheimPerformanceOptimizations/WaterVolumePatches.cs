@@ -16,10 +16,15 @@ namespace ValheimPerformanceOptimizations
     [HarmonyPatch]
     public static class GetWaterLevelPatch
     {
+        private static bool _isPatched;
+
         [HarmonyPatch(typeof(ZoneSystem), "Awake")]
         private static void Postfix(ZoneSystem __instance)
         {
+            if (_isPatched) return;
+
             __instance.m_zonePrefab.AddComponent<VPOZoneTracker>();
+            _isPatched = true;
         }
 
         [HarmonyPatch(typeof(WaterVolume), "GetWaterLevel")]
@@ -30,7 +35,7 @@ namespace ValheimPerformanceOptimizations
                 WaterVolume.m_waterVolumeMask = LayerMask.GetMask("WaterVolume");
             }
 
-            var hasZone = VPOZoneTracker.GetZoneComponents(p, out VPOZoneTracker.CachedZoneComponents components);
+            var hasZone = VPOZoneTracker.GetZoneComponents(p, out var components);
             if (hasZone)
             {
                 var waterVolume = components.WaterVolume;
@@ -45,7 +50,8 @@ namespace ValheimPerformanceOptimizations
             }
 
             // fallback in case the zone wasn't found somehow
-            var hitCount = Physics.OverlapSphereNonAlloc(p, 0f, WaterVolume.tempColliderArray, WaterVolume.m_waterVolumeMask);
+            var hitCount =
+                Physics.OverlapSphereNonAlloc(p, 0f, WaterVolume.tempColliderArray, WaterVolume.m_waterVolumeMask);
             for (var i = 0; i < hitCount; i++)
             {
                 var waterVolume = WaterVolume.tempColliderArray[i].GetComponent<WaterVolume>();
