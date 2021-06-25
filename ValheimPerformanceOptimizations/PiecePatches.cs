@@ -41,7 +41,7 @@ namespace ValheimPerformanceOptimizations
 
         [HarmonyPatch(typeof(Piece), "Awake"), HarmonyPostfix]
         public static void AwakePatch(Piece __instance)
-        {    
+        {
             if (Piece.ghostLayer == 0)
             {
                 Piece.ghostLayer = LayerMask.NameToLayer("ghost");
@@ -56,7 +56,7 @@ namespace ValheimPerformanceOptimizations
         [HarmonyPatch(typeof(Piece), "OnDestroy"), HarmonyPostfix]
         public static void OnDestroyPatch(Piece __instance)
         {
-            if(allComfortPieces.ContainsKey(__instance.GetInstanceID()))
+            if (allComfortPieces.ContainsKey(__instance.GetInstanceID()))
             {
                 allComfortPieces.Remove(__instance.GetInstanceID());
             }

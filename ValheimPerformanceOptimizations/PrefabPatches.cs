@@ -116,7 +116,7 @@ namespace ValheimPerformanceOptimizations
         [HarmonyPatch(typeof(ZNetScene), "Awake")]
         private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
         {
-            if (_isPatched) { return; }
+            if (_isPatched) return;
 
             var namedPrefabs = __instance.m_namedPrefabs;
 
@@ -125,7 +125,7 @@ namespace ValheimPerformanceOptimizations
             patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
 
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
-            
+
             _isPatched = true;
         }
     }

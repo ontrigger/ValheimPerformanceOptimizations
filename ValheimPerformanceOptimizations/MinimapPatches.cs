@@ -5,9 +5,9 @@ using HarmonyLib;
 namespace ValheimPerformanceOptimizations
 {
     /// <summary>
-    /// Generating the minimap takes a lot of time at startup and is generated from WorldGenerator. Therefore the
-    /// minimap never changes in a given world.
-    /// Now it is being saved inside the world folder as a zipped file with the name worldName_worldSeed_gameVersion.map
+    ///     Generating the minimap takes a lot of time at startup and is generated from WorldGenerator. Therefore the
+    ///     minimap never changes in a given world.
+    ///     Now it is being saved inside the world folder as a zipped file with the name worldName_worldSeed_gameVersion.map
     /// </summary>
     [HarmonyPatch(typeof(Minimap), "GenerateWorldMap")]
     public static class MinimapPatches

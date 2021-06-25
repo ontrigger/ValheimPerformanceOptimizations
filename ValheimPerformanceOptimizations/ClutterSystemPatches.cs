@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations
             foreach (var clutter in __instance.m_clutter)
             {
                 var renderer = clutter.m_prefab.GetComponent<InstanceRenderer>();
-                if (!renderer) { continue; }
+                if (!renderer) continue;
 
                 renderer.m_material.renderQueue = (int) RenderQueue.AlphaTest;
             }
