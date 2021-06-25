@@ -105,22 +105,24 @@ namespace ValheimPerformanceOptimizations
         private static readonly Dictionary<Vector2i, CachedZoneComponents> ZoneComponentsByLocation =
             new Dictionary<Vector2i, CachedZoneComponents>();
 
-        public Vector2i ZonePosition => ZoneSystem.instance.GetZone(transform.position);
+        public Vector2i zonePosition;
 
         private void Awake()
         {
+            zonePosition = ZoneSystem.instance.GetZone(transform.position);
+
             var cachedData = new CachedZoneComponents
             {
                 Heightmap = GetComponentInChildren<Heightmap>(),
                 WaterVolume = GetComponentInChildren<WaterVolume>()
             };
 
-            ZoneComponentsByLocation.Add(ZonePosition, cachedData);
+            ZoneComponentsByLocation.Add(zonePosition, cachedData);
         }
 
         private void OnDestroy()
         {
-            ZoneComponentsByLocation.Remove(ZonePosition);
+            ZoneComponentsByLocation.Remove(zonePosition);
         }
 
         public static bool GetZoneComponents(Vector3 worldPos, out CachedZoneComponents components)
