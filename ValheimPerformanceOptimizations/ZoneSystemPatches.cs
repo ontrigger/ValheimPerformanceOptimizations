@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -16,7 +17,9 @@ namespace ValheimPerformanceOptimizations
 
         private static GameObject vegetationPoolRoot;
 
-        private static GameObject trackedObject;
+        private static Heightmap zoneHeightmap;
+
+        public static bool GhostInitHack = false;
 
         [HarmonyPatch(typeof(ZoneSystem), "Start")]
         public static void Postfix(ZoneSystem __instance)
@@ -24,20 +27,20 @@ namespace ValheimPerformanceOptimizations
             vegetationPoolRoot = new GameObject("VPOVegetationPool");
             vegetationPoolRoot.transform.SetParent(__instance.transform);
 
-            //ZNetView.m_forceDisableInit = true;
             ZNetView.StartGhostInit();
             foreach (var zoneVegetation in __instance.m_vegetation)
             {
                 if (!zoneVegetation.m_enable || !zoneVegetation.m_prefab.GetComponent<ZNetView>()) continue;
 
                 var toPool = (int) (zoneVegetation.m_max * zoneVegetation.m_groupSizeMax);
-                var pool = new GameObjectPool(zoneVegetation.m_prefab, vegetationPoolRoot, toPool, toPool);
+                var pool = new GameObjectPool(zoneVegetation.m_prefab, vegetationPoolRoot.transform, toPool, toPool);
+                
                 vegetationPoolByName[zoneVegetation.m_prefab.name] = pool;
             }
 
             ZNetView.FinishGhostInit();
-
-            //ZNetView.m_forceDisableInit = false;
+            
+            zoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "SpawnZone")]
@@ -46,10 +49,8 @@ namespace ValheimPerformanceOptimizations
         {
             Profiler.BeginSample("Spawn zone");
             var zonePos = __instance.GetZonePos(zoneID);
-            var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
-            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
-                                                          componentInChildren.m_scale,
-                                                          componentInChildren.m_isDistantLod, WorldGenerator.instance))
+            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, zoneHeightmap.m_width, zoneHeightmap.m_scale,
+                                                          zoneHeightmap.m_isDistantLod, WorldGenerator.instance))
             {
                 root = null;
                 __result = false;
@@ -62,6 +63,7 @@ namespace ValheimPerformanceOptimizations
                 !__instance.IsZoneGenerated(zoneID))
             {
                 var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
+                
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
                 Profiler.BeginSample("PlaceLocations");
@@ -97,7 +99,7 @@ namespace ValheimPerformanceOptimizations
                     __instance.m_tempSpawnedObjects.Clear();
                     Object.Destroy(root);
 
-                    //ValheimPerformanceOptimizations.Logger.LogInfo($"Returned {returnedCount}/{destroyed} objs");
+                    ValheimPerformanceOptimizations.Logger.LogInfo($"Returned {returnedCount}/{destroyed} objs");
                     root = null;
                 }
 
@@ -109,108 +111,33 @@ namespace ValheimPerformanceOptimizations
             __result = true;
             return false;
         }
-
-        [HarmonyPatch(typeof(ZoneSystem), "CreateGhostZones")]
-        public static bool Prefix(ZoneSystem __instance, Vector3 refPoint, ref bool __result)
+        
+        [HarmonyPatch(typeof(ZoneSystem), "GetGroundData")]
+        public static bool Prefix(ZoneSystem __instance, ref Vector3 p, out Vector3 normal, out Heightmap.Biome biome, out Heightmap.BiomeArea biomeArea, out Heightmap hmap)
         {
-            Profiler.BeginSample("CreateGhostZones");
-            var zone = __instance.GetZone(refPoint);
-            if (!__instance.IsZoneGenerated(zone) && __instance.SpawnZone(zone, ZoneSystem.SpawnMode.Ghost, out var _))
+            biome = Heightmap.Biome.None;
+            biomeArea = Heightmap.BiomeArea.Everything;
+            hmap = null;
+            if (Physics.Raycast(p + Vector3.up * 5000f, Vector3.down, out var hitInfo, 10000f, __instance.m_terrainRayMask))
             {
-                __result = true;
-                return false;
-            }
-
-            var num = __instance.m_activeArea + __instance.m_activeDistantArea;
-            for (var i = zone.y - num; i <= zone.y + num; i++)
-            {
-                for (var j = zone.x - num; j <= zone.x + num; j++)
+                p.y = hitInfo.point.y;
+                normal = hitInfo.normal;
+                Profiler.BeginSample("Gettin component");
+                Heightmap component = hitInfo.collider.GetComponent<Heightmap>();
+                Profiler.EndSample();
+                if ((bool)component)
                 {
-                    var zoneID = new Vector2i(j, i);
-                    if (!__instance.IsZoneGenerated(zoneID) &&
-                        __instance.SpawnZone(zoneID, ZoneSystem.SpawnMode.Ghost, out var _))
-                    {
-                        __result = true;
-                        return false;
-                    }
+                    Profiler.BeginSample("aint no way");
+                    biome = component.GetBiome(hitInfo.point);
+                    biomeArea = component.GetBiomeArea();
+                    hmap = component;
+                    Profiler.EndSample();
+                    
                 }
             }
-
-            Profiler.EndSample();
-            __result = false;
-            return false;
-        }
-
-        [HarmonyPatch(typeof(ZoneSystem), "Update")]
-        public static bool Prefix(ZoneSystem __instance)
-        {
-            Profiler.BeginSample("ZOne system awake");
-            if (ZNet.GetConnectionStatus() != ZNet.ConnectionStatus.Connected)
+            else
             {
-                return false;
-            }
-
-            __instance.m_updateTimer += Time.deltaTime;
-            if (!(__instance.m_updateTimer > 0.1f))
-            {
-                return false;
-            }
-
-            __instance.m_updateTimer = 0f;
-            var flag = __instance.CreateLocalZones(ZNet.instance.GetReferencePosition());
-            __instance.UpdateTTL(0.1f);
-            if (!ZNet.instance.IsServer() || flag)
-            {
-                return false;
-            }
-
-            __instance.CreateGhostZones(ZNet.instance.GetReferencePosition());
-            foreach (var peer in ZNet.instance.GetPeers())
-            {
-                __instance.CreateGhostZones(peer.GetRefPos());
-            }
-
-            Profiler.EndSample();
-
-            return false;
-        }
-
-        [HarmonyPatch(typeof(ZNetScene), "RemoveObjects")]
-        private static bool Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
-        {
-            var frameCount = Time.frameCount;
-            foreach (var currentNearObject in currentNearObjects)
-            {
-                currentNearObject.m_tempRemoveEarmark = frameCount;
-            }
-
-            foreach (var currentDistantObject in currentDistantObjects)
-            {
-                currentDistantObject.m_tempRemoveEarmark = frameCount;
-            }
-
-            __instance.m_tempRemoved.Clear();
-            foreach (var value in __instance.m_instances.Values)
-            {
-                if (value.GetZDO().m_tempRemoveEarmark != frameCount)
-                {
-                    __instance.m_tempRemoved.Add(value);
-                }
-            }
-
-            for (var i = 0; i < __instance.m_tempRemoved.Count; i++)
-            {
-                var zNetView = __instance.m_tempRemoved[i];
-                var zDO = zNetView.GetZDO();
-                zNetView.ResetZDO();
-
-                Object.Destroy(zNetView.gameObject);
-                if (!zDO.m_persistent && zDO.IsOwner())
-                {
-                    ZDOMan.instance.DestroyZDO(zDO);
-                }
-
-                __instance.m_instances.Remove(zDO);
+                normal = Vector3.up;
             }
 
             return false;
@@ -277,8 +204,10 @@ namespace ValheimPerformanceOptimizations
                             continue;
                         }
 
+                        Profiler.BeginSample("Get ground data");
                         __instance.GetGroundData(ref p, out var normal, out var biome, out var biomeArea,
                                                  out var hmap2);
+                        Profiler.EndSample();
                         if ((item.m_biome & biome) == 0 || (item.m_biomeArea & biomeArea) == 0)
                         {
                             continue;
@@ -352,6 +281,20 @@ namespace ValheimPerformanceOptimizations
                                 if (mode == ZoneSystem.SpawnMode.Ghost)
                                 {
                                     gameObject = objectPool.GetObject(p, identity, out fromPool);
+                                    var netView = gameObject.GetComponent<ZNetView>();
+
+                                    var zdo = ZDOMan.instance.CreateNewZDO(gameObject.transform.position);
+                                    zdo.m_persistent = netView.m_persistent;
+                                    zdo.m_type = netView.m_type;
+                                    zdo.m_distant = netView.m_distant;
+                                    zdo.SetPrefab(item.m_prefab.name.GetStableHashCode());
+                                    zdo.SetRotation(gameObject.transform.rotation);
+                                    if (netView.m_syncInitialScale)
+                                    {
+                                        zdo.Set("scale", gameObject.transform.localScale);
+                                    }
+
+                                    netView.m_zdo = zdo;
                                 }
                                 else
                                 {
@@ -383,10 +326,6 @@ namespace ValheimPerformanceOptimizations
                                 var component = gameObject.GetComponent<ZNetView>();
                                 component.SetLocalScale(new Vector3(num11, num11, num11));
                                 component.GetZDO().SetPGWVersion(__instance.m_pgwVersion);
-                                if (item.m_prefab.name == "Bush01")
-                                {
-                                    trackedObject = gameObject;
-                                }
 
                                 if (mode == ZoneSystem.SpawnMode.Ghost)
                                 {
@@ -427,6 +366,117 @@ namespace ValheimPerformanceOptimizations
 
             return false;
         }
+
+        #region Profiling
+
+        [HarmonyPatch(typeof(ZNetScene), "RemoveObjects")]
+        private static bool Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
+        {
+            var frameCount = Time.frameCount;
+            foreach (var currentNearObject in currentNearObjects)
+            {
+                currentNearObject.m_tempRemoveEarmark = frameCount;
+            }
+
+            foreach (var currentDistantObject in currentDistantObjects)
+            {
+                currentDistantObject.m_tempRemoveEarmark = frameCount;
+            }
+
+            __instance.m_tempRemoved.Clear();
+            foreach (var value in __instance.m_instances.Values)
+            {
+                if (value.GetZDO().m_tempRemoveEarmark != frameCount)
+                {
+                    __instance.m_tempRemoved.Add(value);
+                }
+            }
+
+            for (var i = 0; i < __instance.m_tempRemoved.Count; i++)
+            {
+                var zNetView = __instance.m_tempRemoved[i];
+                var zDO = zNetView.GetZDO();
+                zNetView.ResetZDO();
+
+                Object.Destroy(zNetView.gameObject);
+                if (!zDO.m_persistent && zDO.IsOwner())
+                {
+                    ZDOMan.instance.DestroyZDO(zDO);
+                }
+
+                __instance.m_instances.Remove(zDO);
+            }
+
+            return false;
+        }
+        
+        
+        [HarmonyPatch(typeof(ZoneSystem), "Update")]
+        public static bool Prefix(ZoneSystem __instance)
+        {
+            Profiler.BeginSample("ZOne system awake");
+            if (ZNet.GetConnectionStatus() != ZNet.ConnectionStatus.Connected)
+            {
+                return false;
+            }
+
+            __instance.m_updateTimer += Time.deltaTime;
+            if (!(__instance.m_updateTimer > 0.1f))
+            {
+                return false;
+            }
+
+            __instance.m_updateTimer = 0f;
+            var flag = __instance.CreateLocalZones(ZNet.instance.GetReferencePosition());
+            __instance.UpdateTTL(0.1f);
+            if (!ZNet.instance.IsServer() || flag)
+            {
+                return false;
+            }
+
+            __instance.CreateGhostZones(ZNet.instance.GetReferencePosition());
+            foreach (var peer in ZNet.instance.GetPeers())
+            {
+                __instance.CreateGhostZones(peer.GetRefPos());
+            }
+
+            Profiler.EndSample();
+
+            return false;
+        }
+        
+        [HarmonyPatch(typeof(ZoneSystem), "CreateGhostZones")]
+        public static bool Prefix(ZoneSystem __instance, Vector3 refPoint, ref bool __result)
+        {
+            Profiler.BeginSample("CreateGhostZones");
+            var zone = __instance.GetZone(refPoint);
+            if (!__instance.IsZoneGenerated(zone) && __instance.SpawnZone(zone, ZoneSystem.SpawnMode.Ghost, out var _))
+            {
+                __result = true;
+                return false;
+            }
+
+            var num = __instance.m_activeArea + __instance.m_activeDistantArea;
+            for (var i = zone.y - num; i <= zone.y + num; i++)
+            {
+                for (var j = zone.x - num; j <= zone.x + num; j++)
+                {
+                    var zoneID = new Vector2i(j, i);
+                    if (!__instance.IsZoneGenerated(zoneID) &&
+                        __instance.SpawnZone(zoneID, ZoneSystem.SpawnMode.Ghost, out var _))
+                    {
+                        __result = true;
+                        return false;
+                    }
+                }
+            }
+
+            Profiler.EndSample();
+            __result = false;
+            return false;
+        }
+
+        #endregion
     }
 
     public struct CountEvaluation

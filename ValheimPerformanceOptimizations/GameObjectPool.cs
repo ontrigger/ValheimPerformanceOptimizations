@@ -6,22 +6,22 @@ namespace ValheimPerformanceOptimizations
     // TODO: maybe turn it into a component instead
     public class GameObjectPool
     {
-        private readonly Stack<GameObject> pool = new Stack<GameObject>();
+        public readonly Stack<GameObject> pool = new Stack<GameObject>();
 
-        private readonly GameObject root;
+        private readonly Transform root;
         private readonly GameObject toPool;
-        public int MaxObjects;
+        private readonly int maxObjects;
 
-        public GameObjectPool(GameObject pooledObject, GameObject rootObject, int maxObjects, int prewarmAmount = 0)
+        public GameObjectPool(GameObject pooledObject, Transform rootTransform, int maxObjects, int prewarmAmount = 0)
         {
             toPool = pooledObject;
-            MaxObjects = maxObjects;
+            this.maxObjects = maxObjects;
 
-            root = rootObject;
+            root = rootTransform;
 
             for (var i = 0; i < prewarmAmount; i++)
             {
-                var obj = Object.Instantiate(pooledObject, rootObject.transform, true);
+                var obj = Object.Instantiate(pooledObject, rootTransform, true);
                 obj.SetActive(false);
 
                 pool.Push(obj);
@@ -49,14 +49,18 @@ namespace ValheimPerformanceOptimizations
 
         public void ReturnObject(GameObject toRelease, out bool returned)
         {
-            if (pool.Count >= MaxObjects)
+            if (pool.Count >= maxObjects)
             {
                 Object.Destroy(toRelease);
                 returned = false;
                 return;
             }
 
-            toRelease.transform.SetParent(root.transform);
+            if (root)
+            {
+                toRelease.transform.SetParent(root);
+            }
+            
             toRelease.SetActive(false);
             pool.Push(toRelease);
 
