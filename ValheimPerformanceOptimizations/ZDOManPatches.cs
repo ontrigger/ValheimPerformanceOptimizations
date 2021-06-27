@@ -55,7 +55,7 @@ namespace ValheimPerformanceOptimizations
             // now load zDO threaded
             // batch size of 2^12 - 2^16 works good
             const int batch = 32768;
-            Parallel.For(0, num2 / batch, i =>
+            Parallel.For(0, Mathf.CeilToInt((float) num2 / batch), i =>
             {
                 ZPackage zPackage = new ZPackage();
 
