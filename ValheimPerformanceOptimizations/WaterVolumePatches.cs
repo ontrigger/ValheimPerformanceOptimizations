@@ -90,7 +90,7 @@ namespace ValheimPerformanceOptimizations
         [HarmonyPatch(typeof(WaterVolume), "Awake")]
         private static void Postfix(WaterVolume __instance)
         {
-            if (!__instance.m_heightmap || !__instance.m_collider || ZoneSystemPatches.GhostInitHack)
+            if (!__instance.m_heightmap || !__instance.m_collider)
             {
                 return;
             }
@@ -115,8 +115,6 @@ namespace ValheimPerformanceOptimizations
 
         private void Awake()
         {
-            if (ZoneSystemPatches.GhostInitHack) { return; }
-
             zonePosition = ZoneSystem.instance.GetZone(transform.position);
 
             var cachedData = new CachedZoneComponents

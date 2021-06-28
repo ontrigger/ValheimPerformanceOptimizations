@@ -6,16 +6,16 @@ namespace ValheimPerformanceOptimizations
     // TODO: maybe turn it into a component instead
     public class GameObjectPool
     {
-        public readonly Stack<GameObject> pool = new Stack<GameObject>();
+        public readonly Stack<GameObject> Pool = new Stack<GameObject>();
 
         private readonly Transform root;
         private readonly GameObject toPool;
-        private readonly int maxObjects;
+        public int MaxObjects;
 
         public GameObjectPool(GameObject pooledObject, Transform rootTransform, int maxObjects, int prewarmAmount = 0)
         {
             toPool = pooledObject;
-            this.maxObjects = maxObjects;
+            MaxObjects = maxObjects;
 
             root = rootTransform;
 
@@ -24,19 +24,19 @@ namespace ValheimPerformanceOptimizations
                 var obj = Object.Instantiate(pooledObject, rootTransform, true);
                 obj.SetActive(false);
 
-                pool.Push(obj);
+                Pool.Push(obj);
             }
         }
 
         public GameObject GetObject(Vector3 position, Quaternion rotation, out bool fromPool)
         {
-            if (pool.Count <= 0)
+            if (Pool.Count <= 0)
             {
                 fromPool = false;
                 return Object.Instantiate(toPool, position, rotation);
             }
 
-            var obj = pool.Pop();
+            var obj = Pool.Pop();
             obj.SetActive(true);
 
             obj.transform.SetParent(null);
@@ -49,7 +49,7 @@ namespace ValheimPerformanceOptimizations
 
         public void ReturnObject(GameObject toRelease, out bool returned)
         {
-            if (pool.Count >= maxObjects)
+            if (Pool.Count >= MaxObjects)
             {
                 Object.Destroy(toRelease);
                 returned = false;
@@ -60,11 +60,21 @@ namespace ValheimPerformanceOptimizations
             {
                 toRelease.transform.SetParent(root);
             }
-            
+
             toRelease.SetActive(false);
-            pool.Push(toRelease);
+            Pool.Push(toRelease);
 
             returned = true;
+        }
+
+        public void Destroy()
+        {
+            foreach (var gameObject in Pool)
+            {
+                Object.Destroy(gameObject);
+            }
+
+            Pool.Clear();
         }
     }
 }

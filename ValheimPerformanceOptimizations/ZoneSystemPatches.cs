@@ -12,14 +12,14 @@ namespace ValheimPerformanceOptimizations
     [HarmonyPatch]
     public static class ZoneSystemPatches
     {
-        private static readonly Dictionary<string, GameObjectPool> vegetationPoolByName =
-            new Dictionary<string, GameObjectPool>();
+        private static readonly Dictionary<ZoneSystem.ZoneVegetation, GameObjectPool> VegetationPoolByName =
+            new Dictionary<ZoneSystem.ZoneVegetation, GameObjectPool>();
+
+        private static readonly Dictionary<GameObject, GameObjectPool> ObjectIdToPool = new Dictionary<GameObject, GameObjectPool>();
 
         private static GameObject vegetationPoolRoot;
 
         private static Heightmap zoneHeightmap;
-
-        public static bool GhostInitHack = false;
 
         [HarmonyPatch(typeof(ZoneSystem), "Start")]
         public static void Postfix(ZoneSystem __instance)
@@ -28,19 +28,38 @@ namespace ValheimPerformanceOptimizations
             vegetationPoolRoot.transform.SetParent(__instance.transform);
 
             ZNetView.StartGhostInit();
-            foreach (var zoneVegetation in __instance.m_vegetation)
+
+            foreach (var vegetation in __instance.m_vegetation)
             {
-                if (!zoneVegetation.m_enable || !zoneVegetation.m_prefab.GetComponent<ZNetView>()) continue;
-
-                var toPool = (int) (zoneVegetation.m_max * zoneVegetation.m_groupSizeMax);
-                var pool = new GameObjectPool(zoneVegetation.m_prefab, vegetationPoolRoot.transform, toPool, toPool);
+                if (!vegetation.m_enable || !vegetation.m_prefab.GetComponent<ZNetView>()) continue;
                 
-                vegetationPoolByName[zoneVegetation.m_prefab.name] = pool;
+                var toPool = (int) (vegetation.m_max * vegetation.m_groupSizeMax);
+                var pool = new GameObjectPool(vegetation.m_prefab, vegetationPoolRoot.transform, toPool, toPool);
+                
+                foreach (var gameObject in pool.Pool)
+                {
+                    ZNetView component = gameObject.GetComponent<ZNetView>();
+                    if (component && component.GetZDO() != null)
+                    {
+                        ZDO zDO = component.GetZDO();
+                        component.ResetZDO();
+                        if (zDO.IsOwner())
+                        {
+                            ZDOMan.instance.DestroyZDO(zDO);
+                        }
+                    }
+                }
+                VegetationPoolByName[vegetation] = pool;
             }
-
             ZNetView.FinishGhostInit();
-            
+
             zoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
+        public static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
+        {
+            VegetationPoolByName.Values.ToList().ForEach(pool => pool.Destroy());
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "SpawnZone")]
@@ -48,6 +67,7 @@ namespace ValheimPerformanceOptimizations
             ZoneSystem __instance, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root, ref bool __result)
         {
             Profiler.BeginSample("Spawn zone");
+            ObjectIdToPool.Clear();
             var zonePos = __instance.GetZonePos(zoneID);
             if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, zoneHeightmap.m_width, zoneHeightmap.m_scale,
                                                           zoneHeightmap.m_isDistantLod, WorldGenerator.instance))
@@ -57,19 +77,20 @@ namespace ValheimPerformanceOptimizations
 
                 return false;
             }
-
+            
             root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
             if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) &&
                 !__instance.IsZoneGenerated(zoneID))
             {
                 var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
-                
+
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
                 Profiler.BeginSample("PlaceLocations");
                 __instance.PlaceLocations(zoneID, zonePos, root.transform, componentInChildren2,
                                           __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
                 Profiler.EndSample();
+
                 Profiler.BeginSample("PlaceVegetation");
                 __instance.PlaceVegetation(zoneID, zonePos, root.transform, componentInChildren2,
                                            __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
@@ -77,16 +98,15 @@ namespace ValheimPerformanceOptimizations
                 Profiler.BeginSample("PlaceZoneCtrl");
                 __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
                 Profiler.EndSample();
+                
                 if (mode == ZoneSystem.SpawnMode.Ghost)
                 {
                     var destroyed = 0;
-                    var returnedCount = 0;
                     foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
                     {
-                        if (vegetationPoolByName.TryGetValue(tempSpawnedObject.name, out var pool))
+                        if (ObjectIdToPool.TryGetValue(tempSpawnedObject, out var pool))
                         {
-                            pool.ReturnObject(tempSpawnedObject, out var returned);
-                            if (returned) { returnedCount += 1; }
+                            pool.ReturnObject(tempSpawnedObject, out _);
                         }
                         else
                         {
@@ -99,7 +119,6 @@ namespace ValheimPerformanceOptimizations
                     __instance.m_tempSpawnedObjects.Clear();
                     Object.Destroy(root);
 
-                    ValheimPerformanceOptimizations.Logger.LogInfo($"Returned {returnedCount}/{destroyed} objs");
                     root = null;
                 }
 
@@ -112,48 +131,17 @@ namespace ValheimPerformanceOptimizations
             return false;
         }
         
-        [HarmonyPatch(typeof(ZoneSystem), "GetGroundData")]
-        public static bool Prefix(ZoneSystem __instance, ref Vector3 p, out Vector3 normal, out Heightmap.Biome biome, out Heightmap.BiomeArea biomeArea, out Heightmap hmap)
-        {
-            biome = Heightmap.Biome.None;
-            biomeArea = Heightmap.BiomeArea.Everything;
-            hmap = null;
-            if (Physics.Raycast(p + Vector3.up * 5000f, Vector3.down, out var hitInfo, 10000f, __instance.m_terrainRayMask))
-            {
-                p.y = hitInfo.point.y;
-                normal = hitInfo.normal;
-                Profiler.BeginSample("Gettin component");
-                Heightmap component = hitInfo.collider.GetComponent<Heightmap>();
-                Profiler.EndSample();
-                if ((bool)component)
-                {
-                    Profiler.BeginSample("aint no way");
-                    biome = component.GetBiome(hitInfo.point);
-                    biomeArea = component.GetBiomeArea();
-                    hmap = component;
-                    Profiler.EndSample();
-                    
-                }
-            }
-            else
-            {
-                normal = Vector3.up;
-            }
-
-            return false;
-        }
-
         [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation")]
         public static bool Prefix(
             ZoneSystem __instance, Vector2i zoneID, Vector3 zoneCenterPos, Transform parent, Heightmap hmap,
             List<ZoneSystem.ClearArea> clearAreas, ZoneSystem.SpawnMode mode, List<GameObject> spawnedObjects)
         {
+            Profiler.BeginSample("Inside PlaecVeggie");
             var state = Random.state;
             var seed = WorldGenerator.instance.GetSeed();
             var num = __instance.m_zoneSize / 2f;
             var num2 = 1;
 
-            var placedCounts = new Dictionary<string, CountEvaluation>();
             foreach (var item in __instance.m_vegetation)
             {
                 num2++;
@@ -177,7 +165,10 @@ namespace ValheimPerformanceOptimizations
                     num3 = Random.Range((int) item.m_min, (int) item.m_max + 1);
                 }
 
-                var objectPool = vegetationPoolByName[item.m_prefab.name];
+                if (!VegetationPoolByName.TryGetValue(item, out var objectPool))
+                {
+                    ValheimPerformanceOptimizations.Logger.LogInfo("Couldnt find key " + item.m_prefab.name);
+                }
 
                 var flag = item.m_prefab.GetComponent<ZNetView>() != null;
                 var num4 = Mathf.Cos((float) Math.PI / 180f * item.m_maxTilt);
@@ -278,17 +269,16 @@ namespace ValheimPerformanceOptimizations
 
                                 GameObject gameObject;
                                 var fromPool = false;
-                                if (mode == ZoneSystem.SpawnMode.Ghost)
+                                if (mode == ZoneSystem.SpawnMode.Ghost && objectPool != null)
                                 {
                                     gameObject = objectPool.GetObject(p, identity, out fromPool);
+                                    ObjectIdToPool[gameObject] = objectPool;
+                                    
                                     var netView = gameObject.GetComponent<ZNetView>();
 
                                     var zdo = ZDOMan.instance.CreateNewZDO(gameObject.transform.position);
-                                    zdo.m_persistent = netView.m_persistent;
-                                    zdo.m_type = netView.m_type;
-                                    zdo.m_distant = netView.m_distant;
                                     zdo.SetPrefab(item.m_prefab.name.GetStableHashCode());
-                                    zdo.SetRotation(gameObject.transform.rotation);
+                                    zdo.SetRotation(identity);
                                     if (netView.m_syncInitialScale)
                                     {
                                         zdo.Set("scale", gameObject.transform.localScale);
@@ -299,11 +289,16 @@ namespace ValheimPerformanceOptimizations
                                 else
                                 {
                                     gameObject = Object.Instantiate(item.m_prefab, p, identity);
+                                    if (mode == ZoneSystem.SpawnMode.Ghost)
+                                    {
+                                        ValheimPerformanceOptimizations.Logger.LogInfo(
+                                            "No pool? " + item.m_prefab.name);
+                                    }
                                 }
 
                                 gameObject.name = item.m_prefab.name;
 
-                                if (placedCounts.TryGetValue(item.m_prefab.name, out var tuple))
+                                /*if (placedCounts.TryGetValue(item.m_prefab.name, out var tuple))
                                 {
                                     if (fromPool)
                                     {
@@ -321,7 +316,7 @@ namespace ValheimPerformanceOptimizations
                                 else
                                 {
                                     placedCounts[item.m_prefab.name] = new CountEvaluation();
-                                }
+                                }*/
 
                                 var component = gameObject.GetComponent<ZNetView>();
                                 component.SetLocalScale(new Vector3(num11, num11, num11));
@@ -361,8 +356,10 @@ namespace ValheimPerformanceOptimizations
                 ValheimPerformanceOptimizations.Logger.LogInfo(
                     $"Placed {item.Key} Unpooled: {item.Value.NewlyCreatedCount} Pooled: {item.Value.FromPoolCount} isFull?: {item.Value.isFullSpawnMode}");
             }*/
+            Profiler.EndSample();
 
             Random.state = state;
+
 
             return false;
         }
@@ -409,8 +406,8 @@ namespace ValheimPerformanceOptimizations
 
             return false;
         }
-        
-        
+
+
         [HarmonyPatch(typeof(ZoneSystem), "Update")]
         public static bool Prefix(ZoneSystem __instance)
         {
@@ -444,7 +441,7 @@ namespace ValheimPerformanceOptimizations
 
             return false;
         }
-        
+
         [HarmonyPatch(typeof(ZoneSystem), "CreateGhostZones")]
         public static bool Prefix(ZoneSystem __instance, Vector3 refPoint, ref bool __result)
         {
@@ -477,12 +474,5 @@ namespace ValheimPerformanceOptimizations
         }
 
         #endregion
-    }
-
-    public struct CountEvaluation
-    {
-        public int NewlyCreatedCount;
-        public int FromPoolCount;
-        public bool isFullSpawnMode;
     }
 }
