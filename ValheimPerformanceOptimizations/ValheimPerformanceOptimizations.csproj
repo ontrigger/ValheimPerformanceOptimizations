@@ -91,6 +91,7 @@
     <Compile Include="TerrainPatches.cs" />
     <Compile Include="WaterVolumePatches.cs" />
     <Compile Include="ZDOManPatches.cs" />
+    <Compile Include="PrefabNamePatches.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="../Environment.props" />
