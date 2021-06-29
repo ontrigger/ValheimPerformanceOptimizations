@@ -20,7 +20,6 @@ namespace ValheimPerformanceOptimizations
         {
             while (true)
             {
-                Thread.Sleep(0);
                 Tuple<int, int> next = null;
 
                 lock (ToBake)
@@ -33,6 +32,7 @@ namespace ValheimPerformanceOptimizations
 
                 if (next == null)
                 {
+                    Thread.Sleep(1);
                     continue;
                 }
 
