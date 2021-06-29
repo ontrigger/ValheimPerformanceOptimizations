@@ -16,19 +16,24 @@ namespace ValheimPerformanceOptimizations
         private static readonly Queue<Tuple<int, int>> ToBake = new Queue<Tuple<int, int>>();
         private static readonly List<Tuple<int, int>> Ready = new List<Tuple<int, int>>();
 
-        private static AutoResetEvent waitHandler = new AutoResetEvent(false);
-
         private static void BakeThread()
         {
             while (true)
             {
-                // wait for the next mesh to be available
-                waitHandler.WaitOne();
-                Tuple<int, int> next;
+                Thread.Sleep(0);
+                Tuple<int, int> next = null;
 
                 lock (ToBake)
                 {
-                    next = ToBake.Dequeue();
+                    if (ToBake.Count > 0)
+                    {
+                        next = ToBake.Dequeue();
+                    }
+                }
+
+                if (next == null)
+                {
+                    continue;
                 }
 
                 // bake the current mesh to be used in a MeshCollider
@@ -116,9 +121,6 @@ namespace ValheimPerformanceOptimizations
             {
                 ToBake.Enqueue(new Tuple<int, int>(__instance.GetInstanceID(), __instance.m_collisionMesh.GetInstanceID()));
             }
-
-            // allow one additional bake process
-            waitHandler.Set();
         }
     }
 }
