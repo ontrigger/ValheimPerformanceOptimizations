@@ -150,6 +150,18 @@ namespace ValheimPerformanceOptimizations
             return any && ready;
         }
 
+        [HarmonyPatch(typeof(Heightmap), "OnDestroy"), HarmonyPostfix]
+        private static void OnDestroyPatch(Heightmap __instance)
+        {
+            if (!ZoneSystem.instance) return;
+
+            Vector2i zonePos = ZoneSystem.instance.GetZone(__instance.transform.position);
+            if (spawnedZones.ContainsKey(zonePos))
+            {
+                spawnedZones.Remove(zonePos);
+            }
+        }
+
         [HarmonyPatch(typeof(ClutterSystem), "IsHeightmapReady"), HarmonyPostfix]
         private static void IsHeightmapReadyPatch(ClutterSystem __instance, ref bool __result)
         {
@@ -209,7 +221,6 @@ namespace ValheimPerformanceOptimizations
                     __instance.m_tempSpawnedObjects.Clear();
                     UnityEngine.Object.Destroy(root);
                     root = null;
-                    spawnedZones.Remove(zoneID);
                 }
 
                 __instance.SetZoneGenerated(zoneID);
