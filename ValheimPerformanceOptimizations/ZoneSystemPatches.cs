@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
+using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
@@ -12,50 +15,117 @@ namespace ValheimPerformanceOptimizations
     [HarmonyPatch]
     public static class ZoneSystemPatches
     {
-        private static readonly Dictionary<ZoneSystem.ZoneVegetation, GameObjectPool> VegetationPoolByName =
-            new Dictionary<ZoneSystem.ZoneVegetation, GameObjectPool>();
+        public static Dictionary<string, GameObjectPool> VegetationPoolByName;
 
-        private static readonly Dictionary<GameObject, GameObjectPool> ObjectIdToPool = new Dictionary<GameObject, GameObjectPool>();
+        public static Heightmap zoneHeightmap;
 
-        private static GameObject vegetationPoolRoot;
+        private static readonly HashSet<string> PrefabsWithFadeComponent = new HashSet<string>();
 
-        private static Heightmap zoneHeightmap;
+        private static readonly MethodInfo GetNetViewComponentMethod =
+            AccessTools.GetDeclaredMethods(typeof(GameObject))
+                       .Where(m => m.Name == "GetComponent" && m.GetGenericArguments().Length == 1)
+                       .Select(m => m.MakeGenericMethod(typeof(ZNetView)))
+                       .First();
+        
+        private static readonly MethodInfo ObjectInstantiateMethod =
+            AccessTools.GetDeclaredMethods(typeof(Object))
+                       .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
+                       .Select(m => m.MakeGenericMethod(typeof(GameObject)))
+                       .First(m =>
+                                  m.GetParameters().Length == 3 &&
+                                  m.GetParameters()[1].ParameterType == typeof(Vector3));
+
+        private static readonly MethodInfo GetPoolForObjectMethod =
+            AccessTools.DeclaredMethod(typeof(ZoneSystemPatches), "GetPoolForObject");
+        
+        private static readonly MethodInfo GetOrInstantiateObjectMethod =
+            AccessTools.DeclaredMethod(typeof(ZoneSystemPatches), "GetOrInstantiateObject");
 
         [HarmonyPatch(typeof(ZoneSystem), "Start")]
         public static void Postfix(ZoneSystem __instance)
         {
-            vegetationPoolRoot = new GameObject("VPOVegetationPool");
-            vegetationPoolRoot.transform.SetParent(__instance.transform);
-
             ZNetView.StartGhostInit();
 
-            foreach (var vegetation in __instance.m_vegetation)
-            {
-                if (!vegetation.m_enable || !vegetation.m_prefab.GetComponent<ZNetView>()) continue;
-                
-                var toPool = (int) (vegetation.m_max * vegetation.m_groupSizeMax);
-                var pool = new GameObjectPool(vegetation.m_prefab, vegetationPoolRoot.transform, toPool, toPool);
-                
-                foreach (var gameObject in pool.Pool)
+            // @formatter:off
+            VegetationPoolByName = __instance.m_vegetation
+                .GroupBy(veg => veg.m_prefab.name)
+                .Select(group =>
                 {
-                    ZNetView component = gameObject.GetComponent<ZNetView>();
-                    if (component && component.GetZDO() != null)
+                    var vegetationForName = group.ToList();
+                    var prefab = vegetationForName[0].m_prefab;
+                    var toPool = vegetationForName.Aggregate(0, (acc, veg) =>
+                                                                 acc + (int) (veg.m_max * veg.m_groupSizeMax));
+
+                    var pool = new GameObjectPool(prefab, toPool, OnRetrievedFromPool);
+
+                    if (prefab.GetComponentInChildren<LodFadeInOut>())
                     {
-                        ZDO zDO = component.GetZDO();
-                        component.ResetZDO();
-                        if (zDO.IsOwner())
-                        {
-                            ZDOMan.instance.DestroyZDO(zDO);
-                        }
+                        PrefabsWithFadeComponent.Add(prefab.name);
                     }
-                }
-                VegetationPoolByName[vegetation] = pool;
-            }
+
+                    pool.Populate(toPool, obj =>
+                    {
+                        var component = obj.GetComponent<ZNetView>();
+                        if (component && component.GetZDO() != null)
+                        {
+                            var zDO = component.GetZDO();
+                            component.ResetZDO();
+                            if (zDO.IsOwner())
+                            {
+                                ZDOMan.instance.DestroyZDO(zDO);
+                            }
+                        }
+                    });
+
+                    return new Tuple<string, GameObjectPool>(prefab.name, pool);
+                }).ToDictionary(tuple => tuple.Item1, tuple => tuple.Item2);
+            // @formatter:on
+
             ZNetView.FinishGhostInit();
 
             zoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
         }
 
+        private static void OnRetrievedFromPool(GameObject obj)
+        {
+            var netView = obj.GetComponent<ZNetView>();
+            netView.Awake();
+
+            if (PrefabsWithFadeComponent.Contains(obj.name))
+            {
+                // some prefabs have their lod fade on the second level
+                obj.GetComponentInChildren<LodFadeInOut>().Awake();
+            }
+        }
+
+        [UsedImplicitly]
+        private static GameObject GetOrInstantiateObject(
+            ZoneSystem.SpawnMode mode, GameObject prefab, Vector3 position, Quaternion rotation)
+        {
+            GameObject gameObject;
+            var pool = GetPoolForObject(prefab);
+            if (mode == ZoneSystem.SpawnMode.Ghost && pool != null)
+            {
+                gameObject = pool.GetObject(position, rotation);
+            }
+            else
+            {
+                gameObject = Object.Instantiate(prefab, position, rotation);
+            }
+
+            gameObject.name = prefab.name;
+
+            return gameObject;
+        }
+
+        [UsedImplicitly]
+        private static GameObjectPool GetPoolForObject(GameObject prefab)
+        {
+            VegetationPoolByName.TryGetValue(prefab.name, out var objectPool);
+            
+            return objectPool;
+        }
+        
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
         public static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
         {
@@ -67,7 +137,6 @@ namespace ValheimPerformanceOptimizations
             ZoneSystem __instance, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root, ref bool __result)
         {
             Profiler.BeginSample("Spawn zone");
-            ObjectIdToPool.Clear();
             var zonePos = __instance.GetZonePos(zoneID);
             if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, zoneHeightmap.m_width, zoneHeightmap.m_scale,
                                                           zoneHeightmap.m_isDistantLod, WorldGenerator.instance))
@@ -77,7 +146,7 @@ namespace ValheimPerformanceOptimizations
 
                 return false;
             }
-            
+
             root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
             if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) &&
                 !__instance.IsZoneGenerated(zoneID))
@@ -98,22 +167,19 @@ namespace ValheimPerformanceOptimizations
                 Profiler.BeginSample("PlaceZoneCtrl");
                 __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
                 Profiler.EndSample();
-                
+
                 if (mode == ZoneSystem.SpawnMode.Ghost)
                 {
-                    var destroyed = 0;
                     foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
                     {
-                        if (ObjectIdToPool.TryGetValue(tempSpawnedObject, out var pool))
+                        if (VegetationPoolByName.TryGetValue(tempSpawnedObject.name, out var pool))
                         {
-                            pool.ReturnObject(tempSpawnedObject, out _);
+                            pool.ReturnObject(tempSpawnedObject);
                         }
                         else
                         {
                             Object.Destroy(tempSpawnedObject);
                         }
-
-                        destroyed += 1;
                     }
 
                     __instance.m_tempSpawnedObjects.Clear();
@@ -130,283 +196,63 @@ namespace ValheimPerformanceOptimizations
             __result = true;
             return false;
         }
-        
-        [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation")]
-        public static bool Prefix(
-            ZoneSystem __instance, Vector2i zoneID, Vector3 zoneCenterPos, Transform parent, Heightmap hmap,
-            List<ZoneSystem.ClearArea> clearAreas, ZoneSystem.SpawnMode mode, List<GameObject> spawnedObjects)
+
+        [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation"), HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
-            Profiler.BeginSample("Inside PlaecVeggie");
-            var state = Random.state;
-            var seed = WorldGenerator.instance.GetSeed();
-            var num = __instance.m_zoneSize / 2f;
-            var num2 = 1;
+            var code = new List<CodeInstruction>(instructions);
+            
+            // in order to declare a local i have to increment all other locals
+            // after mine by 1. I also have to make the ilgenerator create a local with the correct index.
+            // so, for now the object pool lookup has to be done in GetOrInstantiateObject instead of 
+            // at the beginning of the PlaceVegetation method :(
 
-            foreach (var item in __instance.m_vegetation)
+            /*var foundIndex = -1;
+            for (var i = 0; i < code.Count; i++)
             {
-                num2++;
-                if (!item.m_enable || !hmap.HaveBiome(item.m_biome))
+                var instruction = code[i];
+
+                if (instruction.Is(OpCodes.Callvirt, GetNetViewComponentMethod))
                 {
-                    continue;
-                }
-
-                Random.InitState(seed + zoneID.x * 4271 + zoneID.y * 9187 +
-                                 item.m_prefab.name.GetStableHashCode());
-                var num3 = 1;
-                if (item.m_max < 1f)
-                {
-                    if (Random.value > item.m_max)
-                    {
-                        continue;
-                    }
-                }
-                else
-                {
-                    num3 = Random.Range((int) item.m_min, (int) item.m_max + 1);
-                }
-
-                if (!VegetationPoolByName.TryGetValue(item, out var objectPool))
-                {
-                    ValheimPerformanceOptimizations.Logger.LogInfo("Couldnt find key " + item.m_prefab.name);
-                }
-
-                var flag = item.m_prefab.GetComponent<ZNetView>() != null;
-                var num4 = Mathf.Cos((float) Math.PI / 180f * item.m_maxTilt);
-                var num5 = Mathf.Cos((float) Math.PI / 180f * item.m_minTilt);
-                var num6 = num - item.m_groupRadius;
-                var num7 = item.m_forcePlacement ? num3 * 50 : num3;
-                var num8 = 0;
-                for (var i = 0; i < num7; i++)
-                {
-                    var vector =
-                        new Vector3(Random.Range(zoneCenterPos.x - num6, zoneCenterPos.x + num6), 0f,
-                                    Random.Range(zoneCenterPos.z - num6, zoneCenterPos.z + num6));
-                    var num9 = Random.Range(item.m_groupSizeMin, item.m_groupSizeMax + 1);
-                    var flag2 = false;
-                    for (var j = 0; j < num9; j++)
-                    {
-                        var p = j == 0 ? vector : __instance.GetRandomPointInRadius(vector, item.m_groupRadius);
-                        float num10 = Random.Range(0, 360);
-                        var num11 = Random.Range(item.m_scaleMin, item.m_scaleMax);
-                        var x = Random.Range(0f - item.m_randTilt, item.m_randTilt);
-                        var z = Random.Range(0f - item.m_randTilt, item.m_randTilt);
-                        if (item.m_blockCheck && __instance.IsBlocked(p))
-                        {
-                            continue;
-                        }
-
-                        Profiler.BeginSample("Get ground data");
-                        __instance.GetGroundData(ref p, out var normal, out var biome, out var biomeArea,
-                                                 out var hmap2);
-                        Profiler.EndSample();
-                        if ((item.m_biome & biome) == 0 || (item.m_biomeArea & biomeArea) == 0)
-                        {
-                            continue;
-                        }
-
-                        var num12 = p.y - __instance.m_waterLevel;
-                        if (num12 < item.m_minAltitude || num12 > item.m_maxAltitude)
-                        {
-                            continue;
-                        }
-
-                        if (item.m_minOceanDepth != item.m_maxOceanDepth)
-                        {
-                            var oceanDepth = hmap2.GetOceanDepth(p);
-                            if (oceanDepth < item.m_minOceanDepth || oceanDepth > item.m_maxOceanDepth)
-                            {
-                                continue;
-                            }
-                        }
-
-                        if (normal.y < num4 || normal.y > num5)
-                        {
-                            continue;
-                        }
-
-                        if (item.m_terrainDeltaRadius > 0f)
-                        {
-                            __instance.GetTerrainDelta(p, item.m_terrainDeltaRadius, out var delta, out var _);
-                            if (delta > item.m_maxTerrainDelta || delta < item.m_minTerrainDelta)
-                            {
-                                continue;
-                            }
-                        }
-
-                        if (item.m_inForest)
-                        {
-                            var forestFactor = WorldGenerator.GetForestFactor(p);
-                            if (forestFactor < item.m_forestTresholdMin || forestFactor > item.m_forestTresholdMax)
-                            {
-                                continue;
-                            }
-                        }
-
-                        if (__instance.InsideClearArea(clearAreas, p))
-                        {
-                            continue;
-                        }
-
-                        if (item.m_snapToWater)
-                        {
-                            p.y = __instance.m_waterLevel;
-                        }
-
-                        p.y += item.m_groundOffset;
-                        var identity = Quaternion.identity;
-                        identity = !(item.m_chanceToUseGroundTilt > 0f) ||
-                                   !(Random.value <= item.m_chanceToUseGroundTilt)
-                            ? Quaternion.Euler(x, num10, z)
-                            : Quaternion.AngleAxis(num10, normal);
-                        if (flag)
-                        {
-                            if (mode == ZoneSystem.SpawnMode.Full || mode == ZoneSystem.SpawnMode.Ghost)
-                            {
-                                if (mode == ZoneSystem.SpawnMode.Ghost)
-                                {
-                                    ZNetView.StartGhostInit();
-                                }
-
-                                GameObject gameObject;
-                                var fromPool = false;
-                                if (mode == ZoneSystem.SpawnMode.Ghost && objectPool != null)
-                                {
-                                    gameObject = objectPool.GetObject(p, identity, out fromPool);
-                                    ObjectIdToPool[gameObject] = objectPool;
-                                    
-                                    var netView = gameObject.GetComponent<ZNetView>();
-
-                                    var zdo = ZDOMan.instance.CreateNewZDO(gameObject.transform.position);
-                                    zdo.SetPrefab(item.m_prefab.name.GetStableHashCode());
-                                    zdo.SetRotation(identity);
-                                    if (netView.m_syncInitialScale)
-                                    {
-                                        zdo.Set("scale", gameObject.transform.localScale);
-                                    }
-
-                                    netView.m_zdo = zdo;
-                                }
-                                else
-                                {
-                                    gameObject = Object.Instantiate(item.m_prefab, p, identity);
-                                    if (mode == ZoneSystem.SpawnMode.Ghost)
-                                    {
-                                        ValheimPerformanceOptimizations.Logger.LogInfo(
-                                            "No pool? " + item.m_prefab.name);
-                                    }
-                                }
-
-                                gameObject.name = item.m_prefab.name;
-
-                                /*if (placedCounts.TryGetValue(item.m_prefab.name, out var tuple))
-                                {
-                                    if (fromPool)
-                                    {
-                                        tuple.FromPoolCount += 1;
-                                    }
-                                    else
-                                    {
-                                        tuple.NewlyCreatedCount += 1;
-                                    }
-
-                                    tuple.isFullSpawnMode = mode == ZoneSystem.SpawnMode.Full; 
-
-                                    placedCounts[item.m_prefab.name] = tuple;
-                                }
-                                else
-                                {
-                                    placedCounts[item.m_prefab.name] = new CountEvaluation();
-                                }*/
-
-                                var component = gameObject.GetComponent<ZNetView>();
-                                component.SetLocalScale(new Vector3(num11, num11, num11));
-                                component.GetZDO().SetPGWVersion(__instance.m_pgwVersion);
-
-                                if (mode == ZoneSystem.SpawnMode.Ghost)
-                                {
-                                    spawnedObjects.Add(gameObject);
-                                    ZNetView.FinishGhostInit();
-                                }
-                            }
-                        }
-                        else
-                        {
-                            var obj = Object.Instantiate(item.m_prefab, p, identity);
-                            obj.transform.localScale = new Vector3(num11, num11, num11);
-                            obj.transform.SetParent(parent, true);
-                        }
-
-                        flag2 = true;
-                    }
-
-                    if (flag2)
-                    {
-                        num8++;
-                    }
-
-                    if (num8 >= num3)
-                    {
-                        break;
-                    }
+                    foundIndex = i - 2;
+                    break;
                 }
             }
-
-            /*foreach (var item in placedCounts)
+            
+            var objectPoolLocal = generator.DeclareLocal(typeof(GameObjectPool));
+            code.InsertRange(foundIndex, new[]
             {
-                ValheimPerformanceOptimizations.Logger.LogInfo(
-                    $"Placed {item.Key} Unpooled: {item.Value.NewlyCreatedCount} Pooled: {item.Value.FromPoolCount} isFull?: {item.Value.isFullSpawnMode}");
-            }*/
-            Profiler.EndSample();
+                new CodeInstruction(OpCodes.Ldloc_S, 5), // item
+                new CodeInstruction(OpCodes.Call, GetPoolForObjectMethod),
+                new CodeInstruction(OpCodes.Stloc_S, objectPoolLocal)
+            });*/
 
-            Random.state = state;
+            var instantiationIndex = -1;
+            for (var i = 0; i < code.Count; i++)
+            {
+                var instruction = code[i];
 
-
-            return false;
+                if (instruction.Is(OpCodes.Call, ObjectInstantiateMethod))
+                {
+                    instantiationIndex = i - 4;
+                    break;
+                }
+            }
+            
+            // add the mode before the arguments
+            code.InsertRange(instantiationIndex, new []
+            {
+                new CodeInstruction(OpCodes.Ldarg_S, 6), // mode
+                //new CodeInstruction(OpCodes.Ldloc_S, objectPoolLocal)
+            });
+            
+            // replace the call to instantiate with our method
+            code[instantiationIndex + 1 + 4] = new CodeInstruction(OpCodes.Call, GetOrInstantiateObjectMethod);
+            
+            return code.AsEnumerable();
         }
 
         #region Profiling
-
-        [HarmonyPatch(typeof(ZNetScene), "RemoveObjects")]
-        private static bool Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
-        {
-            var frameCount = Time.frameCount;
-            foreach (var currentNearObject in currentNearObjects)
-            {
-                currentNearObject.m_tempRemoveEarmark = frameCount;
-            }
-
-            foreach (var currentDistantObject in currentDistantObjects)
-            {
-                currentDistantObject.m_tempRemoveEarmark = frameCount;
-            }
-
-            __instance.m_tempRemoved.Clear();
-            foreach (var value in __instance.m_instances.Values)
-            {
-                if (value.GetZDO().m_tempRemoveEarmark != frameCount)
-                {
-                    __instance.m_tempRemoved.Add(value);
-                }
-            }
-
-            for (var i = 0; i < __instance.m_tempRemoved.Count; i++)
-            {
-                var zNetView = __instance.m_tempRemoved[i];
-                var zDO = zNetView.GetZDO();
-                zNetView.ResetZDO();
-
-                Object.Destroy(zNetView.gameObject);
-                if (!zDO.m_persistent && zDO.IsOwner())
-                {
-                    ZDOMan.instance.DestroyZDO(zDO);
-                }
-
-                __instance.m_instances.Remove(zDO);
-            }
-
-            return false;
-        }
-
 
         [HarmonyPatch(typeof(ZoneSystem), "Update")]
         public static bool Prefix(ZoneSystem __instance)
