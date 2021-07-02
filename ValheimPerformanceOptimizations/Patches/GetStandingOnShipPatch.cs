@@ -1,10 +1,10 @@
 using System.Runtime.CompilerServices;
 using HarmonyLib;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     [HarmonyPatch]
-    public static class CharacterPatches
+    public static class GetStandingOnShipPatch
     {
         private static readonly ConditionalWeakTable<Character, CachedShipData> Data =
             new ConditionalWeakTable<Character, CachedShipData>();

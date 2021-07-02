@@ -1,26 +1,9 @@
 using System.Collections.Generic;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Profiling;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
-    [HarmonyPatch]
-    public static class EffectAreaPatches
-    {
-        [HarmonyPatch(typeof(EffectArea), "Awake")]
-        private static bool Prefix(EffectArea __instance)
-        {
-            var patchedEffectArea = __instance.gameObject.AddComponent<VPOEffectArea>();
-            patchedEffectArea.m_statusEffect = __instance.m_statusEffect;
-            patchedEffectArea.m_type = __instance.m_type;
-
-            Object.Destroy(__instance);
-
-            return false;
-        }
-    }
-
     public class VPOEffectArea : EffectArea
     {
         private readonly List<Character> Inside = new List<Character>();
