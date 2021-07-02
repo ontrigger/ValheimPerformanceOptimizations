@@ -5,7 +5,7 @@ using System.Threading;
 using HarmonyLib;
 using UnityEngine;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     /// Setting a MeshCollider sharedmesh is expensive because Unity has to bake it into its physics. It can be called

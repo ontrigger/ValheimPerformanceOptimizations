@@ -48,7 +48,6 @@ namespace ValheimPerformanceOptimizations.Patches
                                                  new Color[__instance.m_width * __instance.m_width]
                                                  : _clearColors);
             __instance.ApplyModifiers();
-            Profiler.EndSample();
 
             return false;
         }
