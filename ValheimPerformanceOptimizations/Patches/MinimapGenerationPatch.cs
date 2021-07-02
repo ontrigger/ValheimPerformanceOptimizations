@@ -2,7 +2,7 @@
 using System.IO.Compression;
 using HarmonyLib;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     ///     Generating the minimap takes a lot of time at startup and is generated from WorldGenerator. Therefore the
@@ -10,7 +10,7 @@ namespace ValheimPerformanceOptimizations
     ///     Now it is being saved inside the world folder as a zipped file with the name worldName_worldSeed_gameVersion.map
     /// </summary>
     [HarmonyPatch(typeof(Minimap), "GenerateWorldMap")]
-    public static class MinimapPatches
+    public static class MinimapGenerationPatch
     {
         private static bool Prefix(Minimap __instance)
         {

@@ -8,16 +8,15 @@ using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
-using Random = UnityEngine.Random;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     [HarmonyPatch]
-    public static class ZoneSystemPatches
+    public static class ZoneSystemObjectPoolingPatch
     {
         public static Dictionary<string, GameObjectPool> VegetationPoolByName;
 
-        public static Heightmap zoneHeightmap;
+        public static Heightmap ZoneHeightmap;
 
         private static readonly HashSet<string> PrefabsWithFadeComponent = new HashSet<string>();
 
@@ -36,10 +35,10 @@ namespace ValheimPerformanceOptimizations
                                   m.GetParameters()[1].ParameterType == typeof(Vector3));
 
         private static readonly MethodInfo GetPoolForObjectMethod =
-            AccessTools.DeclaredMethod(typeof(ZoneSystemPatches), "GetPoolForObject");
+            AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "GetPoolForObject");
         
         private static readonly MethodInfo GetOrInstantiateObjectMethod =
-            AccessTools.DeclaredMethod(typeof(ZoneSystemPatches), "GetOrInstantiateObject");
+            AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "GetOrInstantiateObject");
 
         [HarmonyPatch(typeof(ZoneSystem), "Start")]
         public static void Postfix(ZoneSystem __instance)
@@ -83,7 +82,7 @@ namespace ValheimPerformanceOptimizations
 
             ZNetView.FinishGhostInit();
 
-            zoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
+            ZoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
         }
 
         private static void OnRetrievedFromPool(GameObject obj)
@@ -138,8 +137,8 @@ namespace ValheimPerformanceOptimizations
         {
             Profiler.BeginSample("Spawn zone");
             var zonePos = __instance.GetZonePos(zoneID);
-            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, zoneHeightmap.m_width, zoneHeightmap.m_scale,
-                                                          zoneHeightmap.m_isDistantLod, WorldGenerator.instance))
+            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, ZoneHeightmap.m_width, ZoneHeightmap.m_scale,
+                                                          ZoneHeightmap.m_isDistantLod, WorldGenerator.instance))
             {
                 root = null;
                 __result = false;

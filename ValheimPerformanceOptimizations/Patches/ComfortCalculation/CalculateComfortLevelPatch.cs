@@ -2,6 +2,7 @@
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
+using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -26,7 +27,7 @@ namespace ValheimPerformanceOptimizations
             // in shelter one extra comfort
             __result += 1;
 
-            List<Piece> nearbyPieces = AllComfortPieces.GetNearbyComfortPieces(player.transform.position);
+            List<Piece> nearbyPieces = GetNearbyPiecesPatch.GetNearbyComfortPieces(player.transform.position);
             var maxByComfortGroup = new Dictionary<Piece.ComfortGroup, int>();
             var unsorted = new Dictionary<string, Piece>();
 
