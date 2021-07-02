@@ -4,13 +4,14 @@ using System.Linq;
 using System.Threading;
 using HarmonyLib;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
-    /// Setting a MeshCollider sharedmesh is expensive because Unity has to bake it into its physics. It can be called
-    /// threaded, this is done here. Because the ZoneSystem logic wants to have a collision mesh instantly, it also has
-    /// to wait for the baking to complete
+    ///     Setting a MeshCollider sharedmesh is expensive because Unity has to bake it into its physics. It can be called
+    ///     threaded, this is done here. Because the ZoneSystem logic wants to have a collision mesh instantly, it also has
+    ///     to wait for the baking to complete
     /// </summary>
     [HarmonyPatch]
     public static class ThreadedHeightmapCollisionBakePatch
@@ -20,8 +21,9 @@ namespace ValheimPerformanceOptimizations.Patches
         // Tuple: heightmap.InstanceID, m_collisionMesh.InstanceID
         private static readonly Queue<Tuple<int, int>> ToBake = new Queue<Tuple<int, int>>();
         private static readonly List<Tuple<int, int>> Ready = new List<Tuple<int, int>>();
+
         private static readonly Dictionary<int, bool> HeightmapFinished = new Dictionary<int, bool>();
-        private static Dictionary<Vector2i, GameObject> spawnedZones = new Dictionary<Vector2i, GameObject>();
+        private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
 
         private static void BakeThread()
         {
@@ -53,6 +55,23 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
+        private static bool IsHeightmapReady(Vector3 pos)
+        {
+            var any = false;
+            var ready = true;
+
+            foreach (var heightmap in Heightmap.m_heightmaps)
+            {
+                if (heightmap.IsPointInside(pos))
+                {
+                    any = true;
+                    ready = ready && HeightmapFinished[heightmap.GetInstanceID()];
+                }
+            }
+
+            return any && ready;
+        }
+
         [HarmonyPatch(typeof(Heightmap), "Awake"), HarmonyPostfix]
         private static void AwakePatch(Heightmap __instance)
         {
@@ -78,22 +97,21 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(Heightmap), "Update"), HarmonyPostfix]
         private static void UpdatePatch(Heightmap __instance)
         {
-            int instanceId = __instance.GetInstanceID();
+            var instanceId = __instance.GetInstanceID();
 
-            if ((bool) __instance.m_collider)
+            if (!__instance.m_collider) return;
+
+            lock (Ready)
             {
-                lock (Ready)
+                Tuple<int, int> newMesh = Ready.FirstOrDefault(i => i.Item1 == instanceId);
+
+                if (newMesh != null)
                 {
-                    Tuple<int, int> newMesh = Ready.FirstOrDefault(i => i.Item1 == instanceId);
+                    Ready.Remove(newMesh);
 
-                    if (newMesh != null)
-                    {
-                        Ready.Remove(newMesh);
-
-                        __instance.m_collider.sharedMesh = __instance.m_collisionMesh;
-                        __instance.m_dirty = true;
-                        HeightmapFinished[__instance.GetInstanceID()] = true;
-                    }
+                    __instance.m_collider.sharedMesh = __instance.m_collisionMesh;
+                    __instance.m_dirty = true;
+                    HeightmapFinished[__instance.GetInstanceID()] = true;
                 }
             }
         }
@@ -103,12 +121,12 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(Heightmap), "RebuildCollisionMesh"), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> RebuildCollisionMeshTranspiler(IEnumerable<CodeInstruction> instructions)
         {
-            List<CodeInstruction> code = new List<CodeInstruction>(instructions);
+            var code = new List<CodeInstruction>(instructions);
 
-            int foundIndex = -1;
-            for (int i = 0; i < code.Count; i++)
+            var foundIndex = -1;
+            for (var i = 0; i < code.Count; i++)
             {
-                CodeInstruction instruction = code[i];
+                var instruction = code[i];
                 if (instruction.ToString().Contains("set_sharedMesh"))
                 {
                     foundIndex = i;
@@ -133,32 +151,15 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        public static bool IsHeightmapReady(Vector3 pos)
-        {
-            bool any = false;
-            bool ready = true;
-
-            foreach (Heightmap heightmap in Heightmap.m_heightmaps)
-            {
-                if (heightmap.IsPointInside(pos))
-                {
-                    any = true;
-                    ready = ready && HeightmapFinished[heightmap.GetInstanceID()];
-                }
-            }
-
-            return any && ready;
-        }
-
         [HarmonyPatch(typeof(Heightmap), "OnDestroy"), HarmonyPostfix]
         private static void OnDestroyPatch(Heightmap __instance)
         {
             if (!ZoneSystem.instance) return;
 
-            Vector2i zonePos = ZoneSystem.instance.GetZone(__instance.transform.position);
-            if (spawnedZones.ContainsKey(zonePos))
+            var zonePos = ZoneSystem.instance.GetZone(__instance.transform.position);
+            if (SpawnedZones.ContainsKey(zonePos))
             {
-                spawnedZones.Remove(zonePos);
+                SpawnedZones.Remove(zonePos);
             }
         }
 
@@ -168,36 +169,40 @@ namespace ValheimPerformanceOptimizations.Patches
             // only change the result if it was true
             if (!__result) return;
 
-            Camera mainCamera = Utils.GetMainCamera();
+            var mainCamera = Utils.GetMainCamera();
             __result = IsHeightmapReady(mainCamera.transform.position);
         }
 
         // spawn the heightmap GameObject but not call any placement until the heightmap has a collision mesh
         [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyPrefix]
-        private static bool SpawnZone(ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
+        private static bool SpawnZone(
+            ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
         {
-            Vector3 zonePos = __instance.GetZonePos(zoneID);
-            if (!spawnedZones.ContainsKey(zoneID))
+            var zonePos = __instance.GetZonePos(zoneID);
+            if (!SpawnedZones.ContainsKey(zoneID))
             {
-                Heightmap componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
-                if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width, componentInChildren.m_scale, componentInChildren.m_isDistantLod, WorldGenerator.instance))
+                var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
+                if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
+                                                              componentInChildren.m_scale,
+                                                              componentInChildren.m_isDistantLod,
+                                                              WorldGenerator.instance))
                 {
                     root = null;
                     __result = false;
                     return false;
                 }
 
-                root = UnityEngine.Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
-                spawnedZones.Add(zoneID, root);
+                root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
+                SpawnedZones.Add(zoneID, root);
             }
             else
             {
-                root = spawnedZones[zoneID];
+                root = SpawnedZones[zoneID];
             }
 
             if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) && !__instance.IsZoneGenerated(zoneID))
             {
-                int heightmapInstanceId = root.GetComponentInChildren<Heightmap>().GetInstanceID();
+                var heightmapInstanceId = root.GetComponentInChildren<Heightmap>().GetInstanceID();
 
                 if (!HeightmapFinished[heightmapInstanceId])
                 {
@@ -205,7 +210,7 @@ namespace ValheimPerformanceOptimizations.Patches
                     return false;
                 }
 
-                Heightmap componentInChildren2 = root.GetComponentInChildren<Heightmap>();
+                var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
                 __instance.PlaceLocations(zoneID, zonePos, root.transform, componentInChildren2, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
@@ -213,13 +218,13 @@ namespace ValheimPerformanceOptimizations.Patches
                 __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
                 if (mode == ZoneSystem.SpawnMode.Ghost)
                 {
-                    foreach (GameObject tempSpawnedObject in __instance.m_tempSpawnedObjects)
+                    foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
                     {
-                        UnityEngine.Object.Destroy(tempSpawnedObject);
+                        Object.Destroy(tempSpawnedObject);
                     }
 
                     __instance.m_tempSpawnedObjects.Clear();
-                    UnityEngine.Object.Destroy(root);
+                    Object.Destroy(root);
                     root = null;
                 }
 
@@ -228,6 +233,23 @@ namespace ValheimPerformanceOptimizations.Patches
 
             __result = true;
             return false;
+        }
+
+        [HarmonyPatch(typeof(ZNetScene), "Shutdown")]
+        public static void Postfix(ZNetScene __instance)
+        {
+            SpawnedZones.Clear();
+            HeightmapFinished.Clear();
+
+            lock (Ready)
+            {
+                Ready.Clear();
+            }
+
+            lock (ToBake)
+            {
+                ToBake.Clear();
+            }
         }
     }
 }
