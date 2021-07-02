@@ -2,6 +2,10 @@
 
 Rendering, logic, and loading time optimizations for both client and server versions of Valheim.
 
+## Changes in 0.4.1
+
+* Fixed optimized terrain disappearing upon relogging
+
 ## New in 0.4.0
 
 * Threaded terrain collision generation decreases stutters when loading chunks
