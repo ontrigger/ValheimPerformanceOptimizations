@@ -6,14 +6,14 @@ using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     ///     ZNetView tries to get the object name by removing the (Clone) part,
     ///     which causes gc allocations along with a ~3ms slowdown in a typical ZoneSystem spawn cycle
     /// </summary>
     [HarmonyPatch]
-    public class PrefabNamePatches
+    public class ZNetViewPrefabNamePatch
     {
         [UsedImplicitly]
         public static string PrefabNameHack;
@@ -30,7 +30,7 @@ namespace ValheimPerformanceOptimizations
             typeof(GameObject), nameof(GameObject.name));
 
         private static readonly FieldInfo PrefabNameHackField =
-            AccessTools.DeclaredField(typeof(PrefabNamePatches), "PrefabNameHack");
+            AccessTools.DeclaredField(typeof(ZNetViewPrefabNamePatch), "PrefabNameHack");
 
         private static readonly FieldInfo VegetationPrefabField =
             AccessTools.Field(typeof(ZoneSystem.ZoneVegetation), "m_prefab");

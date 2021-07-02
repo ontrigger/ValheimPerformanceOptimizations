@@ -1,9 +1,9 @@
 using RuntimeDebugDraw;
 using UnityEngine;
 
-namespace ValheimPerformanceOptimizations.Debug
+namespace ValheimPerformanceOptimizations
 {
-    public class Utils
+    public class DebugDraw
     {
         private static void DrawBounds(Bounds b, float delay = 0)
         {

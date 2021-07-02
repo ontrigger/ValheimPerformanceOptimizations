@@ -1,7 +1,7 @@
 using HarmonyLib;
 using UnityEngine;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     ///     The smoke particles can be rendered up to 8 times per instance due to its shader
@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations
     ///     but I couldn't find a transparent vertex-lit shader that supported instancing.
     /// </summary>
     [HarmonyPatch]
-    public class SmokePatches
+    public class SmokeRenderingPatch
     {
         private static bool _smokeShaderSet;
 
@@ -32,26 +32,6 @@ namespace ValheimPerformanceOptimizations
         {
             var gameMain = GameObject.Find("_GameMain");
             gameMain.AddComponent<VPOSmokeRenderer>();
-        }
-    }
-
-    /// <summary>
-    ///     The Lux shader does not force quads to look at the camera,
-    ///     so we do it ourselves
-    /// </summary>
-    public class VPOSmokeRenderer : MonoBehaviour
-    {
-        private void Update()
-        {
-            var camera = Utils.GetMainCamera();
-            if (!camera) return;
-
-            var camPosition = camera.transform.position;
-
-            foreach (var smoke in Smoke.m_smoke)
-            {
-                smoke.transform.rotation = Quaternion.LookRotation(smoke.transform.position - camPosition);
-            }
         }
     }
 }

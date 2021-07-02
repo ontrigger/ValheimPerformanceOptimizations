@@ -2,13 +2,13 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Profiling;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     /// Remove a pointless Color[32x32] allocation just to clear the paintmask 
     /// </summary>
     [HarmonyPatch]
-    public class HeightmapPatches
+    public class HeightmapColorAllocationPatch
     {
         private static Color[] _clearColors;
 
