@@ -13,7 +13,7 @@ namespace ValheimPerformanceOptimizations
     /// to wait for the baking to complete
     /// </summary>
     [HarmonyPatch]
-    public static class HeightmapPatches
+    public static class ThreadedHeightmapCollisionBakePatch
     {
         private static bool hasGenerationThread;
 
