@@ -18,18 +18,18 @@ namespace ValheimPerformanceOptimizations.Patches
     {
         private static bool hasGenerationThread;
 
-        // Tuple: heightmap.InstanceID, m_collisionMesh.InstanceID
-        private static readonly Queue<Tuple<int, int>> ToBake = new Queue<Tuple<int, int>>();
-        private static readonly List<Tuple<int, int>> Ready = new List<Tuple<int, int>>();
+        // Tuple: heightmap, m_collisionMesh.InstanceID
+        private static readonly Queue<Tuple<Heightmap, int>> ToBake = new Queue<Tuple<Heightmap, int>>();
+        private static readonly List<Tuple<Heightmap, int>> Ready = new List<Tuple<Heightmap, int>>();
 
-        private static readonly Dictionary<int, bool> HeightmapFinished = new Dictionary<int, bool>();
+        private static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
         private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
 
         private static void BakeThread()
         {
             while (true)
             {
-                Tuple<int, int> next = null;
+                Tuple<Heightmap, int> next = null;
 
                 lock (ToBake)
                 {
@@ -65,7 +65,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 if (heightmap.IsPointInside(pos))
                 {
                     any = true;
-                    ready = ready && HeightmapFinished[heightmap.GetInstanceID()];
+                    ready = ready && HeightmapFinished[heightmap];
                 }
             }
 
@@ -90,20 +90,18 @@ namespace ValheimPerformanceOptimizations.Patches
                                                        MeshColliderCookingOptions.WeldColocatedVertices;
             }
 
-            HeightmapFinished.Add(__instance.GetInstanceID(), false);
+            HeightmapFinished.Add(__instance, false);
         }
 
         // check if a mesh is finished backing
         [HarmonyPatch(typeof(Heightmap), "Update"), HarmonyPostfix]
         private static void UpdatePatch(Heightmap __instance)
         {
-            var instanceId = __instance.GetInstanceID();
-
             if (!__instance.m_collider) return;
 
             lock (Ready)
             {
-                Tuple<int, int> newMesh = Ready.FirstOrDefault(i => i.Item1 == instanceId);
+                Tuple<Heightmap, int> newMesh = Ready.FirstOrDefault(i => i.Item1 == __instance);
 
                 if (newMesh != null)
                 {
@@ -111,7 +109,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
                     __instance.m_collider.sharedMesh = __instance.m_collisionMesh;
                     __instance.m_dirty = true;
-                    HeightmapFinished[__instance.GetInstanceID()] = true;
+                    HeightmapFinished[__instance] = true;
                 }
             }
         }
@@ -147,7 +145,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             lock (ToBake)
             {
-                ToBake.Enqueue(new Tuple<int, int>(__instance.GetInstanceID(), __instance.m_collisionMesh.GetInstanceID()));
+                ToBake.Enqueue(new Tuple<Heightmap, int>(__instance, __instance.m_collisionMesh.GetInstanceID()));
             }
         }
 
@@ -200,9 +198,9 @@ namespace ValheimPerformanceOptimizations.Patches
                 root = SpawnedZones[zoneID];
             }
 
-            var heightmapInstanceId = root.GetComponentInChildren<Heightmap>().GetInstanceID();
+            var heightmap = root.GetComponentInChildren<Heightmap>();
 
-            if (!HeightmapFinished[heightmapInstanceId])
+            if (!HeightmapFinished[heightmap])
             {
                 __result = false;
                 return false;
@@ -210,11 +208,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) && !__instance.IsZoneGenerated(zoneID))
             {
-                var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
-                __instance.PlaceLocations(zoneID, zonePos, root.transform, componentInChildren2, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
-                __instance.PlaceVegetation(zoneID, zonePos, root.transform, componentInChildren2, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
+                __instance.PlaceLocations(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
+                __instance.PlaceVegetation(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
                 __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
                 if (mode == ZoneSystem.SpawnMode.Ghost)
                 {
