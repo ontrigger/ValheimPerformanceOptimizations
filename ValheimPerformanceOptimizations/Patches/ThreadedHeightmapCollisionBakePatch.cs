@@ -177,19 +177,20 @@ namespace ValheimPerformanceOptimizations.Patches
             ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
         {
             var zonePos = __instance.GetZonePos(zoneID);
+
+            var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
+            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
+                                                          componentInChildren.m_scale,
+                                                          componentInChildren.m_isDistantLod,
+                                                          WorldGenerator.instance))
+            {
+                root = null;
+                __result = false;
+                return false;
+            }
+
             if (!SpawnedZones.ContainsKey(zoneID))
             {
-                var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
-                if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
-                                                              componentInChildren.m_scale,
-                                                              componentInChildren.m_isDistantLod,
-                                                              WorldGenerator.instance))
-                {
-                    root = null;
-                    __result = false;
-                    return false;
-                }
-
                 root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
                 SpawnedZones.Add(zoneID, root);
             }
