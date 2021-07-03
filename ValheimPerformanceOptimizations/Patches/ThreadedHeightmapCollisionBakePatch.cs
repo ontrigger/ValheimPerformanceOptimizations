@@ -200,16 +200,16 @@ namespace ValheimPerformanceOptimizations.Patches
                 root = SpawnedZones[zoneID];
             }
 
+            var heightmapInstanceId = root.GetComponentInChildren<Heightmap>().GetInstanceID();
+
+            if (!HeightmapFinished[heightmapInstanceId])
+            {
+                __result = false;
+                return false;
+            }
+
             if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) && !__instance.IsZoneGenerated(zoneID))
             {
-                var heightmapInstanceId = root.GetComponentInChildren<Heightmap>().GetInstanceID();
-
-                if (!HeightmapFinished[heightmapInstanceId])
-                {
-                    __result = false;
-                    return false;
-                }
-
                 var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
