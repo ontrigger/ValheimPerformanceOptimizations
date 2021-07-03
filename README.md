@@ -2,9 +2,9 @@
 
 Rendering, logic, and loading time optimizations for both client and server versions of Valheim.
 
-## Changes in 0.4.1
+## Changes in 0.4.2
 
-* Fixed optimized terrain disappearing upon relogging
+* Fixed incompatibility with EpicLoot
 
 ## New in 0.4.0
 

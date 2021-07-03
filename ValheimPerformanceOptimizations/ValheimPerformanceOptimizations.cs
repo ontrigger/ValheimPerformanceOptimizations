@@ -5,7 +5,7 @@ using HarmonyLib;
 
 namespace ValheimPerformanceOptimizations
 {
-    [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.4.1")]
+    [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.4.2")]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";

@@ -1,3 +1,7 @@
+# Changes in 0.4.2
+
+* Fixed incompatibility with EpicLoot
+
 # Changes in 0.4.1
 
 * Fixed optimized terrain disappearing upon relogging 
