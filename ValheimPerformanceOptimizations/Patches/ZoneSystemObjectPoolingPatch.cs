@@ -15,9 +15,7 @@ namespace ValheimPerformanceOptimizations.Patches
     public static class ZoneSystemObjectPoolingPatch
     {
         public static Dictionary<string, GameObjectPool> VegetationPoolByName;
-
-        public static Heightmap ZoneHeightmap;
-
+        
         private static readonly HashSet<string> PrefabsWithFadeComponent = new HashSet<string>();
 
         private static readonly MethodInfo GetNetViewComponentMethod =
@@ -82,118 +80,12 @@ namespace ValheimPerformanceOptimizations.Patches
 
             ZNetView.FinishGhostInit();
 
-            ZoneHeightmap = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
         }
 
-        private static void OnRetrievedFromPool(GameObject obj)
-        {
-            var netView = obj.GetComponent<ZNetView>();
-            netView.Awake();
-
-            if (PrefabsWithFadeComponent.Contains(obj.name))
-            {
-                // some prefabs have their lod fade on the second level
-                obj.GetComponentInChildren<LodFadeInOut>().Awake();
-            }
-        }
-
-        [UsedImplicitly]
-        private static GameObject GetOrInstantiateObject(
-            ZoneSystem.SpawnMode mode, GameObject prefab, Vector3 position, Quaternion rotation)
-        {
-            GameObject gameObject;
-            var pool = GetPoolForObject(prefab);
-            if (mode == ZoneSystem.SpawnMode.Ghost && pool != null)
-            {
-                gameObject = pool.GetObject(position, rotation);
-            }
-            else
-            {
-                gameObject = Object.Instantiate(prefab, position, rotation);
-            }
-
-            gameObject.name = prefab.name;
-
-            return gameObject;
-        }
-
-        [UsedImplicitly]
-        private static GameObjectPool GetPoolForObject(GameObject prefab)
-        {
-            VegetationPoolByName.TryGetValue(prefab.name, out var objectPool);
-            
-            return objectPool;
-        }
-        
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
         public static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
         {
             VegetationPoolByName.Values.ToList().ForEach(pool => pool.Destroy());
-        }
-
-        [HarmonyPatch(typeof(ZoneSystem), "SpawnZone")]
-        public static bool Prefix(
-            ZoneSystem __instance, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root, ref bool __result)
-        {
-            Profiler.BeginSample("Spawn zone");
-            var zonePos = __instance.GetZonePos(zoneID);
-            if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, ZoneHeightmap.m_width, ZoneHeightmap.m_scale,
-                                                          ZoneHeightmap.m_isDistantLod, WorldGenerator.instance))
-            {
-                root = null;
-                __result = false;
-
-                return false;
-            }
-
-            root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
-            if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) &&
-                !__instance.IsZoneGenerated(zoneID))
-            {
-                var componentInChildren2 = root.GetComponentInChildren<Heightmap>();
-
-                __instance.m_tempClearAreas.Clear();
-                __instance.m_tempSpawnedObjects.Clear();
-                Profiler.BeginSample("PlaceLocations");
-                __instance.PlaceLocations(zoneID, zonePos, root.transform, componentInChildren2,
-                                          __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
-                Profiler.EndSample();
-
-                Profiler.BeginSample("PlaceVegetation");
-                __instance.PlaceVegetation(zoneID, zonePos, root.transform, componentInChildren2,
-                                           __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
-                Profiler.EndSample();
-                Profiler.BeginSample("PlaceZoneCtrl");
-                __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
-                Profiler.EndSample();
-
-                if (mode == ZoneSystem.SpawnMode.Ghost)
-                {
-                    foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
-                    {
-                        if (VegetationPoolByName.TryGetValue(tempSpawnedObject.name, out var pool))
-                        {
-                            pool.ReturnObject(tempSpawnedObject);
-                        }
-                        else
-                        {
-                            Object.Destroy(tempSpawnedObject);
-                        }
-                    }
-
-                    __instance.m_tempSpawnedObjects.Clear();
-                    Object.Destroy(root);
-
-                    root = null;
-                }
-
-                __instance.SetZoneGenerated(zoneID);
-            }
-
-            Profiler.EndSample();
-
-            __result = true;
-            return false;
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation"), HarmonyTranspiler]
@@ -249,6 +141,58 @@ namespace ValheimPerformanceOptimizations.Patches
             code[instantiationIndex + 1 + 4] = new CodeInstruction(OpCodes.Call, GetOrInstantiateObjectMethod);
             
             return code.AsEnumerable();
+        }
+        
+        private static void OnRetrievedFromPool(GameObject obj)
+        {
+            var netView = obj.GetComponent<ZNetView>();
+            netView.Awake();
+
+            if (PrefabsWithFadeComponent.Contains(obj.name))
+            {
+                // some prefabs have their lod fade on the second level
+                obj.GetComponentInChildren<LodFadeInOut>().Awake();
+            }
+        }
+
+        [UsedImplicitly]
+        private static GameObject GetOrInstantiateObject(
+            ZoneSystem.SpawnMode mode, GameObject prefab, Vector3 position, Quaternion rotation)
+        {
+            GameObject gameObject;
+            var pool = GetPoolForObject(prefab);
+            if (mode == ZoneSystem.SpawnMode.Ghost && pool != null)
+            {
+                gameObject = pool.GetObject(position, rotation);
+            }
+            else
+            {
+                gameObject = Object.Instantiate(prefab, position, rotation);
+            }
+
+            gameObject.name = prefab.name;
+
+            return gameObject;
+        }
+        
+        public static void DestroyOrReturnPooledObject(GameObject tempSpawnedObject)
+        {
+            if (VegetationPoolByName.TryGetValue(tempSpawnedObject.name, out var pool))
+            {
+                pool.ReturnObject(tempSpawnedObject);
+            }
+            else
+            {
+                Object.Destroy(tempSpawnedObject);
+            }
+        }
+
+        [UsedImplicitly]
+        private static GameObjectPool GetPoolForObject(GameObject prefab)
+        {
+            VegetationPoolByName.TryGetValue(prefab.name, out var objectPool);
+            
+            return objectPool;
         }
 
         #region Profiling

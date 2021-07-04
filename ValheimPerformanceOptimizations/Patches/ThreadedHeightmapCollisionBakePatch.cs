@@ -218,7 +218,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 {
                     foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
                     {
-                        Object.Destroy(tempSpawnedObject);
+                        ZoneSystemObjectPoolingPatch.DestroyOrReturnPooledObject(tempSpawnedObject);
                     }
 
                     __instance.m_tempSpawnedObjects.Clear();
