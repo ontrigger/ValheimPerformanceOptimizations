@@ -2,6 +2,7 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -12,7 +13,7 @@ namespace ValheimPerformanceOptimizations
 
         private static ValheimPerformanceOptimizations _instance;
         private Harmony _harmony;
-
+        
         private ValheimPerformanceOptimizations()
         {
             Logger = base.Logger;
@@ -25,6 +26,9 @@ namespace ValheimPerformanceOptimizations
             _instance = this;
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PluginId);
+            
+            ZoneSystemObjectPoolingPatch.Initialize(Config, _harmony);
+            ThreadedHeightmapCollisionBakePatch.Initialize(Config, _harmony);
         }
 
         private void OnDestroy()

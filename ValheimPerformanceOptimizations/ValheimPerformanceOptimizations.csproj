@@ -95,7 +95,9 @@
     <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
     <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
     <Compile Include="Patches\WaterVolumeVisibilityPatch.cs" />
+    <Compile Include="Patches\ZoneSystemObjectPoolingPatch.cs" />
     <Compile Include="Utils\DebugDraw.cs" />
+    <Compile Include="Utils\GameObjectPool.cs" />
     <Compile Include="ValheimPerformanceOptimizations.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
