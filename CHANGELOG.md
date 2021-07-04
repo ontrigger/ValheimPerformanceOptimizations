@@ -1,3 +1,7 @@
+# Changes in 0.4.1
+
+* Fixed optimized terrain disappearing upon relogging 
+
 # Changes in 0.4.0
 
 * Threaded terrain collision generation

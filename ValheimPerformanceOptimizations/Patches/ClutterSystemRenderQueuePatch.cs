@@ -1,7 +1,7 @@
 using HarmonyLib;
 using UnityEngine.Rendering;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     [HarmonyPatch]
     public class ClutterSystemRenderQueuePatch
