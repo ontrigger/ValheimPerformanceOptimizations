@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
@@ -11,11 +12,10 @@ using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-    [HarmonyPatch]
     public static class ZoneSystemObjectPoolingPatch
     {
         public static Dictionary<string, GameObjectPool> VegetationPoolByName;
-        
+
         private static readonly HashSet<string> PrefabsWithFadeComponent = new HashSet<string>();
 
         private static readonly MethodInfo GetNetViewComponentMethod =
@@ -23,7 +23,7 @@ namespace ValheimPerformanceOptimizations.Patches
                        .Where(m => m.Name == "GetComponent" && m.GetGenericArguments().Length == 1)
                        .Select(m => m.MakeGenericMethod(typeof(ZNetView)))
                        .First();
-        
+
         private static readonly MethodInfo ObjectInstantiateMethod =
             AccessTools.GetDeclaredMethods(typeof(Object))
                        .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
@@ -32,11 +32,28 @@ namespace ValheimPerformanceOptimizations.Patches
                                   m.GetParameters().Length == 3 &&
                                   m.GetParameters()[1].ParameterType == typeof(Vector3));
 
+        private static readonly MethodInfo ObjectDestroyMethod =
+            AccessTools.Method(typeof(Object), "Destroy", new[] {typeof(Object)});
+
         private static readonly MethodInfo GetPoolForObjectMethod =
             AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "GetPoolForObject");
-        
+
         private static readonly MethodInfo GetOrInstantiateObjectMethod =
             AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "GetOrInstantiateObject");
+        
+        private static readonly MethodInfo DestroyOrReturnObjectMethod =
+            AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "DestroyOrReturnPooledObject");
+
+        private static ConfigEntry<bool> _objectPoolingEnabled;
+
+        public static void Initialize(ConfigFile configFile, Harmony harmony)
+        {
+            _objectPoolingEnabled = configFile.Bind("Object Pooling", "Object pooling enabled", true);
+            if (_objectPoolingEnabled.Value)
+            {
+                harmony.PatchAll(typeof(ZoneSystemObjectPoolingPatch));
+            }
+        }
 
         [HarmonyPatch(typeof(ZoneSystem), "Start")]
         public static void Postfix(ZoneSystem __instance)
@@ -79,7 +96,6 @@ namespace ValheimPerformanceOptimizations.Patches
             // @formatter:on
 
             ZNetView.FinishGhostInit();
-
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
@@ -89,10 +105,11 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        private static IEnumerable<CodeInstruction> Transpiler(
+            IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             var code = new List<CodeInstruction>(instructions);
-            
+
             // in order to declare a local i have to increment all other locals
             // after mine by 1. I also have to make the ilgenerator create a local with the correct index.
             // so, for now the object pool lookup has to be done in GetOrInstantiateObject instead of 
@@ -129,20 +146,31 @@ namespace ValheimPerformanceOptimizations.Patches
                     break;
                 }
             }
-            
+
             // add the mode before the arguments
-            code.InsertRange(instantiationIndex, new []
+            code.InsertRange(instantiationIndex, new[]
             {
                 new CodeInstruction(OpCodes.Ldarg_S, 6), // mode
                 //new CodeInstruction(OpCodes.Ldloc_S, objectPoolLocal)
             });
-            
+
             // replace the call to instantiate with our method
             code[instantiationIndex + 1 + 4] = new CodeInstruction(OpCodes.Call, GetOrInstantiateObjectMethod);
-            
+
             return code.AsEnumerable();
         }
-        
+
+        [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var code = new List<CodeInstruction>(instructions);
+
+            var destroyCallIndex = code.FindIndex(instruction => instruction.Is(OpCodes.Call, ObjectDestroyMethod));
+            code[destroyCallIndex] = new CodeInstruction(OpCodes.Call, DestroyOrReturnObjectMethod);
+
+            return code.AsEnumerable();
+        }
+
         private static void OnRetrievedFromPool(GameObject obj)
         {
             var netView = obj.GetComponent<ZNetView>();
@@ -174,7 +202,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return gameObject;
         }
-        
+
         public static void DestroyOrReturnPooledObject(GameObject tempSpawnedObject)
         {
             if (VegetationPoolByName.TryGetValue(tempSpawnedObject.name, out var pool))
@@ -191,77 +219,8 @@ namespace ValheimPerformanceOptimizations.Patches
         private static GameObjectPool GetPoolForObject(GameObject prefab)
         {
             VegetationPoolByName.TryGetValue(prefab.name, out var objectPool);
-            
+
             return objectPool;
         }
-
-        #region Profiling
-
-        [HarmonyPatch(typeof(ZoneSystem), "Update")]
-        public static bool Prefix(ZoneSystem __instance)
-        {
-            Profiler.BeginSample("ZOne system awake");
-            if (ZNet.GetConnectionStatus() != ZNet.ConnectionStatus.Connected)
-            {
-                return false;
-            }
-
-            __instance.m_updateTimer += Time.deltaTime;
-            if (!(__instance.m_updateTimer > 0.1f))
-            {
-                return false;
-            }
-
-            __instance.m_updateTimer = 0f;
-            var flag = __instance.CreateLocalZones(ZNet.instance.GetReferencePosition());
-            __instance.UpdateTTL(0.1f);
-            if (!ZNet.instance.IsServer() || flag)
-            {
-                return false;
-            }
-
-            __instance.CreateGhostZones(ZNet.instance.GetReferencePosition());
-            foreach (var peer in ZNet.instance.GetPeers())
-            {
-                __instance.CreateGhostZones(peer.GetRefPos());
-            }
-
-            Profiler.EndSample();
-
-            return false;
-        }
-
-        [HarmonyPatch(typeof(ZoneSystem), "CreateGhostZones")]
-        public static bool Prefix(ZoneSystem __instance, Vector3 refPoint, ref bool __result)
-        {
-            Profiler.BeginSample("CreateGhostZones");
-            var zone = __instance.GetZone(refPoint);
-            if (!__instance.IsZoneGenerated(zone) && __instance.SpawnZone(zone, ZoneSystem.SpawnMode.Ghost, out var _))
-            {
-                __result = true;
-                return false;
-            }
-
-            var num = __instance.m_activeArea + __instance.m_activeDistantArea;
-            for (var i = zone.y - num; i <= zone.y + num; i++)
-            {
-                for (var j = zone.x - num; j <= zone.x + num; j++)
-                {
-                    var zoneID = new Vector2i(j, i);
-                    if (!__instance.IsZoneGenerated(zoneID) &&
-                        __instance.SpawnZone(zoneID, ZoneSystem.SpawnMode.Ghost, out var _))
-                    {
-                        __result = true;
-                        return false;
-                    }
-                }
-            }
-
-            Profiler.EndSample();
-            __result = false;
-            return false;
-        }
-
-        #endregion
     }
 }

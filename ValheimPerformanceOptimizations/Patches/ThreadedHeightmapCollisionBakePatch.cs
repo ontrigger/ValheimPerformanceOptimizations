@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
@@ -13,7 +15,6 @@ namespace ValheimPerformanceOptimizations.Patches
     ///     threaded, this is done here. Because the ZoneSystem logic wants to have a collision mesh instantly, it also has
     ///     to wait for the baking to complete
     /// </summary>
-    [HarmonyPatch]
     public static class ThreadedHeightmapCollisionBakePatch
     {
         private static bool hasGenerationThread;
@@ -24,6 +25,18 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
         private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
+
+        private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
+
+        public static void Initialize(ConfigFile configFile, Harmony harmony)
+        {
+            _threadedCollisionBakeEnabled =
+                configFile.Bind("General", "Threaded terrain collision baking enabled", false);
+            if (_threadedCollisionBakeEnabled.Value)
+            {
+                harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
+            }
+        }
 
         private static void BakeThread()
         {
@@ -189,18 +202,9 @@ namespace ValheimPerformanceOptimizations.Patches
                 return false;
             }
 
-            if (!SpawnedZones.ContainsKey(zoneID))
-            {
-                root = Object.Instantiate(__instance.m_zonePrefab, zonePos, Quaternion.identity);
-                SpawnedZones.Add(zoneID, root);
-            }
-            else
-            {
-                root = SpawnedZones[zoneID];
-            }
+            root = GetOrCreateZone(__instance.m_zonePrefab, zoneID, zonePos);
 
             var heightmap = root.GetComponentInChildren<Heightmap>();
-
             if (!HeightmapFinished[heightmap])
             {
                 __result = false;
@@ -248,6 +252,22 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 ToBake.Clear();
             }
+        }
+        
+        private static GameObject GetOrCreateZone(GameObject zonePrefab, Vector2i zoneID, Vector3 zonePos)
+        {
+            GameObject zone;
+            if (!SpawnedZones.ContainsKey(zoneID))
+            {
+                zone = Object.Instantiate(zonePrefab, zonePos, Quaternion.identity);
+                SpawnedZones.Add(zoneID, zone);
+            }
+            else
+            {
+                zone = SpawnedZones[zoneID];
+            }
+            
+            return zone;
         }
     }
 }
