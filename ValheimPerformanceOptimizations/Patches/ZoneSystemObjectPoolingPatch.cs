@@ -98,8 +98,10 @@ namespace ValheimPerformanceOptimizations.Patches
             ZNetView.FinishGhostInit();
         }
 
+        #region ZoneSystemPooling
+
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
-        public static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
+        private static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
         {
             VegetationPoolByName.Values.ToList().ForEach(pool => pool.Destroy());
         }
@@ -161,7 +163,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> ZoneSystem_SpawnZone_Transpiler(IEnumerable<CodeInstruction> instructions)
         {
             var code = new List<CodeInstruction>(instructions);
 
@@ -170,6 +172,38 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return code.AsEnumerable();
         }
+        
+        #endregion
+
+        #region ZNetScenePooling
+
+        // replace destroy call with pool return
+        [HarmonyPatch(typeof(ZNetScene), "RemoveObjects"), HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> ZNetScene_RemoveObjects_Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var code = new List<CodeInstruction>(instructions);
+
+            var destroyCallIndex = code.FindIndex(instruction => instruction.Is(OpCodes.Call, ObjectDestroyMethod));
+            code[destroyCallIndex] = new CodeInstruction(OpCodes.Call, DestroyOrReturnObjectMethod);
+
+            return code.AsEnumerable();
+        }
+        
+        // replace instantiation with pool get
+        [HarmonyPatch(typeof(ZNetScene), "CreateObject"), HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> ZNetScene_CreateObject_Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var code = new List<CodeInstruction>(instructions);
+
+            var instantiateCallIndex = code.FindIndex(instruction => instruction.Is(OpCodes.Call, ObjectInstantiateMethod));
+            // prepend the spawnmode to args
+            code.Insert(instantiateCallIndex - 3, new CodeInstruction(OpCodes.Ldc_I4_2));
+            code[instantiateCallIndex + 1] = new CodeInstruction(OpCodes.Call, GetOrInstantiateObjectMethod);
+            
+            return code.AsEnumerable();
+        }
+
+        #endregion
 
         private static void OnRetrievedFromPool(GameObject obj)
         {
@@ -184,7 +218,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         [UsedImplicitly]
-        private static GameObject GetOrInstantiateObject(
+        public static GameObject GetOrInstantiateObject(
             ZoneSystem.SpawnMode mode, GameObject prefab, Vector3 position, Quaternion rotation)
         {
             GameObject gameObject;
