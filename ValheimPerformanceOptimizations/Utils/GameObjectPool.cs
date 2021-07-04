@@ -41,24 +41,18 @@ namespace ValheimPerformanceOptimizations
 
         public GameObject GetObject(Vector3 position, Quaternion rotation)
         {
-            if (Pool.Count <= 0)
-            {
-                return Object.Instantiate(toPool, position, rotation);
-            }
+            GameObject obj;
 
-            var obj = Pool.Pop();
-            while (obj == null)
+            do
             {
                 if (Pool.Count > 0)
                 {
                     obj = Pool.Pop();
+                    continue;
                 }
-                else
-                {
-                    obj = Object.Instantiate(toPool, position, rotation);
-                    break;
-                }
-            }
+
+                return Object.Instantiate(toPool, position, rotation);
+            } while (obj == null);
 
             obj.SetActive(true);
 
