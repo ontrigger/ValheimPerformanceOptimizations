@@ -71,7 +71,6 @@ namespace ValheimPerformanceOptimizations.Patches
                     var toPool = vegetationForName.Aggregate(0, (acc, veg) => 
                             acc + (int) (veg.m_max * veg.m_groupSizeMax * _pooledObjectCountMultiplier.Value));
 
-                    ValheimPerformanceOptimizations.Logger.LogInfo($"Total pooled objects {toPool} {prefab.name}");
                     var pool = new GameObjectPool(prefab, toPool, OnRetrievedFromPool);
 
                     if (prefab.GetComponentInChildren<LodFadeInOut>())
@@ -216,7 +215,8 @@ namespace ValheimPerformanceOptimizations.Patches
             var netView = obj.GetComponent<ZNetView>();
             netView.Awake();
 
-            if (PrefabsWithFadeComponent.Contains(obj.name))
+            var prefabName = ZNetViewPrefabNamePatch.PrefabNameHack ?? obj.name;
+            if (PrefabsWithFadeComponent.Contains(prefabName))
             {
                 // some prefabs have their lod fade on the second level
                 obj.GetComponentInChildren<LodFadeInOut>().Awake();
@@ -229,6 +229,8 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             GameObject gameObject;
             var pool = GetPoolForObject(prefab);
+
+            ZNetViewPrefabNamePatch.PrefabNameHack = prefab.name;
             if (mode == ZoneSystem.SpawnMode.Ghost && pool != null)
             {
                 gameObject = pool.GetObject(position, rotation);
@@ -237,6 +239,8 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 gameObject = Object.Instantiate(prefab, position, rotation);
             }
+
+            ZNetViewPrefabNamePatch.PrefabNameHack = null;
 
             gameObject.name = prefab.name;
 

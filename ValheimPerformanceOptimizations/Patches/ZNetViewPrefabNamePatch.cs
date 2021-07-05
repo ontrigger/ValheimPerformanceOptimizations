@@ -41,8 +41,8 @@ namespace ValheimPerformanceOptimizations.Patches
             __result = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
             return false;
         }
-
-
+        
+        // this gets overwritten if object pooling is enabled
         [HarmonyTranspiler, HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation")]
         public static IEnumerable<CodeInstruction> Transpile_ZoneSystem_PlaceVegetation(
             IEnumerable<CodeInstruction> instructions)
