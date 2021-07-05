@@ -6,7 +6,7 @@ using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
-    [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.5.0")]
+    [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.5.1")]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";

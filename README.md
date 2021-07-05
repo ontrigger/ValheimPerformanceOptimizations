@@ -4,6 +4,10 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+## Changes in 0.5.1
+
+* Fixed certain objects disappearing
+
 ## New in 0.5.0
 
 * Object pooling makes loading vegetation in new and old chunks much smoother

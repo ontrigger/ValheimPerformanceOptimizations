@@ -1,3 +1,7 @@
+# Changes in 0.5.1
+
+* Fixed certain objects disappearing
+
 # Changes in 0.5.0
 
 * Object pooling makes loading vegetation in new and old chunks much smoother
