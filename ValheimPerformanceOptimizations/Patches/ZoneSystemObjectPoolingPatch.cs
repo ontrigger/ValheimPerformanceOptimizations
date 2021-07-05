@@ -7,7 +7,6 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
-using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
@@ -40,15 +39,17 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly MethodInfo GetOrInstantiateObjectMethod =
             AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "GetOrInstantiateObject");
-        
+
         private static readonly MethodInfo DestroyOrReturnObjectMethod =
             AccessTools.DeclaredMethod(typeof(ZoneSystemObjectPoolingPatch), "DestroyOrReturnPooledObject");
 
         private static ConfigEntry<bool> _objectPoolingEnabled;
+        private static ConfigEntry<float> _pooledObjectCountMultiplier;
 
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             _objectPoolingEnabled = configFile.Bind("Object Pooling", "Object pooling enabled", true);
+            _pooledObjectCountMultiplier = configFile.Bind("Object Pooling", "Pooled object count multiplier", 1f);
             if (_objectPoolingEnabled.Value)
             {
                 harmony.PatchAll(typeof(ZoneSystemObjectPoolingPatch));
@@ -67,9 +68,10 @@ namespace ValheimPerformanceOptimizations.Patches
                 {
                     var vegetationForName = group.ToList();
                     var prefab = vegetationForName[0].m_prefab;
-                    var toPool = vegetationForName.Aggregate(0, (acc, veg) =>
-                                                                 acc + (int) (veg.m_max * veg.m_groupSizeMax));
+                    var toPool = vegetationForName.Aggregate(0, (acc, veg) => 
+                            acc + (int) (veg.m_max * veg.m_groupSizeMax * _pooledObjectCountMultiplier.Value));
 
+                    ValheimPerformanceOptimizations.Logger.LogInfo($"Total pooled objects {toPool} {prefab.name}");
                     var pool = new GameObjectPool(prefab, toPool, OnRetrievedFromPool);
 
                     if (prefab.GetComponentInChildren<LodFadeInOut>())
@@ -163,7 +165,8 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> ZoneSystem_SpawnZone_Transpiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> ZoneSystem_SpawnZone_Transpiler(
+            IEnumerable<CodeInstruction> instructions)
         {
             var code = new List<CodeInstruction>(instructions);
 
@@ -172,14 +175,15 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return code.AsEnumerable();
         }
-        
+
         #endregion
 
         #region ZNetScenePooling
 
         // replace destroy call with pool return
         [HarmonyPatch(typeof(ZNetScene), "RemoveObjects"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> ZNetScene_RemoveObjects_Transpiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> ZNetScene_RemoveObjects_Transpiler(
+            IEnumerable<CodeInstruction> instructions)
         {
             var code = new List<CodeInstruction>(instructions);
 
@@ -188,18 +192,20 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return code.AsEnumerable();
         }
-        
+
         // replace instantiation with pool get
         [HarmonyPatch(typeof(ZNetScene), "CreateObject"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> ZNetScene_CreateObject_Transpiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> ZNetScene_CreateObject_Transpiler(
+            IEnumerable<CodeInstruction> instructions)
         {
             var code = new List<CodeInstruction>(instructions);
 
-            var instantiateCallIndex = code.FindIndex(instruction => instruction.Is(OpCodes.Call, ObjectInstantiateMethod));
+            var instantiateCallIndex =
+                code.FindIndex(instruction => instruction.Is(OpCodes.Call, ObjectInstantiateMethod));
             // prepend the spawnmode to args
             code.Insert(instantiateCallIndex - 3, new CodeInstruction(OpCodes.Ldc_I4_2));
             code[instantiateCallIndex + 1] = new CodeInstruction(OpCodes.Call, GetOrInstantiateObjectMethod);
-            
+
             return code.AsEnumerable();
         }
 
