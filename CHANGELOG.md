@@ -1,3 +1,7 @@
+# Changes in 0.5.0
+
+* Object pooling makes loading vegetation in new and old chunks much smoother
+
 # Changes in 0.4.2
 
 * Fixed incompatibility with EpicLoot
