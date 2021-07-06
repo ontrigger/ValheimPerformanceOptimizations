@@ -87,7 +87,8 @@
     <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs" />
     <Compile Include="Patches\HeightmapColorAllocationPatch.cs" />
     <Compile Include="Patches\MinimapGenerationPatch.cs" />
-    <Compile Include="Patches\PrefabPatches.cs" />
+    <Compile Include="Patches\PrefabOptimization\PrefabMaterialCombiner.cs" />
+    <Compile Include="Patches\PrefabOptimization\PrefabPatches.cs" />
     <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs" />
     <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs" />
     <Compile Include="Patches\TerrainShadow\TerrainPatches.cs" />

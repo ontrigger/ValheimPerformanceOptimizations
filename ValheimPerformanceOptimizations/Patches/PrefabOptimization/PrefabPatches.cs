@@ -31,6 +31,13 @@ namespace ValheimPerformanceOptimizations.Patches
             "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor"
         };
 
+        private static readonly List<string> PrefabsWithWastedMaterials = new List<string>
+        {
+            "OLD_wood_roof_icorner", "wood_roof_icorner_45", "wood_roof_ocorner", "wood_roof_icorner",
+            "OLD_wood_roof_ocorner", "wood_roof_45", "wood_roof_top_45", "wood_roof_ocorner_45",
+            "wood_roof", "wood_roof_top", "OLD_wood_roof"
+        };
+
         private static bool _isPatched;
 
         /// <summary>
@@ -94,6 +101,11 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
             }
         }
+        
+        private static void PatchPrefabWithWastedMaterials(GameObject prefab)
+        {
+            PrefabMaterialCombiner.CombinePrefabMaterials(prefab);
+        }
 
         private static int PatchPrefabs(
             this IReadOnlyDictionary<int, GameObject> allPrefabs, IEnumerable<string> prefabNames,
@@ -123,6 +135,9 @@ namespace ValheimPerformanceOptimizations.Patches
             var patched = 0;
             patched += namedPrefabs.PatchPrefabs(PrefabsWithLeafParticles, PatchPrefabWithLeaves);
             patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
+            var now = DateTime.Now;
+            patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
+            ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
 
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
