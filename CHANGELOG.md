@@ -1,3 +1,7 @@
+# Changes in 0.5.2
+
+* Fixed certain objects respawning upon relog
+
 # Changes in 0.5.1
 
 * Fixed certain objects disappearing
