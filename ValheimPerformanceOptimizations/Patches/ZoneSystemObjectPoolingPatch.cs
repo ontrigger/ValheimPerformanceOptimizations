@@ -177,7 +177,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         #endregion
 
-        #region ZNetScenePooling
+        /*#region ZNetScenePooling
 
         // replace destroy call with pool return
         [HarmonyPatch(typeof(ZNetScene), "RemoveObjects"), HarmonyTranspiler]
@@ -208,7 +208,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return code.AsEnumerable();
         }
 
-        #endregion
+        #endregion*/
 
         private static void OnRetrievedFromPool(GameObject obj)
         {
