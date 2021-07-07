@@ -98,7 +98,7 @@ namespace ValheimPerformanceOptimizations.Patches
                     material.SetTexture("_BumpMap", normalAtlas);
                     material.mainTextureScale = Vector2.one;
 
-                    if (material.IsKeywordEnabled("_ALPHATEST_ON"))
+                    if (oldMaterial.IsKeywordEnabled("_ALPHATEST_ON"))
                     {
                         material.renderQueue = (int) RenderQueue.AlphaTest;
                     }
