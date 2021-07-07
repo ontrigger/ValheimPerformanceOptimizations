@@ -30,8 +30,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
-            _threadedCollisionBakeEnabled =
-                configFile.Bind("General", "Threaded terrain collision baking enabled", false);
+            const string key = "Threaded terrain collision baking enabled";
+            const string description = "Experimental: if enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. This is an experimental feature, please report any issues that may occur.";
+            _threadedCollisionBakeEnabled = configFile.Bind("General", key, false, description);
+
             if (_threadedCollisionBakeEnabled.Value)
             {
                 harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
