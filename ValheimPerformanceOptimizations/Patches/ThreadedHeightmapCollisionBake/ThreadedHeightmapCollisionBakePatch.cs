@@ -23,7 +23,7 @@ namespace ValheimPerformanceOptimizations.Patches
             const string key = "Threaded terrain collision baking enabled";
             const string description =
                 "Experimental: if enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. This is an experimental feature, please report any issues that may occur.";
-            _threadedCollisionBakeEnabled = configFile.Bind("General", key, false, description);
+            _threadedCollisionBakeEnabled = configFile.Bind("General", key, true, description);
 
             if (_threadedCollisionBakeEnabled.Value)
             {

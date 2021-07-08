@@ -50,12 +50,12 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             const string keyPooling = "Object pooling enabled";
             const string descriptionPooling =
-                "DISABLED. Experimental: if enabled vegetation objects are pulled and pushed from an object pool, rather then creating and destroying them everytime. This greatly increases performance when moving through the world, but can lead to objects spawning at wrong positions or having wrong data. This is an experimental feature, please report any issues that may occur.";
+                "Experimental: if enabled vegetation objects are pulled and pushed from an object pool, rather then creating and destroying them everytime. This greatly increases performance when moving through the world, but can lead to objects spawning at wrong positions or having wrong data. This is an experimental feature, please report any issues that may occur.";
             const string keyCountMultiplier = "Pooled object count multiplier";
             const string descriptionCountMultiplier =
                 "Changes how many objects are kept in the pool, increasing the value leads to fewer respawning, but uses more memory. Default value should be fine in most cases.";
 
-            _objectPoolingEnabled = configFile.Bind("Object Pooling", keyPooling, false, descriptionPooling);
+            _objectPoolingEnabled = configFile.Bind("Object Pooling", keyPooling, true, descriptionPooling);
             _pooledObjectCountMultiplier =
                 configFile.Bind("Object Pooling", keyCountMultiplier, 1f, descriptionCountMultiplier);
 
