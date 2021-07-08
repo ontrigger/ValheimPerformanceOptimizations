@@ -92,7 +92,8 @@
     <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs" />
     <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs" />
     <Compile Include="Patches\TerrainShadow\TerrainPatches.cs" />
-    <Compile Include="Patches\ThreadedHeightmapCollisionBakePatch.cs" />
+    <Compile Include="Patches\ThreadedHeightmapCollisionBake\ThreadedHeightmapCollisionBakePatch.cs" />
+    <Compile Include="Patches\ThreadedHeightmapCollisionBake\VPOTerrainCollisionBaker.cs" />
     <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
     <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
     <Compile Include="Patches\WaterVolumeVisibilityPatch.cs" />

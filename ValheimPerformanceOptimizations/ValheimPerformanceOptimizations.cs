@@ -6,10 +6,13 @@ using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
+    [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.5.2")]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";
+
+        private const string ValheimRaftId = "BepIn.Sarcen.ValheimRAFT";
 
         private static ValheimPerformanceOptimizations _instance;
         private Harmony _harmony;
@@ -29,6 +32,11 @@ namespace ValheimPerformanceOptimizations
             
             ZoneSystemObjectPoolingPatch.Initialize(Config, _harmony);
             ThreadedHeightmapCollisionBakePatch.Initialize(Config, _harmony);
+
+            if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(ValheimRaftId))
+            {
+                GetStandingOnShipPatch.Initialize(_harmony);
+            }
         }
 
         private void OnDestroy()

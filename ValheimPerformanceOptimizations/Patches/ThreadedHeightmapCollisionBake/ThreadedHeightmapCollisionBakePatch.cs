@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using BepInEx.Configuration;
 using HarmonyLib;
-using Unity.Collections;
-using Unity.Jobs;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -18,10 +13,6 @@ namespace ValheimPerformanceOptimizations.Patches
     /// </summary>
     public static class ThreadedHeightmapCollisionBakePatch
     {
-        // Tuple: heightmap, m_collisionMesh.InstanceID
-        private static readonly Queue<Tuple<Heightmap, int>> ToBake = new Queue<Tuple<Heightmap, int>>();
-        private static readonly List<Tuple<Heightmap, int>> Ready = new List<Tuple<Heightmap, int>>();
-
         public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
         private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
 
@@ -30,7 +21,8 @@ namespace ValheimPerformanceOptimizations.Patches
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string key = "Threaded terrain collision baking enabled";
-            const string description = "Experimental: if enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. This is an experimental feature, please report any issues that may occur.";
+            const string description =
+                "Experimental: if enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. This is an experimental feature, please report any issues that may occur.";
             _threadedCollisionBakeEnabled = configFile.Bind("General", key, false, description);
 
             if (_threadedCollisionBakeEnabled.Value)
@@ -38,19 +30,19 @@ namespace ValheimPerformanceOptimizations.Patches
                 harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
             }
         }
-        
+
         [HarmonyPatch(typeof(ZNetScene), "Awake")]
         private static void Postfix(ZNetScene __instance)
         {
-            __instance.gameObject.AddComponent<VPOTerrainBaker>();
+            __instance.gameObject.AddComponent<VPOTerrainCollisionBaker>();
         }
-        
+
         [HarmonyPatch(typeof(Heightmap), "OnEnable"), HarmonyPostfix]
         private static void OnEnablePatch(Heightmap __instance)
         {
             if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
             {
-                VPOTerrainBaker.RequestCollisionBake(__instance, true);
+                VPOTerrainCollisionBaker.RequestCollisionBake(__instance, true);
             }
         }
 
@@ -89,7 +81,8 @@ namespace ValheimPerformanceOptimizations.Patches
         // remove line: 'm_collider.sharedMesh = m_collisionMesh;'
         // it must not be called yet, no collision data is baked
         [HarmonyPatch(typeof(Heightmap), "RebuildCollisionMesh"), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> RebuildCollisionMeshTranspiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> RebuildCollisionMeshTranspiler(
+            IEnumerable<CodeInstruction> instructions)
         {
             var code = new List<CodeInstruction>(instructions);
 
@@ -117,7 +110,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             if (__instance.m_collider)
             {
-                VPOTerrainBaker.RequestCollisionBake(__instance);
+                VPOTerrainCollisionBaker.RequestCollisionBake(__instance);
             }
         }
 
@@ -170,12 +163,15 @@ namespace ValheimPerformanceOptimizations.Patches
                 return false;
             }
 
-            if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) && !__instance.IsZoneGenerated(zoneID))
+            if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) &&
+                !__instance.IsZoneGenerated(zoneID))
             {
                 __instance.m_tempClearAreas.Clear();
                 __instance.m_tempSpawnedObjects.Clear();
-                __instance.PlaceLocations(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
-                __instance.PlaceVegetation(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas, mode, __instance.m_tempSpawnedObjects);
+                __instance.PlaceLocations(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas, mode,
+                                          __instance.m_tempSpawnedObjects);
+                __instance.PlaceVegetation(zoneID, zonePos, root.transform, heightmap, __instance.m_tempClearAreas,
+                                           mode, __instance.m_tempSpawnedObjects);
                 __instance.PlaceZoneCtrl(zoneID, zonePos, mode, __instance.m_tempSpawnedObjects);
                 if (mode == ZoneSystem.SpawnMode.Ghost)
                 {
@@ -201,18 +197,8 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             SpawnedZones.Clear();
             HeightmapFinished.Clear();
-
-            lock (Ready)
-            {
-                Ready.Clear();
-            }
-
-            lock (ToBake)
-            {
-                ToBake.Clear();
-            }
         }
-        
+
         private static GameObject GetOrCreateZone(GameObject zonePrefab, Vector2i zoneID, Vector3 zonePos)
         {
             GameObject zone;
@@ -225,76 +211,8 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 zone = SpawnedZones[zoneID];
             }
-            
+
             return zone;
-        }
-    }
-    
-    public class VPOTerrainBaker : MonoBehaviour
-    {
-        private static readonly Dictionary<Heightmap, int> ImmediateRegenerateRequests = new Dictionary<Heightmap, int>();
-
-        private static readonly Dictionary<Heightmap, int> LateRegenerateRequests = new Dictionary<Heightmap, int>();
-        
-        public static void RequestCollisionBake(Heightmap heightmap, bool immediate = false)
-        {
-            if (immediate)
-            {
-                ImmediateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
-                return;
-            }
-            
-            if (!ImmediateRegenerateRequests.ContainsKey(heightmap))
-            {
-                LateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
-            }
-        }
-        
-        private void Update()
-        {
-            BakeRequested(ImmediateRegenerateRequests);
-            ImmediateRegenerateRequests.Clear();
-        }
-
-        private void LateUpdate()
-        {
-            BakeRequested(LateRegenerateRequests);
-            LateRegenerateRequests.Clear();
-        }
-
-        private static void BakeRequested(Dictionary<Heightmap, int> bakeRequests)
-        {
-            var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
-            var i = 0;
-            foreach (var meshId in bakeRequests.Values)
-            {
-                meshIds[i] = meshId;
-                i++;
-            }
-
-            var bakeJob = new BakeCollisionJob {MeshIds = meshIds};
-            bakeJob.Schedule(meshIds.Length, 1).Complete();
-            meshIds.Dispose();
-
-            foreach (var heightmap in bakeRequests.Keys)
-            {
-                if (heightmap == null) {continue;}
-                
-                heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
-                heightmap.m_dirty = true;
-                ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
-            }
-        }
-
-        private struct BakeCollisionJob : IJobParallelFor
-        {
-            [ReadOnly]
-            public NativeArray<int> MeshIds;
-
-            public void Execute(int index)
-            {
-                Physics.BakeMesh(MeshIds[index], false);
-            }
         }
     }
 }

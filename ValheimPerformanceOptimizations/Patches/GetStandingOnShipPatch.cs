@@ -3,11 +3,15 @@ using HarmonyLib;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-    [HarmonyPatch]
     public static class GetStandingOnShipPatch
     {
         private static readonly ConditionalWeakTable<Character, CachedShipData> Data =
             new ConditionalWeakTable<Character, CachedShipData>();
+
+        public static void Initialize(Harmony harmony)
+        {
+            harmony.PatchAll(typeof(GetStandingOnShipPatch));
+        }
 
         private static CachedShipData GetCachedShipData(this Character character)
         {
@@ -55,7 +59,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
 
-        public class CachedShipData
+        private class CachedShipData
         {
             public CachedShipData()
             {

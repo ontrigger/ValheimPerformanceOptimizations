@@ -13,7 +13,7 @@ namespace ValheimPerformanceOptimizations.Patches
 {
     public static class ZoneSystemObjectPoolingPatch
     {
-        public static Dictionary<string, GameObjectPool> VegetationPoolByName;
+        public static Dictionary<string, GameObjectPool> VegetationPoolByName = new Dictionary<string, GameObjectPool>();
 
         private static readonly HashSet<string> PrefabsWithFadeComponent = new HashSet<string>();
 
@@ -49,12 +49,15 @@ namespace ValheimPerformanceOptimizations.Patches
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string keyPooling = "Object pooling enabled";
-            const string descriptionPooling = "DISABLED. Experimental: if enabled vegetation objects are pulled and pushed from an object pool, rather then creating and destroying them everytime. This greatly increases performance when moving through the world, but can lead to objects spawning at wrong positions or having wrong data. This is an experimental feature, please report any issues that may occur.";
+            const string descriptionPooling =
+                "DISABLED. Experimental: if enabled vegetation objects are pulled and pushed from an object pool, rather then creating and destroying them everytime. This greatly increases performance when moving through the world, but can lead to objects spawning at wrong positions or having wrong data. This is an experimental feature, please report any issues that may occur.";
             const string keyCountMultiplier = "Pooled object count multiplier";
-            const string descriptionCountMultiplier = "Changes how many objects are kept in the pool, increasing the value leads to fewer respawning, but uses more memory. Default value should be fine in most cases.";
+            const string descriptionCountMultiplier =
+                "Changes how many objects are kept in the pool, increasing the value leads to fewer respawning, but uses more memory. Default value should be fine in most cases.";
 
             _objectPoolingEnabled = configFile.Bind("Object Pooling", keyPooling, false, descriptionPooling);
-            _pooledObjectCountMultiplier = configFile.Bind("Object Pooling", keyCountMultiplier, 1f, descriptionCountMultiplier);
+            _pooledObjectCountMultiplier =
+                configFile.Bind("Object Pooling", keyCountMultiplier, 1f, descriptionCountMultiplier);
 
             if (_objectPoolingEnabled.Value)
             {
