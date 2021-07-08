@@ -1,3 +1,10 @@
+# Changes in 0.6.0
+
+* Optimized rendering of build pieces with straw materials
+* Rewrote the threaded terrain collision baking to use all cores (enable it in the config)
+* Fixed incompatibility with ValheimRAFT
+* Fixed crash when only terrain collision baking was enabled
+
 # Changes in 0.5.2
 
 * Fixed certain objects respawning upon relog

@@ -4,13 +4,12 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
-## Changes in 0.5.2
+## New in 0.6.0
 
-* Fixed picked-up objects respawning upon relog
-
-## New in 0.5.0
-
-* Object pooling makes loading vegetation in new and old chunks much smoother
+* Optimized rendering of build pieces with straw materials
+* Rewrote the threaded terrain collision baking to use all cores (enable it in the config)
+* Fixed incompatibility with ValheimRAFT
+* Fixed crash when only terrain collision baking was enabled
 
 Rest of the changes can be found in `CHANGELOG.md`
 
@@ -27,8 +26,17 @@ Rest of the changes can be found in `CHANGELOG.md`
 The mod config is stored in the `dev.ontrigger.vpo.cfg` file.
 
 Most optimizations done by the mod do not affect the gameplay in any way, 
-however some of its optimizations might cause compatibility issues with other mods. 
-If you see terrain or specific objects suddenly disappear, try disabling stuff in the config. 
+however some of its optimizations might cause compatibility issues with other mods.
+
+* Threaded terrain collision baking
+
+  If enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. If you see terrain disappear, please report it on github, disabling this option will likely fix the issue.
+
+* Object pooling
+
+  If enabled vegetation objects are taken from a pool, instead of creating and destroying them everytime. This greatly increases performance when generating new terrain. If you notice some objects becoming invisible, please report it on github, disabling this option will likely fix the issue.
+
+  * Object pooling multiplier - this option does not do anything useful for now
 
 ## Manually compiling the mod
 

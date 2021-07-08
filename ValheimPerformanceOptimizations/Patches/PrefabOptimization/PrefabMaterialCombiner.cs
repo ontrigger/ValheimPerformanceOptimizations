@@ -5,6 +5,12 @@ using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
+    /// <summary>
+    /// Some piece prefabs can have up to 4 materials on one mesh, meaning they get
+    /// rendered 4 times total. This affects most pieces with the straw material
+    /// This patch merges materials into 2 groups: (alpha/non-alpha tested),
+    /// making the prefab only render twice.
+    /// </summary>
     public static class PrefabMaterialCombiner
     {
         public static void CombinePrefabMaterials(GameObject prefab)
