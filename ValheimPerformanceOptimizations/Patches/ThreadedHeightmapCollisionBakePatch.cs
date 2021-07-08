@@ -4,8 +4,9 @@ using System.Linq;
 using System.Threading;
 using BepInEx.Configuration;
 using HarmonyLib;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
-using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
@@ -17,13 +18,11 @@ namespace ValheimPerformanceOptimizations.Patches
     /// </summary>
     public static class ThreadedHeightmapCollisionBakePatch
     {
-        private static bool hasGenerationThread;
-
         // Tuple: heightmap, m_collisionMesh.InstanceID
         private static readonly Queue<Tuple<Heightmap, int>> ToBake = new Queue<Tuple<Heightmap, int>>();
         private static readonly List<Tuple<Heightmap, int>> Ready = new List<Tuple<Heightmap, int>>();
 
-        private static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
+        public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
         private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
 
         private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
@@ -39,34 +38,19 @@ namespace ValheimPerformanceOptimizations.Patches
                 harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
             }
         }
-
-        private static void BakeThread()
+        
+        [HarmonyPatch(typeof(ZNetScene), "Awake")]
+        private static void Postfix(ZNetScene __instance)
         {
-            while (true)
+            __instance.gameObject.AddComponent<VPOTerrainBaker>();
+        }
+        
+        [HarmonyPatch(typeof(Heightmap), "OnEnable"), HarmonyPostfix]
+        private static void OnEnablePatch(Heightmap __instance)
+        {
+            if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
             {
-                Tuple<Heightmap, int> next = null;
-
-                lock (ToBake)
-                {
-                    if (ToBake.Count > 0)
-                    {
-                        next = ToBake.Dequeue();
-                    }
-                }
-
-                if (next == null)
-                {
-                    Thread.Sleep(1);
-                    continue;
-                }
-
-                // bake the current mesh to be used in a MeshCollider
-                Physics.BakeMesh(next.Item2, false);
-
-                lock (Ready)
-                {
-                    Ready.Add(next);
-                }
+                VPOTerrainBaker.RequestCollisionBake(__instance, true);
             }
         }
 
@@ -90,13 +74,7 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(Heightmap), "Awake"), HarmonyPostfix]
         private static void AwakePatch(Heightmap __instance)
         {
-            if (!hasGenerationThread)
-            {
-                new Thread(BakeThread).Start();
-                hasGenerationThread = true;
-            }
-
-            if ((bool) __instance.m_collider)
+            if (__instance.m_collider)
             {
                 // cookingOptions has to be default, otherwise no pre-baking is possible
                 __instance.m_collider.cookingOptions = MeshColliderCookingOptions.CookForFasterSimulation |
@@ -106,27 +84,6 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             HeightmapFinished.Add(__instance, false);
-        }
-
-        // check if a mesh is finished backing
-        [HarmonyPatch(typeof(Heightmap), "Update"), HarmonyPostfix]
-        private static void UpdatePatch(Heightmap __instance)
-        {
-            if (!__instance.m_collider) return;
-
-            lock (Ready)
-            {
-                Tuple<Heightmap, int> newMesh = Ready.FirstOrDefault(i => i.Item1 == __instance);
-
-                if (newMesh != null)
-                {
-                    Ready.Remove(newMesh);
-
-                    __instance.m_collider.sharedMesh = __instance.m_collisionMesh;
-                    __instance.m_dirty = true;
-                    HeightmapFinished[__instance] = true;
-                }
-            }
         }
 
         // remove line: 'm_collider.sharedMesh = m_collisionMesh;'
@@ -158,9 +115,9 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(Heightmap), "RebuildCollisionMesh"), HarmonyPostfix]
         private static void RebuildCollisionMeshPatch(Heightmap __instance)
         {
-            lock (ToBake)
+            if (__instance.m_collider)
             {
-                ToBake.Enqueue(new Tuple<Heightmap, int>(__instance, __instance.m_collisionMesh.GetInstanceID()));
+                VPOTerrainBaker.RequestCollisionBake(__instance);
             }
         }
 
@@ -239,8 +196,8 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "Shutdown")]
-        public static void Postfix(ZNetScene __instance)
+        [HarmonyPatch(typeof(ZNetScene), "Shutdown"), HarmonyPostfix]
+        public static void ZNetScene_Shutdown_Postfix(ZNetScene __instance)
         {
             SpawnedZones.Clear();
             HeightmapFinished.Clear();
@@ -270,6 +227,74 @@ namespace ValheimPerformanceOptimizations.Patches
             }
             
             return zone;
+        }
+    }
+    
+    public class VPOTerrainBaker : MonoBehaviour
+    {
+        private static readonly Dictionary<Heightmap, int> ImmediateRegenerateRequests = new Dictionary<Heightmap, int>();
+
+        private static readonly Dictionary<Heightmap, int> LateRegenerateRequests = new Dictionary<Heightmap, int>();
+        
+        public static void RequestCollisionBake(Heightmap heightmap, bool immediate = false)
+        {
+            if (immediate)
+            {
+                ImmediateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
+                return;
+            }
+            
+            if (!ImmediateRegenerateRequests.ContainsKey(heightmap))
+            {
+                LateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
+            }
+        }
+        
+        private void Update()
+        {
+            BakeRequested(ImmediateRegenerateRequests);
+            ImmediateRegenerateRequests.Clear();
+        }
+
+        private void LateUpdate()
+        {
+            BakeRequested(LateRegenerateRequests);
+            LateRegenerateRequests.Clear();
+        }
+
+        private static void BakeRequested(Dictionary<Heightmap, int> bakeRequests)
+        {
+            var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
+            var i = 0;
+            foreach (var meshId in bakeRequests.Values)
+            {
+                meshIds[i] = meshId;
+                i++;
+            }
+
+            var bakeJob = new BakeCollisionJob {MeshIds = meshIds};
+            bakeJob.Schedule(meshIds.Length, 1).Complete();
+            meshIds.Dispose();
+
+            foreach (var heightmap in bakeRequests.Keys)
+            {
+                if (heightmap == null) {continue;}
+                
+                heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
+                heightmap.m_dirty = true;
+                ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
+            }
+        }
+
+        private struct BakeCollisionJob : IJobParallelFor
+        {
+            [ReadOnly]
+            public NativeArray<int> MeshIds;
+
+            public void Execute(int index)
+            {
+                Physics.BakeMesh(MeshIds[index], false);
+            }
         }
     }
 }

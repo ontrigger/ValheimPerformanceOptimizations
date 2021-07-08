@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
 using HarmonyLib;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -51,5 +55,49 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return false;
         }
+
+        #region Profiling
+
+        [HarmonyPatch(typeof(Heightmap), "Regenerate"), HarmonyPrefix]
+        private static bool RegeneratePatch(Heightmap __instance)
+        {
+            Profiler.BeginSample("Heitmap regen");
+            if (__instance.HaveQueuedRebuild())
+            {
+                __instance.CancelInvoke("Regenerate");
+            }
+            __instance.Generate();
+            Profiler.BeginSample("Rebuild collision");
+            __instance.RebuildCollisionMesh();
+            Profiler.EndSample();
+            __instance.UpdateCornerDepths();
+            __instance.m_dirty = true;
+            Profiler.EndSample();
+
+            return false;
+        }
+        
+        [HarmonyPatch(typeof(Heightmap), "Poke"), HarmonyPrefix]
+        private static bool PokePatch(Heightmap __instance, bool delayed)
+        {
+            Profiler.BeginSample("Poke maps");
+            if (delayed)
+            {
+                if (__instance.HaveQueuedRebuild())
+                {
+                    __instance.CancelInvoke("Regenerate");
+                }
+                __instance.InvokeRepeating("Regenerate", 0.1f, 0f);
+            }
+            else
+            {
+                __instance.Regenerate();
+            }
+            Profiler.EndSample();
+
+            return false;
+        }
+
+        #endregion
     }
 }
