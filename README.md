@@ -4,6 +4,11 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+## Changes in 0.6.1
+
+* Fixed an incompatibility with BetterWards causing mobs inside the ward radius to flee
+* Fixed the GPU being invoked on the server causing an exception at startup
+
 ## New in 0.6.0
 
 * Optimized rendering of build pieces with straw materials
