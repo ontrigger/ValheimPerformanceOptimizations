@@ -6,7 +6,7 @@ namespace ValheimPerformanceOptimizations.Patches
 {
     public class VPOEffectArea : EffectArea
     {
-        private readonly List<Character> Inside = new List<Character>();
+        private readonly List<Character> inside = new List<Character>();
 
         private new void Awake()
         {
@@ -25,16 +25,12 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 return;
             }
-
-            // destroyed characters will cause a memleak
-            Profiler.BeginSample("Effect Area Update");
-            var j = 0;
-            for (var i = 0; i < Inside.Count; i++)
+            
+            inside.RemoveAll(character => character == null);
+            foreach (var character in inside)
             {
-                var character = Inside[i];
-                if (!character || !character.IsOwner())
+                if (!character.IsOwner())
                 {
-                    j += 1;
                     continue;
                 }
 
@@ -64,7 +60,7 @@ namespace ValheimPerformanceOptimizations.Patches
             var character = other.GetComponent<Character>();
             if (character && character.IsOwner())
             {
-                Inside.Add(character);
+                inside.Add(character);
             }
         }
 
@@ -78,7 +74,7 @@ namespace ValheimPerformanceOptimizations.Patches
             var character = other.GetComponent<Character>();
             if (character && character.IsOwner())
             {
-                Inside.Remove(character);
+                inside.Remove(character);
             }
         }
 
