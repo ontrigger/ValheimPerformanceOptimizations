@@ -47,8 +47,7 @@ namespace ValheimPerformanceOptimizations.Patches
             __result = null;
             return false;
         }
-
-
+        
         [HarmonyPatch(typeof(Character), "FixedUpdate")]
         private static bool Prefix(Character __instance)
         {
@@ -57,7 +56,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return true;
         }
-
 
         private class CachedShipData
         {

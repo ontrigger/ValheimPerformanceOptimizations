@@ -2,9 +2,8 @@
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
-using ValheimPerformanceOptimizations.Patches;
 
-namespace ValheimPerformanceOptimizations
+namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
     ///     CalculateComfortLevel used to get all nearby pieces and then sorted them by comfortGroup and name.

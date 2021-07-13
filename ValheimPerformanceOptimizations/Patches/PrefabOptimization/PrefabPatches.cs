@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -135,10 +136,13 @@ namespace ValheimPerformanceOptimizations.Patches
             var patched = 0;
             patched += namedPrefabs.PatchPrefabs(PrefabsWithLeafParticles, PatchPrefabWithLeaves);
             patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
-            var now = DateTime.Now;
-            patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
-            ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
-
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
+            {
+                var now = DateTime.Now;
+                patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
+                ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
+            }
+            
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
             _isPatched = true;
