@@ -31,18 +31,12 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "Awake")]
-        private static void Postfix(ZNetScene __instance)
-        {
-            __instance.gameObject.AddComponent<VPOTerrainCollisionBaker>();
-        }
-
         [HarmonyPatch(typeof(Heightmap), "OnEnable"), HarmonyPostfix]
         private static void OnEnablePatch(Heightmap __instance)
         {
             if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
             {
-                VPOTerrainCollisionBaker.RequestCollisionBake(__instance, true);
+                VPOTerrainCollisionBaker.Instance.RequestCollisionBake(__instance, true);
             }
         }
 
@@ -110,7 +104,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             if (__instance.m_collider)
             {
-                VPOTerrainCollisionBaker.RequestCollisionBake(__instance);
+                VPOTerrainCollisionBaker.Instance.RequestCollisionBake(__instance);
             }
         }
 

@@ -7,24 +7,40 @@ namespace ValheimPerformanceOptimizations.Patches
 {
     public class VPOTerrainCollisionBaker : MonoBehaviour
     {
-        private static readonly Dictionary<Heightmap, int> ImmediateRegenerateRequests = new Dictionary<Heightmap, int>();
+        private static VPOTerrainCollisionBaker instance;
 
-        private static readonly Dictionary<Heightmap, int> LateRegenerateRequests = new Dictionary<Heightmap, int>();
-        
-        public static void RequestCollisionBake(Heightmap heightmap, bool immediate = false)
+        private readonly Dictionary<Heightmap, int> ImmediateRegenerateRequests = new Dictionary<Heightmap, int>();
+
+        private readonly Dictionary<Heightmap, int> LateRegenerateRequests = new Dictionary<Heightmap, int>();
+
+        public static VPOTerrainCollisionBaker Instance
+        {
+            get
+            {
+                if (!(bool) instance)
+                {
+                    GameObject backerGameObject = new GameObject("VPOTerrainCollisionBaker");
+                    instance = backerGameObject.AddComponent<VPOTerrainCollisionBaker>();
+                }
+
+                return instance;
+            }
+        }
+
+        public void RequestCollisionBake(Heightmap heightmap, bool immediate = false)
         {
             if (immediate)
             {
                 ImmediateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
                 return;
             }
-            
+
             if (!ImmediateRegenerateRequests.ContainsKey(heightmap))
             {
                 LateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
             }
         }
-        
+
         private void Update()
         {
             // remove duplicated requests
@@ -35,7 +51,7 @@ namespace ValheimPerformanceOptimizations.Patches
                     LateRegenerateRequests.Remove(request.Key);
                 }
             }
-            
+
             BakeRequested(ImmediateRegenerateRequests);
         }
 
@@ -47,7 +63,7 @@ namespace ValheimPerformanceOptimizations.Patches
             ImmediateRegenerateRequests.Clear();
         }
 
-        private static void BakeRequested(Dictionary<Heightmap, int> bakeRequests)
+        private void BakeRequested(Dictionary<Heightmap, int> bakeRequests)
         {
             var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
             var i = 0;
@@ -63,8 +79,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
             foreach (var heightmap in bakeRequests.Keys)
             {
-                if (heightmap == null) {continue;}
-                
+                if (heightmap == null)
+                {
+                    continue;
+                }
+
                 heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
                 heightmap.m_dirty = true;
                 ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
