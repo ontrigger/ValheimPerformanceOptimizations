@@ -36,9 +36,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
                 if (!string.IsNullOrEmpty(m_statusEffect))
                 {
-                    Profiler.BeginSample("status effect add");
                     character.GetSEMan().AddStatusEffect(m_statusEffect, true);
-                    Profiler.EndSample();
                 }
 
                 if ((m_type & Type.Heat) != 0)
@@ -46,8 +44,6 @@ namespace ValheimPerformanceOptimizations.Patches
                     character.OnNearFire(transform.position);
                 }
             }
-
-            Profiler.EndSample();
         }
 
         private void OnTriggerEnter(Collider other)

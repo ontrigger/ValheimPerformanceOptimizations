@@ -13,6 +13,8 @@ namespace ValheimPerformanceOptimizations.Patches
     /// </summary>
     public static class PrefabMaterialCombiner
     {
+        private const string AlphaTestOn = "_ALPHATEST_ON";
+
         public static void CombinePrefabMaterials(GameObject prefab)
         {
             var wearNTear = prefab.GetComponent<WearNTear>();
@@ -63,7 +65,7 @@ namespace ValheimPerformanceOptimizations.Patches
                        var materials = r.sharedMaterials;
                        if (materials.Length <= 1) { return false; }
                        
-                       return materials.GroupBy(mat => mat.IsKeywordEnabled("_ALPHATEST_ON"))
+                       return materials.GroupBy(mat => mat.IsKeywordEnabled(AlphaTestOn))
                                        .Any(group => group.Count() > 1);
                    });
         }
@@ -79,7 +81,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 var uniqueMaterialMeshes = new List<Mesh>();
 
                 var renderModeMaterialGroups = renderer.sharedMaterials
-                                                       .GroupBy(mat => mat.IsKeywordEnabled("_ALPHATEST_ON"));
+                                                       .GroupBy(mat => mat.IsKeywordEnabled(AlphaTestOn));
                 
                 var subMeshOffset = 0;
                 foreach (var materialGroup in renderModeMaterialGroups)
@@ -104,9 +106,15 @@ namespace ValheimPerformanceOptimizations.Patches
                     material.SetTexture("_BumpMap", normalAtlas);
                     material.mainTextureScale = Vector2.one;
 
-                    if (oldMaterial.IsKeywordEnabled("_ALPHATEST_ON"))
+                    if (oldMaterial.IsKeywordEnabled(AlphaTestOn))
                     {
                         material.renderQueue = (int) RenderQueue.AlphaTest;
+                        material.EnableKeyword(AlphaTestOn);
+                    }
+                    else
+                    {
+                        material.SetOverrideTag("RenderType", "");
+                        material.DisableKeyword(AlphaTestOn);
                     }
 
                     allMaterials.Add(material);

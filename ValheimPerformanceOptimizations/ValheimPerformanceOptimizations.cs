@@ -30,7 +30,7 @@ namespace ValheimPerformanceOptimizations
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PluginId);
             
-            ZoneSystemObjectPoolingPatch.Initialize(Config, _harmony);
+            ObjectPoolingPatch.Initialize(Config, _harmony);
             ThreadedHeightmapCollisionBakePatch.Initialize(Config, _harmony);
 
             if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(ValheimRaftId))
