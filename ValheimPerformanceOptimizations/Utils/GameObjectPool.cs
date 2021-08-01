@@ -10,11 +10,14 @@ namespace ValheimPerformanceOptimizations
     {
         public readonly Stack<GameObject> Pool = new Stack<GameObject>();
 
-        private readonly GameObject toPool;
         public int MaxObjects;
+
+        public int PooledObjects => Pool.Count;
 
         public Action<GameObject> OnRetrieve;
         public Action<GameObject> OnReturn;
+        
+        private readonly GameObject toPool;
 
         public GameObjectPool(
             GameObject pooledObject, int maxObjects,

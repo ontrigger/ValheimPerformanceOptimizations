@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
@@ -56,6 +57,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (_objectPoolingEnabled.Value)
             {
                 harmony.PatchAll(typeof(ObjectPoolingPatch));
+                harmony.PatchAll(typeof(ConnectPanelPatch));
             }
         }
 
@@ -221,11 +223,15 @@ namespace ValheimPerformanceOptimizations.Patches
 
         [UsedImplicitly]
         public static GameObject GetOrInstantiateObject(
-            ZoneSystem.SpawnMode mode, Dictionary<string, GameObjectPool> poolDict,
-            GameObject prefab, Vector3 position, Quaternion rotation)
+            ZoneSystem.SpawnMode mode,
+            Dictionary<string, GameObjectPool> poolDict,
+            GameObject prefab,
+            Vector3 position,
+            Quaternion rotation)
         {
             GameObject gameObject;
-            var pool = GetPoolForObject(poolDict, prefab);
+
+            poolDict.TryGetValue(prefab.name, out var pool);
 
             ZNetViewPrefabNamePatch.PrefabNameHack = prefab.name;
             if (mode == ZoneSystem.SpawnMode.Ghost && pool != null)
@@ -234,7 +240,6 @@ namespace ValheimPerformanceOptimizations.Patches
             }
             else
             {
-                ValheimPerformanceOptimizations.Logger.LogInfo("NOT IN POOL? " + prefab.name);
                 gameObject = Object.Instantiate(prefab, position, rotation);
             }
 
@@ -245,8 +250,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return gameObject;
         }
 
-        public static void DestroyOrReturnPooledObject(
-            Dictionary<string, GameObjectPool> poolDict, GameObject tempSpawnedObject)
+        public static void DestroyOrReturnPooledObject(Dictionary<string, GameObjectPool> poolDict, GameObject tempSpawnedObject)
         {
             if (poolDict.TryGetValue(tempSpawnedObject.name, out var pool))
             {
@@ -256,13 +260,6 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 Object.Destroy(tempSpawnedObject);
             }
-        }
-
-        private static GameObjectPool GetPoolForObject(Dictionary<string, GameObjectPool> poolDict, GameObject prefab)
-        {
-            poolDict.TryGetValue(prefab.name, out var objectPool);
-
-            return objectPool;
         }
     }
 }

@@ -33,5 +33,26 @@ namespace ValheimPerformanceOptimizations.Patches
             var gameMain = GameObject.Find("_GameMain");
             gameMain.AddComponent<VPOSmokeRenderer>();
         }
+        
+        [HarmonyPatch(typeof(SmokeSpawner), "Spawn")]
+        private static bool Prefix(SmokeSpawner __instance)
+        {
+            Player localPlayer = Player.m_localPlayer;
+            if (localPlayer == null || Vector3.Distance(localPlayer.transform.position, __instance.transform.position) > 64f)
+            {
+                __instance.m_lastSpawnTime = Time.time;
+            }
+            else if (!__instance.TestBlocked())
+            {
+                if (Smoke.GetTotalSmoke() > 500)
+                {
+                    Smoke.FadeOldest();
+                }
+                Object.Instantiate(__instance.m_smokePrefab, __instance.transform.position, Random.rotation);
+                __instance.m_lastSpawnTime = Time.time;
+            }
+
+            return false;
+        }
     }
 }
