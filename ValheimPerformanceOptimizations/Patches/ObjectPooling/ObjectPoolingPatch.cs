@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using BepInEx.Configuration;
 using HarmonyLib;
@@ -10,16 +9,20 @@ using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Object = UnityEngine.Object;
+using Random = UnityEngine.Random;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
     public static partial class ObjectPoolingPatch
     {
-        private static readonly Dictionary<string, Action<ZNetView>> PrefabAwakeProcessors =
-            new Dictionary<string, Action<ZNetView>>();
+        private static readonly Dictionary<string, Action<ComponentCache>> PrefabAwakeProcessors =
+            new Dictionary<string, Action<ComponentCache>>();
 
-        private static readonly Dictionary<string, Action<ZNetView>> PrefabDestroyProcessors =
-            new Dictionary<string, Action<ZNetView>>();
+        private static readonly Dictionary<string, Action<ComponentCache>> PrefabDestroyProcessors =
+            new Dictionary<string, Action<ComponentCache>>();
+
+        private static readonly ConditionalWeakTable<GameObject, ComponentCache> ComponentCacheForObject
+            = new ConditionalWeakTable<GameObject, ComponentCache>();
 
         private static readonly MethodInfo ObjectInstantiateMethod =
             AccessTools.GetDeclaredMethods(typeof(Object))
@@ -39,20 +42,20 @@ namespace ValheimPerformanceOptimizations.Patches
             AccessTools.DeclaredMethod(typeof(ObjectPoolingPatch), "DestroyOrReturnPooledObject");
 
         private static ConfigEntry<bool> _objectPoolingEnabled;
-        private static ConfigEntry<float> _pooledObjectCountMultiplier;
+        private static ConfigEntry<int> _pooledObjectCount;
 
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string keyPooling = "Object pooling enabled";
             const string descriptionPooling =
                 "Experimental: if enabled vegetation objects are pulled and pushed from an object pool, rather then creating and destroying them everytime. This greatly increases performance when moving through the world, but can lead to objects spawning at wrong positions or having wrong data. This is an experimental feature, please report any issues that may occur.";
-            const string keyCountMultiplier = "Pooled object count multiplier";
-            const string descriptionCountMultiplier =
-                "Changes how many objects are kept in the pool, increasing the value leads to fewer respawning, but uses more memory. Default value should be fine in most cases.";
+            const string maxPooledObjectsCount = "Max pool size per object";
+            const string maxPooledObjectsDescription =
+                "Controls the maximum amount of each unique object in the pool. Increasing this value leads to less lag when loading player-created buildings, but uses more memory. Default value should be fine if you have < 9000 instances";
 
             _objectPoolingEnabled = configFile.Bind("Object Pooling", keyPooling, true, descriptionPooling);
-            _pooledObjectCountMultiplier =
-                configFile.Bind("Object Pooling", keyCountMultiplier, 1f, descriptionCountMultiplier);
+            _pooledObjectCount =
+                configFile.Bind("Object Pooling", maxPooledObjectsCount, 500, maxPooledObjectsDescription);
 
             if (_objectPoolingEnabled.Value)
             {
@@ -73,8 +76,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 ExtractPrefabProcessors(prefab);
 
                 var maxPossibleObjects = vegetationForPrefab.Aggregate(0, (acc, veg) =>
-                                                                           acc + (int) (veg.m_max *
-                                                                               veg.m_groupSizeMax));
+                                                                           acc + (int) (veg.m_max * veg.m_groupSizeMax));
                 maxObjectsByVegetation[vegetationForPrefab[0]] = maxPossibleObjects;
             }
 
@@ -88,8 +90,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void ExtractPrefabProcessors(GameObject prefab)
         {
-            Action<ZNetView> objectEnabledProcessor = (zNetView) => { };
-            Action<ZNetView> objectDisabledProcessor = (zNetView) => { };
+            Action<ComponentCache> objectEnabledProcessor = zNetView => { };
+            Action<ComponentCache> objectDisabledProcessor = zNetView => { };
             if (prefab.GetComponentInChildren<LodFadeInOut>())
             {
                 objectEnabledProcessor += LodFadeProcessor;
@@ -113,43 +115,51 @@ namespace ValheimPerformanceOptimizations.Patches
                 objectDisabledProcessor += PieceDisabledProcessor;
             }
 
+            if (prefab.GetComponentInChildren<TerrainModifier>())
+            {
+                objectEnabledProcessor += TerrainModifierEnabledProcessor;
+                objectDisabledProcessor += TerrainModifierDisabledProcessor;
+            }
+
             PrefabAwakeProcessors[prefab.name] = objectEnabledProcessor;
             PrefabDestroyProcessors[prefab.name] = objectDisabledProcessor;
         }
 
         // TODO: move this shit to a separate file
-        private static void LodFadeProcessor(ZNetView zNetView)
+        private static void LodFadeProcessor(ComponentCache componentCache)
         {
-            zNetView.GetComponentInChildren<LodFadeInOut>().Awake();
+            componentCache.GetComponent<LodFadeInOut>().Awake();
         }
 
-        private static void PickableAwakeProcessor(ZNetView zNetView)
+        private static void PickableAwakeProcessor(ComponentCache componentCache)
         {
+            var zNetView = componentCache.NetView;
+
             var zDO = zNetView.GetZDO();
             if (zDO == null) return;
 
-            var pickable = zNetView.GetComponentInChildren<Pickable>();
+            var pickable = componentCache.Pickable;
 
             pickable.m_picked = zDO.GetBool("picked");
             if (pickable.m_picked && pickable.m_hideWhenPicked)
             {
-                pickable.m_hideWhenPicked.SetActive(value: false);
+                pickable.m_hideWhenPicked.SetActive(false);
             }
 
             if (pickable.m_respawnTimeMinutes > 0)
             {
-                pickable.InvokeRepeating(nameof(Pickable.UpdateRespawn), UnityEngine.Random.Range(1f, 5f), 60f);
+                pickable.InvokeRepeating(nameof(Pickable.UpdateRespawn), Random.Range(1f, 5f), 60f);
             }
         }
 
-        private static void PickableDestroyProcessor(ZNetView zNetView)
+        private static void PickableDestroyProcessor(ComponentCache componentCache)
         {
-            zNetView.GetComponentInChildren<Pickable>().CancelInvoke(nameof(Pickable.UpdateRespawn));
+            componentCache.Pickable.CancelInvoke(nameof(Pickable.UpdateRespawn));
         }
 
-        private static void WearNTearEnabledProcessor(ZNetView zNetView)
+        private static void WearNTearEnabledProcessor(ComponentCache componentCache)
         {
-            var wearNTear = zNetView.GetComponentInChildren<WearNTear>();
+            var wearNTear = componentCache.WearNTear;
 
             WearNTear.m_allInstances.Add(wearNTear);
             wearNTear.m_myIndex = WearNTear.m_allInstances.Count - 1;
@@ -159,30 +169,40 @@ namespace ValheimPerformanceOptimizations.Patches
             wearNTear.m_colliders = null;
             if (WearNTear.m_randomInitialDamage)
             {
-                var value = UnityEngine.Random.Range(0.1f * wearNTear.m_health, wearNTear.m_health * 0.6f);
-                zNetView.GetZDO().Set("health", value);
+                var value = Random.Range(0.1f * wearNTear.m_health, wearNTear.m_health * 0.6f);
+                componentCache.NetView.GetZDO().Set("health", value);
             }
 
-            wearNTear.UpdateVisual(triggerEffects: false);
+            wearNTear.UpdateVisual(false);
         }
 
-        private static void WearNTearDisabledProcessor(ZNetView zNetView)
+        private static void WearNTearDisabledProcessor(ComponentCache componentCache)
         {
-            zNetView.GetComponentInChildren<WearNTear>().OnDestroy();
+            componentCache.WearNTear.OnDestroy();
         }
 
-        private static void PieceEnabledProcessor(ZNetView zNetView)
+        private static void PieceEnabledProcessor(ComponentCache componentCache)
         {
-            var piece = zNetView.GetComponentInChildren<Piece>();
+            var piece = componentCache.Piece;
 
             Piece.m_allPieces.Add(piece);
             piece.m_myListIndex = Piece.m_allPieces.Count - 1;
-            piece.m_creator = zNetView.GetZDO().GetLong(Piece.m_creatorHash, 0L);
+            piece.m_creator = componentCache.NetView.GetZDO().GetLong(Piece.m_creatorHash);
         }
 
-        private static void PieceDisabledProcessor(ZNetView zNetView)
+        private static void PieceDisabledProcessor(ComponentCache componentCache)
         {
-            zNetView.GetComponentInChildren<Piece>().OnDestroy();
+            componentCache.Piece.OnDestroy();
+        }
+
+        private static void TerrainModifierEnabledProcessor(ComponentCache componentCache)
+        {
+            componentCache.TerrainModifier.Awake();
+        }
+
+        private static void TerrainModifierDisabledProcessor(ComponentCache componentCache)
+        {
+            componentCache.TerrainModifier.OnDestroy();
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
@@ -202,7 +222,13 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if (PrefabAwakeProcessors.TryGetValue(prefabName, out var processor))
             {
-                processor(netView);
+                if (!ComponentCacheForObject.TryGetValue(obj, out var componentCache))
+                {
+                    componentCache = new ComponentCache(netView);
+                    ComponentCacheForObject.Add(obj, componentCache);
+                }
+
+                processor(componentCache);
             }
 
             Profiler.EndSample();
@@ -210,15 +236,18 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void OnReturnedToPool(GameObject obj)
         {
-            Profiler.BeginSample("POOL REturn");
             var prefabName = Utils.GetPrefabName(obj);
 
             if (PrefabDestroyProcessors.TryGetValue(prefabName, out var processor))
             {
-                processor(obj.GetComponent<ZNetView>());
-            }
+                if (!ComponentCacheForObject.TryGetValue(obj, out var componentCache))
+                {
+                    componentCache = new ComponentCache(obj.GetComponentInChildren<ZNetView>());
+                    ComponentCacheForObject.Add(obj, componentCache);
+                }
 
-            Profiler.EndSample();
+                processor(componentCache);
+            }
         }
 
         [UsedImplicitly]
@@ -261,5 +290,38 @@ namespace ValheimPerformanceOptimizations.Patches
                 Object.Destroy(tempSpawnedObject);
             }
         }
+    }
+
+    internal class ComponentCache
+    {
+        public ZNetView NetView;
+
+        public ComponentCache(ZNetView netView)
+        {
+            NetView = netView;
+        }
+        
+        public Piece Piece => _piece == null ? _piece = NetView.GetComponentInChildren<Piece>() : _piece;
+
+        public TerrainModifier TerrainModifier => _terrainModifier == null
+            ? _terrainModifier = NetView.GetComponentInChildren<TerrainModifier>()
+            : _terrainModifier;
+
+        public Pickable Pickable => _pickable == null ? _pickable = NetView.GetComponentInChildren<Pickable>() : _pickable;
+
+        public WearNTear WearNTear => _wearNTear == null ? _wearNTear = NetView.GetComponentInChildren<WearNTear>() : _wearNTear;
+
+        public T GetComponent<T>()
+        {
+            return NetView.GetComponent<T>();
+        }
+
+        private Pickable _pickable;
+
+        private Piece _piece;
+
+        private TerrainModifier _terrainModifier;
+
+        private WearNTear _wearNTear;
     }
 }

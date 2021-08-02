@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -24,13 +25,13 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             var buildPiecePools = ZNetScene.instance.m_prefabs.Where(prefab =>
             {
-                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone")) 
+                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone") || prefab.name.StartsWith("raise")) 
                        && prefab.GetComponent<Piece>();
             }).Select(prefab =>
             {
                 ExtractPrefabProcessors(prefab);
                 
-                var maxObjects = 2000;
+                var maxObjects = prefab.name.StartsWith("raise") ? Math.Max(_pooledObjectCount.Value, 2000) : _pooledObjectCount.Value;
                 var pool = new GameObjectPool(prefab, maxObjects, OnRetrievedFromPool, OnReturnedToPool);
 
                 return new KeyValuePair<string, GameObjectPool>(prefab.name, pool);
@@ -38,10 +39,9 @@ namespace ValheimPerformanceOptimizations.Patches
             
             var vegetationPools = maxObjectsByVegetation.Select(pair => 
             {
-                var maxObjects = (int) (pair.Value * _pooledObjectCountMultiplier.Value);
-                var pool = new GameObjectPool(pair.Key.m_prefab, maxObjects, OnRetrievedFromPool, OnReturnedToPool);
+                var pool = new GameObjectPool(pair.Key.m_prefab, pair.Value * 3, OnRetrievedFromPool, OnReturnedToPool);
 
-                pool.Populate(maxObjects, obj =>
+                pool.Populate(pair.Value * 3, obj =>
                 {
                     var component = obj.GetComponent<ZNetView>();
                     if (component && component.GetZDO() != null)

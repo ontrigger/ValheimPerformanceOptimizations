@@ -53,7 +53,7 @@ namespace ValheimPerformanceOptimizations
                     obj = Pool.Pop();
                     continue;
                 }
-
+                
                 return Object.Instantiate(toPool, position, rotation);
             } while (obj == null);
 
@@ -74,11 +74,11 @@ namespace ValheimPerformanceOptimizations
                 Object.Destroy(toRelease);
                 return;
             }
-
-            toRelease.SetActive(false);
             
             OnReturn?.Invoke(toRelease);
             
+            toRelease.SetActive(false);
+
             Pool.Push(toRelease);
         }
 
