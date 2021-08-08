@@ -14,7 +14,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 var renderer = clutter.m_prefab.GetComponent<InstanceRenderer>();
                 if (!renderer) continue;
 
-                renderer.m_material.renderQueue = (int) RenderQueue.AlphaTest;
+                renderer.m_material.renderQueue = (int)RenderQueue.AlphaTest;
             }
         }
     }

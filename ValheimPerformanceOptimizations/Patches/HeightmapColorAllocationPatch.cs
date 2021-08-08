@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
 using HarmonyLib;
-using Unity.Collections;
-using Unity.Jobs;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
-    /// Remove a pointless Color[32x32] allocation just to clear the paintmask 
+    ///     Remove a pointless Color[32x32] allocation just to clear the paintmask
     /// </summary>
     [HarmonyPatch]
     public class HeightmapColorAllocationPatch
@@ -48,8 +43,8 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             // the only change
-            __instance.m_paintMask.SetPixels(__instance.m_isDistantLod ?
-                                                 new Color[__instance.m_width * __instance.m_width]
+            __instance.m_paintMask.SetPixels(__instance.m_isDistantLod
+                                                 ? new Color[__instance.m_width * __instance.m_width]
                                                  : _clearColors);
             __instance.ApplyModifiers();
 

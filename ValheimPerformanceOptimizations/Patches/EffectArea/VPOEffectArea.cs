@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -25,7 +24,7 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 return;
             }
-            
+
             inside.RemoveAll(character => character == null);
             foreach (var character in inside)
             {

@@ -56,8 +56,6 @@ namespace ValheimPerformanceOptimizations.Patches
             
             var instantiationIndex = code.FindIndex(c => c.Is(OpCodes.Call, ObjectInstantiateMethod));
             code[instantiationIndex] = new CodeInstruction(OpCodes.Call, GetOrInstantiatePersistentObjectMethod);
-
-            code.ForEach(c => ValheimPerformanceOptimizations.Logger.LogInfo(c));
             
             return code.AsEnumerable();
         }
