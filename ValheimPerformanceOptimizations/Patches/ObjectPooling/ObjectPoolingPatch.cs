@@ -33,7 +33,7 @@ namespace ValheimPerformanceOptimizations.Patches
                                   m.GetParameters()[1].ParameterType == typeof(Vector3));
 
         private static readonly MethodInfo ObjectDestroyMethod =
-            AccessTools.Method(typeof(Object), "Destroy", new[] {typeof(Object)});
+            AccessTools.Method(typeof(Object), "Destroy", new[] { typeof(Object) });
 
         private static readonly MethodInfo GetOrInstantiateObjectMethod =
             AccessTools.DeclaredMethod(typeof(ObjectPoolingPatch), "GetOrInstantiateObject");
@@ -76,7 +76,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 ExtractPrefabProcessors(prefab);
 
                 var maxPossibleObjects = vegetationForPrefab.Aggregate(0, (acc, veg) =>
-                                                                           acc + (int) (veg.m_max * veg.m_groupSizeMax));
+                                                                           acc + (int)(veg.m_max * veg.m_groupSizeMax));
                 maxObjectsByVegetation[vegetationForPrefab[0]] = maxPossibleObjects;
             }
 
@@ -128,7 +128,7 @@ namespace ValheimPerformanceOptimizations.Patches
         // TODO: move this shit to a separate file
         private static void LodFadeProcessor(ComponentCache componentCache)
         {
-            componentCache.GetComponent<LodFadeInOut>().Awake();
+            componentCache.GetComponentInChildren<LodFadeInOut>().Awake();
         }
 
         private static void PickableAwakeProcessor(ComponentCache componentCache)
@@ -252,11 +252,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
         [UsedImplicitly]
         public static GameObject GetOrInstantiateObject(
-            ZoneSystem.SpawnMode mode,
-            Dictionary<string, GameObjectPool> poolDict,
-            GameObject prefab,
-            Vector3 position,
-            Quaternion rotation)
+            ZoneSystem.SpawnMode mode, Dictionary<string, GameObjectPool> poolDict,
+            GameObject prefab, Vector3 position, Quaternion rotation)
         {
             GameObject gameObject;
 
@@ -279,7 +276,8 @@ namespace ValheimPerformanceOptimizations.Patches
             return gameObject;
         }
 
-        public static void DestroyOrReturnPooledObject(Dictionary<string, GameObjectPool> poolDict, GameObject tempSpawnedObject)
+        public static void DestroyOrReturnPooledObject(
+            Dictionary<string, GameObjectPool> poolDict, GameObject tempSpawnedObject)
         {
             if (poolDict.TryGetValue(tempSpawnedObject.name, out var pool))
             {
@@ -300,20 +298,27 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             NetView = netView;
         }
-        
+
         public Piece Piece => _piece == null ? _piece = NetView.GetComponentInChildren<Piece>() : _piece;
 
         public TerrainModifier TerrainModifier => _terrainModifier == null
             ? _terrainModifier = NetView.GetComponentInChildren<TerrainModifier>()
             : _terrainModifier;
 
-        public Pickable Pickable => _pickable == null ? _pickable = NetView.GetComponentInChildren<Pickable>() : _pickable;
+        public Pickable Pickable =>
+            _pickable == null ? _pickable = NetView.GetComponentInChildren<Pickable>() : _pickable;
 
-        public WearNTear WearNTear => _wearNTear == null ? _wearNTear = NetView.GetComponentInChildren<WearNTear>() : _wearNTear;
+        public WearNTear WearNTear =>
+            _wearNTear == null ? _wearNTear = NetView.GetComponentInChildren<WearNTear>() : _wearNTear;
 
         public T GetComponent<T>()
         {
             return NetView.GetComponent<T>();
+        }
+
+        public T GetComponentInChildren<T>()
+        {
+            return NetView.GetComponentInChildren<T>();
         }
 
         private Pickable _pickable;
