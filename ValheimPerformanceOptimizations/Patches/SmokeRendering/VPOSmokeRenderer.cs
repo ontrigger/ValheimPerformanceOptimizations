@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -8,8 +7,6 @@ namespace ValheimPerformanceOptimizations.Patches
     public class VPOSmokeRenderer : MonoBehaviour
     {
         public const int MaxSmokeInstances = 101;
-
-        public static VPOSmokeRenderer Instance { get; private set; }
 
         private static readonly int SmokeColor = Shader.PropertyToID("_Color");
 
@@ -24,9 +21,25 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private void Awake()
         {
-            Instance = this;
-
             _smokeLayer = LayerMask.NameToLayer("smoke");
+            
+            VPOSmokeSpawner.SpawnerAdded += SpawnerCountChanged;
+            VPOSmokeSpawner.SpawnerDestroyed += SpawnerCountChanged;
+        }
+        
+        private void SpawnerCountChanged(VPOSmokeSpawner spawner)
+        {
+            if (!setupDone)
+            {
+                var meshRenderer = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshRenderer>();
+                var meshFilter = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshFilter>();
+                
+                ValheimPerformanceOptimizations.Logger.LogInfo(meshRenderer);
+
+                SetupRenderingData(meshRenderer.sharedMaterial, meshFilter.sharedMesh);
+            }
+            
+            CombineSmokeBySpawners();
         }
 
         private void Update()
@@ -107,10 +120,10 @@ namespace ValheimPerformanceOptimizations.Patches
         private class CombinedSmokeInstances
         {
             public readonly List<List<Smoke>> SmokeInstances = new List<List<Smoke>>();
-
+            
             private Vector3 center;
 
-            private float radius = 5 * 5;
+            private float radius = 8 * 8;
 
             private readonly Vector4[] smokeColors = new Vector4[MaxSmokeInstances + 4 * 4];
             private readonly Matrix4x4[] smokeTransforms = new Matrix4x4[MaxSmokeInstances + 4 * 4];
@@ -128,7 +141,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 var vec1 = center - instanceSpawnPosition;
                 var sqrDistance = Vector3.SqrMagnitude(vec1);
 
-                if (sqrDistance < radius && SmokeInstances.Count < 4)
+                if (sqrDistance < radius && SmokeInstances.Count < 6)
                 {
                     SmokeInstances.Add(instances);
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Random = UnityEngine.Random;
@@ -11,10 +12,18 @@ namespace ValheimPerformanceOptimizations.Patches
         public static readonly List<VPOSmokeSpawner> AllSmokeSpawners = new List<VPOSmokeSpawner>();
 
         public static readonly List<Smoke> FreeSmoke = new List<Smoke>();
+        
+        public static event Action<VPOSmokeSpawner> SpawnerAdded;
+        public static event Action<VPOSmokeSpawner> SpawnerDestroyed;
+
+        public static GameObject SmokePrefab;
 
         private void Awake()
         {
+            m_smokePrefab = SmokePrefab;
+            
             AllSmokeSpawners.Add(this);
+            SpawnerAdded?.Invoke(this);
         }
 
         private new void Start()
@@ -27,6 +36,7 @@ namespace ValheimPerformanceOptimizations.Patches
             FreeSmoke.AddRange(SmokeInstances);
 
             AllSmokeSpawners.Remove(this);
+            SpawnerDestroyed?.Invoke(this);
         }
 
         private new void Update()

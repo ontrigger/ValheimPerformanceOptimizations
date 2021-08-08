@@ -4,7 +4,7 @@ using UnityEngine;
 namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
-    ///     Remove a pointless Color[32x32] allocation just to clear the paintmask
+    /// Remove a pointless Color[32x32] allocation just to clear the paintmask
     /// </summary>
     [HarmonyPatch]
     public class HeightmapColorAllocationPatch
