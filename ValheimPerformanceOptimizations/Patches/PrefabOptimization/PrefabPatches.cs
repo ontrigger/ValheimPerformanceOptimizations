@@ -102,10 +102,44 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
             }
         }
-        
+
         private static void PatchPrefabWithWastedMaterials(GameObject prefab)
         {
             PrefabMaterialCombiner.CombinePrefabMaterials(prefab);
+        }
+
+        private static void PatchSnowStormParticle()
+        {
+            var environment = GameObject.Find("_GameMain/environment");
+            
+            var luxLitShader = Shader.Find("Lux Lit Particles/ Bumped");
+            
+            var snowStormParticles = Utils.FindChild(environment.transform, "SnowStorm");
+            var snow = snowStormParticles.GetChild(1).gameObject;
+
+            var snowPs = snow.GetComponent<ParticleSystem>();
+            var snowPsMain = snowPs.main;
+            snowPsMain.maxParticles = 9000;
+
+            var minMaxCurve = snowPsMain.startSize;
+            minMaxCurve.mode = ParticleSystemCurveMode.TwoConstants;
+            minMaxCurve.constantMin = 0.03f;
+            minMaxCurve.constantMax = 0.07f;
+            snowPsMain.startSize = minMaxCurve;
+
+            var snowPsEmission = snowPs.emission;
+            var rateOverTime = snowPsEmission.rateOverTime;
+            rateOverTime.constant = 3000f;
+            snowPsEmission.rateOverTime = rateOverTime;
+
+            var snowPsShape = snowPs.shape;
+            snowPsShape.radiusThickness = 1f;
+
+            var snowPsRenderer = snow.GetComponent<ParticleSystemRenderer>();
+            var snowClusterMaterial = snowPsRenderer.material;
+            snowClusterMaterial.mainTexture = null;
+            snowClusterMaterial.shader = luxLitShader;
+            snowClusterMaterial.DisableKeyword("GEOM_TYPE_FROND");
         }
 
         private static int PatchPrefabs(
@@ -142,7 +176,10 @@ namespace ValheimPerformanceOptimizations.Patches
                 patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
                 ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
             }
-            
+
+            PatchSnowStormParticle();
+            patched += 1;
+
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
             var gameMain = GameObject.Find("_GameMain");
