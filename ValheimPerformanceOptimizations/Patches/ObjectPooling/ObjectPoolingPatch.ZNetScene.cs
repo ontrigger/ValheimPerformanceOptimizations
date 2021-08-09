@@ -25,7 +25,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             var buildPiecePools = ZNetScene.instance.m_prefabs.Where(prefab =>
             {
-                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone") || prefab.name.StartsWith("raise")) 
+                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone")) 
                        && prefab.GetComponent<Piece>();
             }).Select(prefab =>
             {
@@ -40,20 +40,6 @@ namespace ValheimPerformanceOptimizations.Patches
             var vegetationPools = maxObjectsByVegetation.Select(pair => 
             {
                 var pool = new GameObjectPool(pair.Key.m_prefab, pair.Value * 3, OnRetrievedFromPool, OnReturnedToPool);
-
-                pool.Populate(pair.Value * 3, obj =>
-                {
-                    var component = obj.GetComponent<ZNetView>();
-                    if (component && component.GetZDO() != null)
-                    {
-                        var zDO = component.GetZDO();
-                        component.ResetZDO();
-                        if (zDO.IsOwner())
-                        {
-                            ZDOMan.instance.DestroyZDO(zDO);
-                        }
-                    }
-                });
 
                 return new KeyValuePair<string, GameObjectPool>(pair.Key.m_prefab.name, pool);
             }).ToList();

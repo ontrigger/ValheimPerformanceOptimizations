@@ -72,6 +72,9 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 var vegetationForPrefab = vegetationGroup.ToList();
                 var prefab = vegetationForPrefab[0].m_prefab;
+                
+                // skip prefabs with multiple mods for now
+                if (prefab.GetComponentsInChildren<TerrainModifier>().Length > 1) {continue;}
 
                 ExtractPrefabProcessors(prefab);
 
@@ -119,6 +122,12 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 objectEnabledProcessor += TerrainModifierEnabledProcessor;
                 objectDisabledProcessor += TerrainModifierDisabledProcessor;
+            }
+            
+            if (prefab.GetComponentInChildren<Destructible>())
+            {
+                objectEnabledProcessor += DestructibleEnabledProcessor;
+                objectDisabledProcessor += DestructibleDisabledProcessor;
             }
 
             PrefabAwakeProcessors[prefab.name] = objectEnabledProcessor;
@@ -203,6 +212,27 @@ namespace ValheimPerformanceOptimizations.Patches
         private static void TerrainModifierDisabledProcessor(ComponentCache componentCache)
         {
             componentCache.TerrainModifier.OnDestroy();
+        }
+
+        private static void DestructibleEnabledProcessor(ComponentCache componentCache)
+        {
+            var destructible = componentCache.GetComponentInChildren<Destructible>();
+            destructible.m_nview = componentCache.NetView;
+            destructible.m_body = destructible.GetComponent<Rigidbody>();
+
+            if (destructible.m_nview && destructible.m_nview.GetZDO() != null)
+            {
+                if (destructible.m_ttl > 0f)
+                {
+                    destructible.InvokeRepeating("DestroyNow", destructible.m_ttl, 1f);
+                }
+            }
+        }
+        
+        private static void DestructibleDisabledProcessor(ComponentCache componentCache)
+        {
+            var destructible = componentCache.GetComponentInChildren<Destructible>();
+            destructible.CancelInvoke(nameof(Destructible.DestroyNow));
         }
 
         [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
