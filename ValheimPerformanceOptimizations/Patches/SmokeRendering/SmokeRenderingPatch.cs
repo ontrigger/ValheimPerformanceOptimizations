@@ -1,7 +1,5 @@
-using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -21,11 +19,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static bool _smokeShaderSet;
 
-        private static Material _smokeMaterial;
-        private static Mesh _smokeMesh;
-
-        private static readonly int TranslucencyID = Shader.PropertyToID("_Translucency");
-
         static SmokeRenderingPatch()
         {
             ValheimPerformanceOptimizations.OnInitialized += Initialize;
@@ -36,6 +29,16 @@ namespace ValheimPerformanceOptimizations.Patches
             var assetBundle = AssetBundleHelper.GetAssetBundleFromResources(AssetBundleName);
             SmokeShader = assetBundle.LoadAsset<Shader>(ShaderAssetPath);
         }
+
+        /*[HarmonyPatch(typeof(Smoke), "Awake"), HarmonyPostfix]
+        private static void Smoke_Awake_Postfix(Smoke __instance)
+        {
+            if (_smokeShaderSet) { return; }
+
+            __instance.m_mr.sharedMaterial.shader = SmokeShader;
+            __instance.m_mr.sharedMaterial.enableInstancing = true;
+            _smokeShaderSet = true;
+        }*/
 
         [HarmonyPatch(typeof(Smoke), "Awake"), HarmonyPrefix]
         private static bool Smoke_Awake_Prefix(Smoke __instance)
@@ -48,9 +51,6 @@ namespace ValheimPerformanceOptimizations.Patches
             __instance.m_vel += Quaternion.Euler(0f, Random.Range(0, 360), 0f) * Vector3.forward *
                                 __instance.m_randomVel;
 
-            var meshFilter = __instance.GetComponent<MeshFilter>();
-            VPOSmokeRenderer.Instance.SetupRenderingData(__instance.m_mr.sharedMaterial, meshFilter.sharedMesh);
-
             Object.Destroy(__instance.m_mr);
 
             return false;
@@ -59,8 +59,9 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(SmokeSpawner), "Start"), HarmonyPrefix]
         private static bool SmokeSpawner_Start_Prefix(SmokeSpawner __instance)
         {
+            VPOSmokeSpawner.SmokePrefab = __instance.m_smokePrefab;
+            
             var newSmokeSpawner = __instance.gameObject.AddComponent<VPOSmokeSpawner>();
-            newSmokeSpawner.m_smokePrefab = __instance.m_smokePrefab;
             newSmokeSpawner.m_testRadius = __instance.m_testRadius;
             newSmokeSpawner.m_testMask = __instance.m_testMask;
             newSmokeSpawner.m_interval = __instance.m_interval;
@@ -119,6 +120,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return false;
         }
+
 
         [HarmonyPatch(typeof(Smoke), "Update"), HarmonyPrefix]
         private static bool Smoke_Update_Prefix(Smoke __instance)

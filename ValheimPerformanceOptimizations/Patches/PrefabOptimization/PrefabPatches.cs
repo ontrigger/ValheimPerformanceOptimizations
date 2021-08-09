@@ -184,7 +184,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             var gameMain = GameObject.Find("_GameMain");
             gameMain.AddComponent<VPOSmokeRenderer>();
-            
+
             _isPatched = true;
         }
     }

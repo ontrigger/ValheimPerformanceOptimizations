@@ -99,12 +99,20 @@ namespace ValheimPerformanceOptimizations.Patches
             material.shader = SmokeRenderingPatch.SmokeShader;
             material.enableInstancing = true;
 
-            material.SetFloat("_AddLightsPerPixel", 0);
             material.SetFloat("_ColorMode", 0);
+            material.SetFloat("_AddLightsPerPixel", 0);
             material.SetFloat("_EnableShadows", 0);
             material.SetFloat("_LightingEnabled", 0);
-            material.SetFloat("_LocalAmbientLighting", 1);
             material.SetFloat("_ShadowsPerPixel", 0);
+            material.SetFloat("_LocalAmbientLighting", 1);
+            material.SetColor("_TintColor", new Color(0.7f, 0.7f, 0.7f, 1f));
+            
+            
+            material.DisableKeyword("GEOM_TYPE_BRANCH");
+            material.DisableKeyword("GEOM_TYPE_FROND");
+            material.DisableKeyword("GEOM_TYPE_MESH");
+            material.EnableKeyword("GEOM_TYPE_LEAF");
+            material.EnableKeyword("GEOM_TYPE_BRANCH_DETAIL");
 
             /*var translucency = smokeMaterial.GetFloat(TranslucencyID);
                 smokeMaterial.SetFloat(TranslucencyID, translucency);*/
