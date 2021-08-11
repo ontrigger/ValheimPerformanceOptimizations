@@ -82,11 +82,11 @@ namespace ValheimPerformanceOptimizations
             Pool.Push(toRelease);
         }
 
-        public void Destroy()
+        public void ReleaseAll()
         {
             foreach (var gameObject in Pool)
             {
-                Object.Destroy(gameObject);
+                OnRetrieve?.Invoke(gameObject);
             }
 
             Pool.Clear();

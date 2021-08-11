@@ -33,13 +33,9 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 var meshRenderer = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshRenderer>();
                 var meshFilter = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshFilter>();
-                
-                ValheimPerformanceOptimizations.Logger.LogInfo(meshRenderer);
 
                 SetupRenderingData(meshRenderer.sharedMaterial, meshFilter.sharedMesh);
             }
-            
-            CombineSmokeBySpawners();
         }
 
         private void Update()

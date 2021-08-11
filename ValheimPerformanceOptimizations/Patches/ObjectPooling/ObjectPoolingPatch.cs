@@ -72,9 +72,12 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 var vegetationForPrefab = vegetationGroup.ToList();
                 var prefab = vegetationForPrefab[0].m_prefab;
-                
+
                 // skip prefabs with multiple mods for now
-                if (prefab.GetComponentsInChildren<TerrainModifier>().Length > 1) {continue;}
+                if (prefab.GetComponentsInChildren<TerrainModifier>().Length > 1) { continue; }
+                
+                // skip viewless prefabs
+                if (prefab.GetComponentInChildren<ZNetView>() == null) {continue;}
 
                 ExtractPrefabProcessors(prefab);
 
@@ -123,7 +126,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 objectEnabledProcessor += TerrainModifierEnabledProcessor;
                 objectDisabledProcessor += TerrainModifierDisabledProcessor;
             }
-            
+
             if (prefab.GetComponentInChildren<Destructible>())
             {
                 objectEnabledProcessor += DestructibleEnabledProcessor;
@@ -168,6 +171,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void WearNTearEnabledProcessor(ComponentCache componentCache)
         {
+            if (componentCache.NetView.GetZDO() == null) { return; }
+
             var wearNTear = componentCache.WearNTear;
 
             WearNTear.m_allInstances.Add(wearNTear);
@@ -228,18 +233,18 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
             }
         }
-        
+
         private static void DestructibleDisabledProcessor(ComponentCache componentCache)
         {
             var destructible = componentCache.GetComponentInChildren<Destructible>();
             destructible.CancelInvoke(nameof(Destructible.DestroyNow));
         }
 
-        [HarmonyPatch(typeof(ZoneSystem), "OnDestroy"), HarmonyPostfix]
-        private static void ZoneSystem_OnDestroy_Postfix(ZoneSystem __instance)
+        [HarmonyPatch(typeof(ZNetScene), "Shutdown"), HarmonyPostfix]
+        private static void ZNetScene_OnDestroy_Prefix(ZNetScene __instance)
         {
-            DestroyZoneSystemPool();
-            DestroyZNetScenePool();
+            ReleaseZoneSystemPool();
+            ReleaseZNetScenePool();
         }
 
         private static void OnRetrievedFromPool(GameObject obj)

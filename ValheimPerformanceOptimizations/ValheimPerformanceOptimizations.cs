@@ -58,7 +58,6 @@ namespace ValheimPerformanceOptimizations
                 }
             });
 
-            Logger.LogInfo("LESS GOOOOOOOOOO ");
             OnInitialized?.Invoke();
         }
 

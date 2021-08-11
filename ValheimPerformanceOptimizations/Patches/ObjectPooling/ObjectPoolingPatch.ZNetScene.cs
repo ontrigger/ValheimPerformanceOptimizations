@@ -102,9 +102,10 @@ namespace ValheimPerformanceOptimizations.Patches
             return code.AsEnumerable();
         }
 
-        private static void DestroyZNetScenePool()
+        private static void ReleaseZNetScenePool()
         {
-            PersistentPoolByName.Values.ToList().ForEach(pool => pool.Destroy());
+            PersistentPoolByName.Values.ToList().ForEach(pool => pool.ReleaseAll());
+            PersistentPoolByName.Clear();
         }
     }
 }

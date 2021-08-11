@@ -82,9 +82,10 @@ namespace ValheimPerformanceOptimizations.Patches
             return code.AsEnumerable();
         }
 
-        private static void DestroyZoneSystemPool()
+        private static void ReleaseZoneSystemPool()
         {
-            VegetationPoolByName.Values.ToList().ForEach(pool => pool.Destroy());
+            VegetationPoolByName.Values.ToList().ForEach(pool => pool.ReleaseAll());
+            VegetationPoolByName.Clear();
         }
 
         private static GameObject GetOrInstantiatePersistentObject(GameObject prefab, Vector3 position, Quaternion rotation)
