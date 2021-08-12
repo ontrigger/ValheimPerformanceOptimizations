@@ -25,7 +25,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             var buildPiecePools = ZNetScene.instance.m_prefabs.Where(prefab =>
             {
-                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone")) 
+                return (prefab.name.StartsWith("wood") || prefab.name.StartsWith("stone") || prefab.name.StartsWith("raise")) 
                        && prefab.GetComponent<Piece>();
             }).Select(prefab =>
             {

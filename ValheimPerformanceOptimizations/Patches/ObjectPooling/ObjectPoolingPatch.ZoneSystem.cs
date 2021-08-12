@@ -25,20 +25,6 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 var pool = new GameObjectPool(pair.Key.m_prefab, pair.Value, OnRetrievedFromPool);
 
-                pool.Populate(pair.Value, obj =>
-                {
-                    var component = obj.GetComponent<ZNetView>();
-                    if (component && component.GetZDO() != null)
-                    {
-                        var zDO = component.GetZDO();
-                        component.ResetZDO();
-                        if (zDO.IsOwner())
-                        {
-                            ZDOMan.instance.DestroyZDO(zDO);
-                        }
-                    }
-                });
-
                 VegetationPoolByName[pair.Key.m_prefab.name] = pool;
             });
         }
