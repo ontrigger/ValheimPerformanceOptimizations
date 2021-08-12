@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using BepInEx.Configuration;
 using HarmonyLib;
 
 namespace ValheimPerformanceOptimizations.Patches
@@ -8,9 +9,17 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly ConditionalWeakTable<Character, CachedShipData> Data =
             new ConditionalWeakTable<Character, CachedShipData>();
 
-        public static void Initialize(Harmony harmony)
+        static GetStandingOnShipPatch()
         {
-            harmony.PatchAll(typeof(GetStandingOnShipPatch));
+            ValheimPerformanceOptimizations.OnInitialized += Initialize;
+        }
+
+        private static void Initialize(ConfigFile configFile, Harmony harmony)
+        {
+            if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(ValheimPerformanceOptimizations.ValheimRaftId))
+            {
+                harmony.PatchAll(typeof(GetStandingOnShipPatch));
+            }
         }
 
         private static CachedShipData GetCachedShipData(this Character character)

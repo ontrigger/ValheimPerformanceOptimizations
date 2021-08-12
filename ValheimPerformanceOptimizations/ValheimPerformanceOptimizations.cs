@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BepInEx;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using ValheimPerformanceOptimizations.Patches;
@@ -14,9 +15,9 @@ namespace ValheimPerformanceOptimizations
     {
         public const string PluginId = "dev.ontrigger.vpo";
 
-        public static event Action OnInitialized;
+        public static event Action<ConfigFile, Harmony> OnInitialized;
 
-        private const string ValheimRaftId = "BepIn.Sarcen.ValheimRAFT";
+        internal const string ValheimRaftId = "BepIn.Sarcen.ValheimRAFT";
 
         private static ValheimPerformanceOptimizations _instance;
         private Harmony _harmony;
@@ -34,14 +35,6 @@ namespace ValheimPerformanceOptimizations
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PluginId);
 
-            ObjectPoolingPatch.Initialize(Config, _harmony);
-            ThreadedHeightmapCollisionBakePatch.Initialize(Config, _harmony);
-
-            if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(ValheimRaftId))
-            {
-                GetStandingOnShipPatch.Initialize(_harmony);
-            }
-
             AccessTools.GetTypesFromAssembly(Assembly.GetExecutingAssembly()).Do(type =>
             {
                 // check if class is static
@@ -58,7 +51,7 @@ namespace ValheimPerformanceOptimizations
                 }
             });
 
-            OnInitialized?.Invoke();
+            OnInitialized?.Invoke(Config, _harmony);
         }
 
         private void OnDestroy()

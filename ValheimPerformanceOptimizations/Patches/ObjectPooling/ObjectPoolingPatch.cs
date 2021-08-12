@@ -44,7 +44,12 @@ namespace ValheimPerformanceOptimizations.Patches
         private static ConfigEntry<bool> _objectPoolingEnabled;
         private static ConfigEntry<int> _pooledObjectCount;
 
-        public static void Initialize(ConfigFile configFile, Harmony harmony)
+        static ObjectPoolingPatch()
+        {
+            ValheimPerformanceOptimizations.OnInitialized += Initialize;
+        }
+
+        private static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string keyPooling = "Object pooling enabled";
             const string descriptionPooling =

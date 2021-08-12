@@ -1,3 +1,4 @@
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 
@@ -9,7 +10,6 @@ namespace ValheimPerformanceOptimizations.Patches
     ///     This patch sets the particle material to use a modified Lux shader instead,
     ///     which is vertex-lit by default and is rendered instanced in one pass.
     /// </summary>
-    [HarmonyPatch]
     public static class SmokeRenderingPatch
     {
         private const string AssetBundleName = "smoke_instanced_shader";
@@ -17,29 +17,30 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public static Shader SmokeShader;
 
-        private static bool _smokeShaderSet;
+        private static ConfigEntry<bool> _instancedSmokeRenderingEnabled;
 
         static SmokeRenderingPatch()
         {
             ValheimPerformanceOptimizations.OnInitialized += Initialize;
         }
 
-        private static void Initialize()
+        private static void Initialize(ConfigFile configFile, Harmony harmony)
         {
-            var assetBundle = AssetBundleHelper.GetAssetBundleFromResources(AssetBundleName);
-            SmokeShader = assetBundle.LoadAsset<Shader>(ShaderAssetPath);
+            const string key = "Instanced smoke rendering enabled";
+            const string description =
+                "Experimental: if enabled, smoke puffs will be rendered much faster than before, however, as of right now, " +
+                "the smoke will flicker in certain situations. Disable this if you don't like the way it looks";
+            _instancedSmokeRenderingEnabled = configFile.Bind("General", key, true, description);
+
+            if (_instancedSmokeRenderingEnabled.Value)
+            {
+                harmony.PatchAll(typeof(SmokeRenderingPatch));
+                
+                var assetBundle = AssetBundleHelper.GetAssetBundleFromResources(AssetBundleName);
+                SmokeShader = assetBundle.LoadAsset<Shader>(ShaderAssetPath);
+            }
         }
-
-        /*[HarmonyPatch(typeof(Smoke), "Awake"), HarmonyPostfix]
-        private static void Smoke_Awake_Postfix(Smoke __instance)
-        {
-            if (_smokeShaderSet) { return; }
-
-            __instance.m_mr.sharedMaterial.shader = SmokeShader;
-            __instance.m_mr.sharedMaterial.enableInstancing = true;
-            _smokeShaderSet = true;
-        }*/
-
+        
         [HarmonyPatch(typeof(Smoke), "Awake"), HarmonyPrefix]
         private static bool Smoke_Awake_Prefix(Smoke __instance)
         {

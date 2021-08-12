@@ -18,6 +18,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
 
+        static ThreadedHeightmapCollisionBakePatch()
+        {
+            ValheimPerformanceOptimizations.OnInitialized += Initialize;
+        }
+
         public static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string key = "Threaded terrain collision baking enabled";
