@@ -27,7 +27,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return Data.GetOrCreateValue(character);
         }
 
-        [HarmonyPatch(typeof(Character), "GetStandingOnShip")]
+        [HarmonyPatch(typeof(Character), nameof(Character.GetStandingOnShip))]
         private static bool Prefix(Character __instance, ref Ship __result)
         {
             if (!__instance.IsOnGround())
@@ -57,7 +57,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(Character), "FixedUpdate")]
+        [HarmonyPatch(typeof(Character), nameof(Character.FixedUpdate))]
         private static bool Prefix(Character __instance)
         {
             var data = __instance.GetCachedShipData();

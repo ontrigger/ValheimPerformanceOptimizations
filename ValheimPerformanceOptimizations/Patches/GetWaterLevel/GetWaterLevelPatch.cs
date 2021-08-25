@@ -15,7 +15,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
     {
         private static bool _isPatched;
 
-        [HarmonyPatch(typeof(ZoneSystem), "Awake")]
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Awake))]
         private static void Postfix(ZoneSystem __instance)
         {
             if (_isPatched) return;
@@ -24,7 +24,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
             _isPatched = true;
         }
 
-        [HarmonyPatch(typeof(WaterVolume), "GetWaterLevel")]
+        [HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.GetWaterLevel))]
         private static bool Prefix(WaterVolume __instance, Vector3 p, ref float __result, float waveFactor = 1f)
         {
             if (WaterVolume.m_waterVolumeMask == 0)

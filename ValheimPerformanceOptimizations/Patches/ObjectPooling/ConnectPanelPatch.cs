@@ -15,7 +15,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static Text vpoPoolText;
         
-        [HarmonyPatch(typeof(ConnectPanel), "Start"), HarmonyPostfix]
+        [HarmonyPatch(typeof(ConnectPanel), nameof(ConnectPanel.Start)), HarmonyPostfix]
         private static void ConnectPanel_Start_Postfix(ConnectPanel __instance)
         {
             ObjectsToMove.ForEach(objName =>
@@ -35,7 +35,7 @@ namespace ValheimPerformanceOptimizations.Patches
             vpoPoolText = vpoPoolTextObject.GetComponent<Text>();
         }
 
-        [HarmonyPatch(typeof(ConnectPanel), "Update"), HarmonyPostfix]
+        [HarmonyPatch(typeof(ConnectPanel), nameof(ConnectPanel.Update)), HarmonyPostfix]
         private static void ConnectPanel_Update_Postfix(ConnectPanel __instance)
         {
             vpoPoolText.text = $"{ObjectPoolingPatch.UsedPoolObjects} / {ObjectPoolingPatch.FreePoolObjects} / {ObjectPoolingPatch.MaxPooledObjects}";

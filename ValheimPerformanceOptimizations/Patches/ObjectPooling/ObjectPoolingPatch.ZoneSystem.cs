@@ -29,7 +29,7 @@ namespace ValheimPerformanceOptimizations.Patches
             });
         }
 
-        [HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation"), HarmonyTranspiler]
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.PlaceVegetation)), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> Transpiler(
             IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
@@ -46,7 +46,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return code.AsEnumerable();
         }
 
-        [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyTranspiler]
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnZone)), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> ZoneSystem_SpawnZone_Transpiler(
             IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {

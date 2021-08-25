@@ -14,7 +14,7 @@ namespace ValheimPerformanceOptimizations.Patches
     {
         private static readonly int ClearedMaskTex = Shader.PropertyToID("_ClearedMaskTex");
 
-        [HarmonyPatch(typeof(Heightmap), "Render")]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Render))]
         private static bool Prefix(Heightmap __instance)
         {
             if (!__instance.IsVisible()) return false;

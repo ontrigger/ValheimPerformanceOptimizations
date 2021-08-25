@@ -15,7 +15,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly ConditionalWeakTable<Heightmap, Action<Bounds>> HeightmapChangedCallbacks =
             new ConditionalWeakTable<Heightmap, Action<Bounds>>();
 
-        [HarmonyPatch(typeof(Heightmap), "Regenerate")]
+        [HarmonyPatch(typeof(Heightmap),  nameof(Heightmap.Regenerate))]
         private static void Postfix(Heightmap __instance, Bounds ___m_bounds)
         {
             Action<Bounds> action;
@@ -25,7 +25,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(WaterVolume), "Awake")]
+        [HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.Awake))]
         private static void Postfix(WaterVolume __instance)
         {
             if (!__instance.m_heightmap || !__instance.m_collider)

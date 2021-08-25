@@ -9,7 +9,7 @@ namespace ValheimPerformanceOptimizations.Patches
     ///     minimap never changes in a given world.
     ///     Now it is being saved inside the world folder as a zipped file with the name worldName_worldSeed_gameVersion.map
     /// </summary>
-    [HarmonyPatch(typeof(Minimap), "GenerateWorldMap")]
+    [HarmonyPatch(typeof(Minimap), nameof(Minimap.GenerateWorldMap))]
     public static class MinimapGenerationPatch
     {
         private static bool Prefix(Minimap __instance)
