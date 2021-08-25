@@ -10,10 +10,11 @@ using ValheimPerformanceOptimizations.Patches;
 namespace ValheimPerformanceOptimizations
 {
     [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInPlugin(PluginId, "Valheim Performance Optimizations", "0.6.1")]
+    [BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";
+        public const string PluginVersion = "0.6.1";
 
         public static event Action<ConfigFile, Harmony> OnInitialized;
 
