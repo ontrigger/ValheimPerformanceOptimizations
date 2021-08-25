@@ -160,7 +160,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
 
-        [HarmonyPatch(typeof(ZNetScene), "Awake")]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
         private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
         {
             if (_isPatched) return;

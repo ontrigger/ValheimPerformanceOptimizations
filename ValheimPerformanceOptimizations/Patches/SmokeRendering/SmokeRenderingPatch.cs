@@ -41,7 +41,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
         
-        [HarmonyPatch(typeof(Smoke), "Awake"), HarmonyPrefix]
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.Awake)), HarmonyPrefix]
         private static bool Smoke_Awake_Prefix(Smoke __instance)
         {
             __instance.m_body = __instance.GetComponent<Rigidbody>();
@@ -57,7 +57,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(SmokeSpawner), "Start"), HarmonyPrefix]
+        [HarmonyPatch(typeof(SmokeSpawner), nameof(SmokeSpawner.Start)), HarmonyPrefix]
         private static bool SmokeSpawner_Start_Prefix(SmokeSpawner __instance)
         {
             VPOSmokeSpawner.SmokePrefab = __instance.m_smokePrefab;
@@ -72,7 +72,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(Smoke), "OnDestroy"), HarmonyPrefix]
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.OnDestroy)), HarmonyPrefix]
         private static bool Smoke_OnDestroy_Prefix(Smoke __instance)
         {
             Smoke.m_smoke.Remove(__instance);
@@ -85,7 +85,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(Smoke), "StartFadeOut"), HarmonyPrefix]
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.StartFadeOut)), HarmonyPrefix]
         private static bool Smoke_StartFadeOut_Prefix(Smoke __instance)
         {
             if (!(__instance.m_fadeTimer >= 0f))
@@ -101,7 +101,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(Smoke), "FadeOldest"), HarmonyPrefix]
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.FadeOldest)), HarmonyPrefix]
         private static bool FadeOldest(Smoke __instance)
         {
             if (Smoke.m_smoke.Count == 0) return false;
@@ -123,7 +123,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
 
-        [HarmonyPatch(typeof(Smoke), "Update"), HarmonyPrefix]
+        [HarmonyPatch(typeof(Smoke), nameof(Smoke.Update)), HarmonyPrefix]
         private static bool Smoke_Update_Prefix(Smoke __instance)
         {
             __instance.m_time += Time.deltaTime;

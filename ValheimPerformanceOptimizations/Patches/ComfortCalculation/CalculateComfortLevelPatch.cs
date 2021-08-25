@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations.Patches
     ///     If a piece is in a comfortGroup, only the highest m_comfort of this group is used. If no comfortGroup is given,
     ///     the name is once added
     /// </summary>
-    [HarmonyPatch(typeof(SE_Rested), "CalculateComfortLevel")]
+    [HarmonyPatch(typeof(SE_Rested), nameof(SE_Rested.CalculateComfortLevel))]
     public static class CalculateComfortLevelPatch
     {
         private static bool Prefix(SE_Rested __instance, Player player, out int __result)

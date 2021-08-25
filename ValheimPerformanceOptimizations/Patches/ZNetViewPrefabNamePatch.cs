@@ -35,7 +35,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly FieldInfo VegetationPrefabField =
             AccessTools.Field(typeof(ZoneSystem.ZoneVegetation), "m_prefab");
 
-        [HarmonyPatch(typeof(ZNetView), "GetPrefabName")]
+        [HarmonyPatch(typeof(ZNetView), nameof(ZNetView.GetPrefabName))]
         private static bool Prefix(ZNetView __instance, ref string __result)
         {
             __result = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
@@ -43,7 +43,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
         
         // this gets overwritten if object pooling is enabled
-        [HarmonyTranspiler, HarmonyPatch(typeof(ZoneSystem), "PlaceVegetation")]
+        [HarmonyTranspiler, HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.PlaceVegetation))]
         public static IEnumerable<CodeInstruction> Transpile_ZoneSystem_PlaceVegetation(
             IEnumerable<CodeInstruction> instructions)
         {

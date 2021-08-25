@@ -69,7 +69,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ZoneSystem), "Start")]
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
         public static void Postfix(ZoneSystem __instance)
         {
             var maxObjectsByVegetation = new Dictionary<ZoneSystem.ZoneVegetation, int>();
@@ -245,7 +245,7 @@ namespace ValheimPerformanceOptimizations.Patches
             destructible.CancelInvoke(nameof(Destructible.DestroyNow));
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "Shutdown"), HarmonyPostfix]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPostfix]
         private static void ZNetScene_OnDestroy_Prefix(ZNetScene __instance)
         {
             ReleaseZoneSystemPool();

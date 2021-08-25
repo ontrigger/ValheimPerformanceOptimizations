@@ -36,7 +36,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(Heightmap), "OnEnable"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnEnable)), HarmonyPostfix]
         private static void OnEnablePatch(Heightmap __instance)
         {
             if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
@@ -62,7 +62,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return any && ready;
         }
 
-        [HarmonyPatch(typeof(Heightmap), "Awake"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake)), HarmonyPostfix]
         private static void AwakePatch(Heightmap __instance)
         {
             if (__instance.m_collider)
@@ -79,7 +79,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         // remove line: 'm_collider.sharedMesh = m_collisionMesh;'
         // it must not be called yet, no collision data is baked
-        [HarmonyPatch(typeof(Heightmap), "RebuildCollisionMesh"), HarmonyTranspiler]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> RebuildCollisionMeshTranspiler(
             IEnumerable<CodeInstruction> instructions)
         {
@@ -104,7 +104,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         // enqueue current collision mesh to be baked in the separate thread
-        [HarmonyPatch(typeof(Heightmap), "RebuildCollisionMesh"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyPostfix]
         private static void RebuildCollisionMeshPatch(Heightmap __instance)
         {
             if (__instance.m_collider)
@@ -113,7 +113,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(Heightmap), "OnDestroy"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnDestroy)), HarmonyPostfix]
         private static void OnDestroyPatch(Heightmap __instance)
         {
             if (!ZoneSystem.instance) return;
@@ -125,7 +125,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ClutterSystem), "IsHeightmapReady"), HarmonyPostfix]
+        [HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady)), HarmonyPostfix]
         private static void IsHeightmapReadyPatch(ClutterSystem __instance, ref bool __result)
         {
             // only change the result if it was true
@@ -136,7 +136,7 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         // spawn the heightmap GameObject but not call any placement until the heightmap has a collision mesh
-        [HarmonyPatch(typeof(ZoneSystem), "SpawnZone"), HarmonyPrefix]
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnZone)), HarmonyPrefix]
         private static bool SpawnZone(
             ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
         {
@@ -191,7 +191,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "Shutdown"), HarmonyPostfix]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPostfix]
         public static void ZNetScene_Shutdown_Postfix(ZNetScene __instance)
         {
             SpawnedZones.Clear();

@@ -6,7 +6,7 @@ namespace ValheimPerformanceOptimizations.Patches
     [HarmonyPatch]
     public class ClutterSystemRenderQueuePatch
     {
-        [HarmonyPatch(typeof(ClutterSystem), "Awake")]
+        [HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.Awake))]
         private static void Postfix(ClutterSystem __instance)
         {
             foreach (var clutter in __instance.m_clutter)

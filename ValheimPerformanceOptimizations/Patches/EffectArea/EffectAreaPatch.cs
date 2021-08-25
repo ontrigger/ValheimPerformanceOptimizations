@@ -6,7 +6,7 @@ namespace ValheimPerformanceOptimizations.Patches
     [HarmonyPatch]
     public static class EffectAreaPatch
     {
-        [HarmonyPatch(typeof(EffectArea), "Awake")]
+        [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.Awake))]
         private static bool Prefix(EffectArea __instance)
         {
             var patchedEffectArea = __instance.gameObject.AddComponent<VPOEffectArea>();

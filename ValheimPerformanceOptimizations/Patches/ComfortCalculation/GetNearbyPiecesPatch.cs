@@ -15,7 +15,7 @@ namespace ValheimPerformanceOptimizations.Patches
     {
         public static readonly Dictionary<int, Piece> AllComfortPieces = new Dictionary<int, Piece>();
 
-        [HarmonyPatch(typeof(Piece), "Awake"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Piece), nameof(Piece.Awake)), HarmonyPostfix]
         public static void AwakePatch(Piece __instance)
         {
             if (Piece.ghostLayer == 0)
@@ -29,7 +29,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(Piece), "OnDestroy"), HarmonyPostfix]
+        [HarmonyPatch(typeof(Piece), nameof(Piece.OnDestroy)), HarmonyPostfix]
         public static void OnDestroyPatch(Piece __instance)
         {
             if (AllComfortPieces.ContainsKey(__instance.GetInstanceID()))

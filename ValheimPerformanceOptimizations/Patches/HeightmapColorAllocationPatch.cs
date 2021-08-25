@@ -11,7 +11,7 @@ namespace ValheimPerformanceOptimizations.Patches
     {
         private static Color[] _clearColors;
 
-        [HarmonyPatch(typeof(Heightmap), "Awake")]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
         public static void Postfix(Heightmap __instance)
         {
             if (_clearColors == null && !__instance.m_isDistantLod)
@@ -20,7 +20,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(Heightmap), "Generate")]
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Generate))]
         public static bool Prefix(Heightmap __instance)
         {
             __instance.Initialize();

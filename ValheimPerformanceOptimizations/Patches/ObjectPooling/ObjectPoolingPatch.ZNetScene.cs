@@ -48,7 +48,7 @@ namespace ValheimPerformanceOptimizations.Patches
             vegetationPools.ForEach(pair => PersistentPoolByName.Add(pair.Key, pair.Value));
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "RemoveObjects"), HarmonyTranspiler]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.RemoveObjects)), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> ZNetScene_RemoveObjects_Transpiler(
             IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
@@ -82,7 +82,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return code.AsEnumerable();
         }
 
-        [HarmonyPatch(typeof(ZNetScene), "CreateObject"), HarmonyTranspiler]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObject)), HarmonyTranspiler]
         private static IEnumerable<CodeInstruction> ZNetScene_CreateObject_Transpiler(
             IEnumerable<CodeInstruction> instructions)
         {
