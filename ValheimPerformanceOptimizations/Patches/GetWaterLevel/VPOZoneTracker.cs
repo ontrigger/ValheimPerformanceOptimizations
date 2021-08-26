@@ -23,7 +23,11 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
                 WaterVolume = GetComponentInChildren<WaterVolume>()
             };
 
-            ZoneComponentsByLocation.Add(zonePosition, cachedData);
+            // temp workaround for EpicLoot spawning zones in Client mode
+            if (!ZoneComponentsByLocation.ContainsKey(zonePosition))
+            {
+                ZoneComponentsByLocation.Add(zonePosition, cachedData);
+            }
         }
 
         private void OnDestroy()
