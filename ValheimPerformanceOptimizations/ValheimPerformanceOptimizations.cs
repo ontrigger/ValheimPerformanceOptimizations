@@ -5,7 +5,6 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
-using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -14,7 +13,7 @@ namespace ValheimPerformanceOptimizations
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";
-        public const string PluginVersion = "0.6.1";
+        public const string PluginVersion = "0.7.0";
 
         public static event Action<ConfigFile, Harmony> OnInitialized;
 

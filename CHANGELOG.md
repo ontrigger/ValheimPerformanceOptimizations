@@ -1,3 +1,11 @@
+# Changes in 0.7
+
+* New object pooling system for build pieces - less lag when entering bases
+* New smoke rendering solution - less lag rendering smoke puffs
+* Snow storms no longer tank fps
+* Fixed grass not appearing in the main menu
+* Fixed objects spawning at 0 0
+
 # Changes in 0.6.1
 
 * Fixed an incompatibility with BetterWards causing mobs inside the ward radius to flee

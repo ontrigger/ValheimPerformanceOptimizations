@@ -4,17 +4,13 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
-## Changes in 0.6.1
+## New in 0.7.0
 
-* Fixed an incompatibility with BetterWards causing mobs inside the ward radius to flee
-* Fixed the GPU being invoked on the server causing an exception at startup
-
-## New in 0.6.0
-
-* Optimized rendering of build pieces with straw materials
-* Rewrote the threaded terrain collision baking to use all cores (enable it in the config)
-* Fixed incompatibility with ValheimRAFT
-* Fixed crash when only terrain collision baking was enabled
+* New object pooling system for build pieces - less lag when entering bases
+* New smoke rendering solution - less lag rendering smoke puffs
+* Snow storms no longer tank fps
+* Fixed grass not appearing in the main menu
+* Fixed objects spawning at 0 0
 
 Rest of the changes can be found in `CHANGELOG.md`
 
