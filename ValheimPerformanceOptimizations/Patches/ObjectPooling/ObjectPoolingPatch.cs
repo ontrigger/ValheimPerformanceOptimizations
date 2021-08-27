@@ -80,9 +80,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
                 // skip prefabs with multiple mods for now
                 if (prefab.GetComponentsInChildren<TerrainModifier>().Length > 1) { continue; }
-                
+
                 // skip viewless prefabs
-                if (prefab.GetComponentInChildren<ZNetView>() == null) {continue;}
+                if (prefab.GetComponentInChildren<ZNetView>() == null) { continue; }
 
                 ExtractPrefabProcessors(prefab);
 
@@ -94,7 +94,6 @@ namespace ValheimPerformanceOptimizations.Patches
             ZNetView.StartGhostInit();
 
             CreateZoneSystemPool(maxObjectsByVegetation);
-
             CreateZNetScenePool(maxObjectsByVegetation);
             ZNetView.FinishGhostInit();
         }
@@ -203,6 +202,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static void PieceEnabledProcessor(ComponentCache componentCache)
         {
             var piece = componentCache.Piece;
+            if (piece == null) { return; }
 
             Piece.m_allPieces.Add(piece);
             piece.m_myListIndex = Piece.m_allPieces.Count - 1;
@@ -211,6 +211,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void PieceDisabledProcessor(ComponentCache componentCache)
         {
+            // RuneMagic destroys the piece component on some rocks causing the unchecked code to crash
+            if (componentCache.Piece == null) { return; }
+
             componentCache.Piece.OnDestroy();
         }
 
