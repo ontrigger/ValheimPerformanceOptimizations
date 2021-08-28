@@ -92,6 +92,7 @@
         <Compile Include="Patches\GetWaterLevel\GetWaterLevelPatch.cs" />
         <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs" />
         <Compile Include="Patches\HeightmapColorAllocationPatch.cs" />
+        <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs" />
         <Compile Include="Patches\MinimapGenerationPatch.cs" />
         <Compile Include="Patches\ObjectPooling\ConnectPanelPatch.cs" />
         <Compile Include="Patches\ObjectPooling\ObjectPoolingPatch.ZNetScene.cs" />
