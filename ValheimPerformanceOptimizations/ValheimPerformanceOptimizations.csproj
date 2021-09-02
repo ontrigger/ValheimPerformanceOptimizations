@@ -9,7 +9,7 @@
         <AppDesignerFolder>Properties</AppDesignerFolder>
         <RootNamespace>ValheimPerformanceOptimizations</RootNamespace>
         <AssemblyName>ValheimPerformanceOptimizations</AssemblyName>
-        <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+        <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
         <FileAlignment>512</FileAlignment>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -81,6 +81,10 @@
         <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.UI.dll</HintPath>
         </Reference>
+        <Reference Include="Jotunn, Version=2.2.6.0, Culture=neutral, PublicKeyToken=null">
+            <HintPath>$(VALHEIM_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
     <ItemGroup>
         <Compile Include="Patches\ClutterSystemRenderQueuePatch.cs" />
@@ -107,10 +111,15 @@
         <Compile Include="Patches\ThreadedHeightmapCollisionBake\ThreadedHeightmapCollisionBakePatch.cs" />
         <Compile Include="Patches\ThreadedHeightmapCollisionBake\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
+        <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
         <Compile Include="Patches\WaterVolumeVisibilityPatch.cs" />
         <Compile Include="Utils\AssetBundleHelper.cs" />
+        <Compile Include="Utils\BoundsOctree.cs" />
+        <Compile Include="Utils\BoundsOctreeNode.cs" />
+        <Compile Include="Utils\Extensions\BoundsX.cs" />
         <Compile Include="Utils\GameObjectPool.cs" />
+        <Compile Include="Utils\ModCompatibility.cs" />
         <Compile Include="ValheimPerformanceOptimizations.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>

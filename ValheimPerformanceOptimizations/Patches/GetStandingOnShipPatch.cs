@@ -16,7 +16,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void Initialize(ConfigFile configFile, Harmony harmony)
         {
-            if (!BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(ValheimPerformanceOptimizations.ValheimRaftId))
+            if (!ModCompatibility.IsValheimRaftPresent)
             {
                 harmony.PatchAll(typeof(GetStandingOnShipPatch));
             }

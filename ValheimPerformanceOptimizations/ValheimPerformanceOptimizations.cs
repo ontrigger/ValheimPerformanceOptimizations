@@ -9,6 +9,7 @@ using HarmonyLib;
 namespace ValheimPerformanceOptimizations
 {
     [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(JotunnId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
@@ -18,6 +19,7 @@ namespace ValheimPerformanceOptimizations
         public static event Action<ConfigFile, Harmony> OnInitialized;
 
         internal const string ValheimRaftId = "BepIn.Sarcen.ValheimRAFT";
+        internal const string JotunnId = "com.jotunn.jotunn";
 
         private static ValheimPerformanceOptimizations _instance;
         private Harmony _harmony;
@@ -51,6 +53,7 @@ namespace ValheimPerformanceOptimizations
                 }
             });
 
+            ModCompatibility.Initialize();
             OnInitialized?.Invoke(Config, _harmony);
         }
 

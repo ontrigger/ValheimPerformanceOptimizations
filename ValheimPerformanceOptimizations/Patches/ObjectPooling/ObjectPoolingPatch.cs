@@ -177,26 +177,21 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             if (componentCache.NetView.GetZDO() == null) { return; }
 
-            var wearNTear = componentCache.WearNTear;
-
-            WearNTear.m_allInstances.Add(wearNTear);
-            wearNTear.m_myIndex = WearNTear.m_allInstances.Count - 1;
-            wearNTear.m_createTime = Time.time;
-            wearNTear.m_support = wearNTear.GetMaxSupport();
-            wearNTear.m_piece = wearNTear.GetComponent<Piece>();
-            wearNTear.m_colliders = null;
-            if (WearNTear.m_randomInitialDamage)
-            {
-                var value = Random.Range(0.1f * wearNTear.m_health, wearNTear.m_health * 0.6f);
-                componentCache.NetView.GetZDO().Set("health", value);
-            }
-
-            wearNTear.UpdateVisual(false);
+            componentCache.WearNTear.Awake();
         }
 
         private static void WearNTearDisabledProcessor(ComponentCache componentCache)
         {
             componentCache.WearNTear.OnDestroy();
+            
+            var zNetView = componentCache.NetView;
+            zNetView.Unregister("WNTRemove");
+            zNetView.Unregister("WNTDamage");
+            zNetView.Unregister("WNTRepair");
+            zNetView.Unregister("WNTHealthChanged");
+            zNetView.Unregister("WNTCreateFragments");
+            
+            componentCache.WearNTear.m_colliders = null;
         }
 
         private static void PieceEnabledProcessor(ComponentCache componentCache)
@@ -257,7 +252,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void OnRetrievedFromPool(GameObject obj)
         {
-            Profiler.BeginSample("POOL RETRIEVE");
             var netView = obj.GetComponent<ZNetView>();
             netView.Awake();
 
@@ -273,8 +267,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
                 processor(componentCache);
             }
-
-            Profiler.EndSample();
         }
 
         private static void OnReturnedToPool(GameObject obj)
