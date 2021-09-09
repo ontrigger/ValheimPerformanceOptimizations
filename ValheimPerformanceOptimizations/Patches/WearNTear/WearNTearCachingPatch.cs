@@ -387,23 +387,24 @@ namespace ValheimPerformanceOptimizations.Patches
                 Profiler.BeginSample("super computin");
                 for (int j = 0; j < WearNTear.m_tempSupportPoints.Count; j++)
                 {
-                    Vector3 from = WearNTear.m_tempSupportPoints[j] - cOM;
+                    var from = WearNTear.m_tempSupportPoints[j] - cOM;
                     from.y = 0f;
-                    for (int k = 0; k < WearNTear.m_tempSupportPoints.Count; k++)
+                    for (var k = j; k < WearNTear.m_tempSupportPoints.Count; k++)
                     {
-                        if (j != k)
+                        if (j == k) continue;
+
+                        var to = WearNTear.m_tempSupportPoints[k] - cOM;
+                        to.y = 0f;
+
+                        if (Vector3.Angle(@from, to) >= 100f)
                         {
-                            Vector3 to = WearNTear.m_tempSupportPoints[k] - cOM;
-                            to.y = 0f;
-                            if (Vector3.Angle(from, to) >= 100f)
-                            {
-                                float b2 = (WearNTear.m_tempSupportPointValues[j] +
-                                            WearNTear.m_tempSupportPointValues[k]) * 0.5f;
-                                a = Mathf.Max(a, b2);
-                            }
+                            var b2 = (WearNTear.m_tempSupportPointValues[j] +
+                                      WearNTear.m_tempSupportPointValues[k]) * 0.5f;
+                            a = Mathf.Max(a, b2);
                         }
                     }
                 }
+
                 Profiler.EndSample();
             }
 
@@ -496,10 +497,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public bool CheckSupportUnchanged(float distanceToWnt, float otherWntSupport)
         {
-            if (this.OtherWntSupport < 0 || DistanceToOtherWnt < 0) { return false; }
+            if (OtherWntSupport < 0 || DistanceToOtherWnt < 0) { return false; }
 
             return DistanceToOtherWnt.IsNearlyEqual(distanceToWnt)
-                   && this.OtherWntSupport.IsNearlyEqual(otherWntSupport);
+                   && OtherWntSupport.IsNearlyEqual(otherWntSupport);
         }
     }
 
