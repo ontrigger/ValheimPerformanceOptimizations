@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
@@ -23,6 +25,15 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly Dictionary<int, CachedWearNTearData> WearNTearCache
             = new Dictionary<int, CachedWearNTearData>();
+
+        private static readonly MethodInfo HaveRoofMethod
+            = AccessTools.DeclaredMethod(typeof(WearNTear), nameof(WearNTear.HaveRoof));
+
+        private static readonly MethodInfo GetEnvManInstanceMethod
+            = AccessTools.DeclaredMethod(typeof(EnvMan), "get_instance");
+
+        private static readonly MethodInfo IsWetMethod
+            = AccessTools.DeclaredMethod(typeof(EnvMan), nameof(EnvMan.IsWet));
 
         [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake)), HarmonyPostfix]
         private static void Postfix(ZNetScene __instance)
@@ -77,21 +88,21 @@ namespace ValheimPerformanceOptimizations.Patches
                             }
                             case SphereCollider sphereCollider:
                                 size = sphereCollider.radius * 2 * Vector3.one;
-                                
+
                                 accBounds.Encapsulate(new Bounds(Vector3.zero, size));
                                 return accBounds;
                             default:
                             {
                                 var bounds = collider.bounds;
                                 bounds.center = Vector3.zero;
-                                
+
                                 accBounds.Encapsulate(bounds);
                                 return accBounds;
                             }
                         }
                     });
 
-                
+
                 MaxBoundsForPrefab[prefab.name] = maxPossibleBounds;
 
                 StaticPrefabs.Add(prefab.name);
@@ -132,7 +143,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (!MaxBoundsForPrefab.TryGetValue(objName, out var maxBounds)) return;
 
             maxBounds.center = __instance.transform.position;
-            
+
             WearNTearIdTree.Add(__instance.GetInstanceID(), maxBounds);
         }
 
@@ -143,7 +154,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (!MaxBoundsForPrefab.TryGetValue(objName, out var maxBounds)) return;
 
             maxBounds.center = __instance.transform.position;
-            
+
             Profiler.BeginSample("normal remove");
             var removed = WearNTearIdTree.Remove(__instance.GetInstanceID(), maxBounds);
             if (!removed)
@@ -206,6 +217,48 @@ namespace ValheimPerformanceOptimizations.Patches
             WearNTearCache[__instance.GetInstanceID()] = myCache;
 
             return false;
+        }
+
+        /// <summary>
+        /// adds an IsWet check before trying to call HaveRoof like this
+        /// bool flag = true;
+        /// if (EnvMan.instance.IsWet())
+        /// {
+        ///     flag = HaveRoof();
+        /// }
+        /// </summary>
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateWear)), HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> WearNTear_UpdateWear_Transpiler(
+            IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        {
+            var code = new List<CodeInstruction>(instructions);
+
+            var getInstanceLabel = code.FindIndex(c => c.Is(OpCodes.Call, GetEnvManInstanceMethod));
+            var getInstanceJumpLabel = generator.DefineLabel();
+            code[getInstanceLabel].labels.Add(getInstanceJumpLabel);
+
+            var haveRoofCallIndex = code.FindIndex(c => c.Is(OpCodes.Call, HaveRoofMethod));
+            code.RemoveRange(haveRoofCallIndex - 1, 2);
+
+            code.Insert(haveRoofCallIndex - 1, new CodeInstruction(OpCodes.Ldc_I4_1));
+
+            code.Insert(haveRoofCallIndex + 1, new CodeInstruction(OpCodes.Call, GetEnvManInstanceMethod));
+            code.Insert(haveRoofCallIndex + 2, new CodeInstruction(OpCodes.Callvirt, IsWetMethod));
+
+            var isWetLocal = generator.DeclareLocal(typeof(bool));
+            code.InsertRange(haveRoofCallIndex + 3, new[]
+            {
+                new CodeInstruction(OpCodes.Stloc_S, isWetLocal.LocalIndex),
+                new CodeInstruction(OpCodes.Ldloc_S, isWetLocal.LocalIndex),
+                new CodeInstruction(OpCodes.Brfalse_S, getInstanceJumpLabel),
+                new CodeInstruction(OpCodes.Nop),
+                new CodeInstruction(OpCodes.Ldarg_0),
+                new CodeInstruction(OpCodes.Call, HaveRoofMethod),
+                new CodeInstruction(OpCodes.Stloc_1),
+                new CodeInstruction(OpCodes.Nop)
+            });
+
+            return code.AsEnumerable();
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateSupport)), HarmonyPrefix]
