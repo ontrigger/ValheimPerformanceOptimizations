@@ -42,6 +42,14 @@ namespace ValheimPerformanceOptimizations.Patches
             return false;
         }
         
+        [HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake))]
+        private static void Postfix(ZNetView __instance)
+        {
+            if (ZNetView.m_ghostInit || __instance == null) return;
+            
+            __instance.name = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
+        }
+        
         // this gets overwritten if object pooling is enabled
         [HarmonyTranspiler, HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.PlaceVegetation))]
         public static IEnumerable<CodeInstruction> Transpile_ZoneSystem_PlaceVegetation(

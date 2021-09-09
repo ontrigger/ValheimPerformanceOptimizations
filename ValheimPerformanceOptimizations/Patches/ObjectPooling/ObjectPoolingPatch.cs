@@ -271,7 +271,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void OnReturnedToPool(GameObject obj)
         {
-            var prefabName = Utils.GetPrefabName(obj);
+            var prefabName = obj.name;
 
             if (PrefabDestroyProcessors.TryGetValue(prefabName, out var processor))
             {

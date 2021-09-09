@@ -5,6 +5,7 @@ using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Profiling;
+using ValheimPerformanceOptimizations.Extensions;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -17,11 +18,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly Dictionary<string, Bounds> MaxBoundsForPrefab = new Dictionary<string, Bounds>();
 
-        private static readonly BoundsOctree<WearNTear> WearNTearTree =
-            new BoundsOctree<WearNTear>(4f, Vector3.zero, 2f, 1);
+        private static readonly BoundsOctree<int> WearNTearIdTree =
+            new BoundsOctree<int>(192f, Vector3.zero, 2f, 1.12f);
 
-        private static readonly Dictionary<WearNTear, CachedWearNTearData> WearNTearCache
-            = new Dictionary<WearNTear, CachedWearNTearData>();
+        private static readonly Dictionary<int, CachedWearNTearData> WearNTearCache
+            = new Dictionary<int, CachedWearNTearData>();
 
         [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake)), HarmonyPostfix]
         private static void Postfix(ZNetScene __instance)
@@ -51,27 +52,46 @@ namespace ValheimPerformanceOptimizations.Patches
                 if (!hasAnyOfTheLayers) return;
 
                 var netView = prefab.GetComponent<ZNetView>();
-                if (netView == null) return;
+                if (netView == null) { return; }
 
                 if (prefab.GetComponent<Character>() || prefab.GetComponent<Pickable>()) return;
 
                 if (!prefab.GetComponentInChildren<Collider>()) return;
 
-                /*ValheimPerformanceOptimizations.Logger.LogInfo(
-                    prefab.name
-                    + " " + LayerMask.LayerToName(objectLayer) + " "
-                    + prefab.GetComponentInChildren<Rigidbody>()
-                );*/
-
                 var maxPossibleBounds = prefab.GetComponentsInChildren<Collider>(true)
                     .Where(collider => !collider.isTrigger && collider.attachedRigidbody == null)
-                    .Select(collider => collider.bounds)
-                    .Aggregate((accBounds, bounds) =>
+                    .Aggregate(new Bounds(), (accBounds, collider) =>
                     {
-                        accBounds.Encapsulate(bounds);
-                        return accBounds;
+                        Vector3 size;
+                        switch (collider)
+                        {
+                            case BoxCollider boxCollider:
+                            {
+                                var lossyScale = boxCollider.transform.lossyScale;
+                                size = boxCollider.size;
+                                var actualSize = new Vector3(lossyScale.x * size.x, lossyScale.y * size.y,
+                                                             lossyScale.z * size.z);
+
+                                accBounds.Encapsulate(new Bounds(Vector3.zero, actualSize));
+                                return accBounds;
+                            }
+                            case SphereCollider sphereCollider:
+                                size = sphereCollider.radius * 2 * Vector3.one;
+                                
+                                accBounds.Encapsulate(new Bounds(Vector3.zero, size));
+                                return accBounds;
+                            default:
+                            {
+                                var bounds = collider.bounds;
+                                bounds.center = Vector3.zero;
+                                
+                                accBounds.Encapsulate(bounds);
+                                return accBounds;
+                            }
+                        }
                     });
 
+                
                 MaxBoundsForPrefab[prefab.name] = maxPossibleBounds;
 
                 StaticPrefabs.Add(prefab.name);
@@ -89,18 +109,20 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if (!MaxBoundsForPrefab.TryGetValue(prefabName, out var maxBounds)) return;
 
+            var extents = maxBounds.extents;
+            var maxRadius = Mathf.Max(extents.x, extents.y, extents.z);
+
             Profiler.BeginSample("check overlap");
-            maxBounds.center = __instance.transform.position;
-            var overlapList = new List<WearNTear>();
-            WearNTearTree.GetOverlappingXZ(overlapList, maxBounds);
+            var overlapList = new List<int>();
+            WearNTearIdTree.GetOverlapping(overlapList, __instance.transform.position, maxRadius);
             Profiler.EndSample();
 
             ClearWearNTearCaches(overlapList);
         }
 
-        private static void ClearWearNTearCaches(List<WearNTear> toClear)
+        private static void ClearWearNTearCaches(List<int> toClear)
         {
-            toClear.ForEach(wearNTear => WearNTearCache.Remove(wearNTear));
+            toClear.ForEach(wearNTearId => WearNTearCache.Remove(wearNTearId));
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Awake)), HarmonyPostfix]
@@ -110,34 +132,55 @@ namespace ValheimPerformanceOptimizations.Patches
             if (!MaxBoundsForPrefab.TryGetValue(objName, out var maxBounds)) return;
 
             maxBounds.center = __instance.transform.position;
-
-            WearNTearTree.Add(__instance.GetComponentInChildren<WearNTear>(), maxBounds);
+            
+            WearNTearIdTree.Add(__instance.GetInstanceID(), maxBounds);
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.OnDestroy)), HarmonyPostfix]
         private static void WearNTear_OnDestroy_Postfix(WearNTear __instance)
         {
-            var objName = Utils.GetPrefabName(__instance.gameObject);
+            var objName = __instance.gameObject.name;
             if (!MaxBoundsForPrefab.TryGetValue(objName, out var maxBounds)) return;
 
             maxBounds.center = __instance.transform.position;
-
-            var removed = WearNTearTree.Remove(__instance, maxBounds);
+            
+            Profiler.BeginSample("normal remove");
+            var removed = WearNTearIdTree.Remove(__instance.GetInstanceID(), maxBounds);
             if (!removed)
             {
-                removed = WearNTearTree.Remove(__instance);
-                ValheimPerformanceOptimizations.Logger.LogInfo(
-                    $"Why {removed} {__instance.name} {__instance.transform.position}");
+                Profiler.BeginSample("why so slo");
+                WearNTearIdTree.Remove(__instance.GetInstanceID());
+                Profiler.EndSample();
             }
 
-            WearNTearCache.Remove(__instance);
+            Profiler.EndSample();
+
+            Profiler.BeginSample("overlap slow asf");
+            if (!ZNetScene.instance.OutsideActiveArea(__instance.transform.position))
+            {
+                var toClear = new List<int>();
+                maxBounds.Expand(0.5f);
+                var extents = maxBounds.extents;
+
+                var maxRadius = Mathf.Max(extents.x, extents.y, extents.z);
+                WearNTearIdTree.GetOverlapping(toClear, maxBounds.center, maxRadius);
+
+                var maxBoundsCenter = maxBounds.center;
+                maxBoundsCenter.y += 0.5f;
+
+                ClearWearNTearCaches(toClear);
+            }
+
+            Profiler.EndSample();
+
+            WearNTearCache.Remove(__instance.GetInstanceID());
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.HaveRoof)), HarmonyPrefix]
         private static bool HaveRoof(WearNTear __instance, out bool __result)
         {
             __result = false;
-            if (WearNTearCache.TryGetValue(__instance, out var myCache))
+            if (WearNTearCache.TryGetValue(__instance.GetInstanceID(), out var myCache))
             {
                 __result = myCache.HaveRoof;
                 return false;
@@ -153,14 +196,14 @@ namespace ValheimPerformanceOptimizations.Patches
                 {
                     myCache.HaveRoof = true;
                     __result = true;
-                    WearNTearCache[__instance] = myCache;
+                    WearNTearCache[__instance.GetInstanceID()] = myCache;
 
                     return false;
                 }
             }
 
             myCache.HaveRoof = false;
-            WearNTearCache[__instance] = myCache;
+            WearNTearCache[__instance.GetInstanceID()] = myCache;
 
             return false;
         }
@@ -182,18 +225,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
             Profiler.BeginSample("HELLO?");
 
-            if (!WearNTearCache.TryGetValue(__instance, out var myCache))
+            if (!WearNTearCache.TryGetValue(__instance.GetInstanceID(), out var myCache))
             {
                 myCache = new CachedWearNTearData();
-            }
-
-            if (myCache.SupportCached)
-            {
-                __instance.m_support = myCache.Support;
-                __instance.m_nview.GetZDO().Set("support", __instance.m_support);
-
-                Profiler.EndSample();
-                return false;
             }
 
             Profiler.EndSample();
@@ -201,7 +235,7 @@ namespace ValheimPerformanceOptimizations.Patches
             Profiler.BeginSample("yooo");
 
             var boundCount = 0;
-            var what = 0;
+            var unchangedSupports = 0;
             foreach (var bound in __instance.m_bounds)
             {
                 Profiler.BeginSample("get support");
@@ -223,13 +257,13 @@ namespace ValheimPerformanceOptimizations.Patches
 
                         myCache.Support = maxSupport;
                         myCache.ColliderSupportsForBound[bound] = colliderSupports;
-                        WearNTearCache[__instance] = myCache;
+                        WearNTearCache[__instance.GetInstanceID()] = myCache;
 
                         Profiler.EndSample();
                         return false;
                     }
 
-                    if (!otherWearNTear.m_supports) {continue; }
+                    if (!otherWearNTear.m_supports) { continue; }
 
                     boundCount += 1;
 
@@ -241,16 +275,16 @@ namespace ValheimPerformanceOptimizations.Patches
                     Profiler.EndSample();
                     a = Mathf.Max(a, support - horizontalLoss * num2 * support);
 
-                    if (colliderSupportData.OtherWNTSupport >= 0 
-                        && Math.Abs(colliderSupportData.OtherWNTSupport - support) < 0.0001)
+                    if (colliderSupportData.CheckSupportUnchanged(num2, support))
                     {
-                        what += 1;
+                        unchangedSupports += 1;
                     }
 
-                    colliderSupportData.OtherWNTSupport = support;
+                    colliderSupportData.OtherWntSupport = support;
+                    colliderSupportData.DistanceToOtherWnt = num2;
 
                     Profiler.BeginSample("find support");
-                    var vector = colliderSupportData.SupportPoint != default(Vector3)
+                    var vector = colliderSupportData.SupportPointCached
                         ? colliderSupportData.SupportPoint
                         : __instance.FindSupportPoint(cOM, otherWearNTear, colliderSupportData.Collider);
                     Profiler.EndSample();
@@ -284,48 +318,47 @@ namespace ValheimPerformanceOptimizations.Patches
 
             Profiler.EndSample();
 
+            if (unchangedSupports >= boundCount)
+            {
+                __instance.m_support = myCache.Support;
+                __instance.m_nview.GetZDO().Set("support", __instance.m_support);
+
+                return false;
+            }
+
             if (WearNTear.m_tempSupportPoints.Count >= 2)
             {
                 Profiler.BeginSample("super computin");
-
-                for (var j = 0; j < WearNTear.m_tempSupportPoints.Count; j++)
+                for (int j = 0; j < WearNTear.m_tempSupportPoints.Count; j++)
                 {
-                    var from = WearNTear.m_tempSupportPoints[j] - cOM;
+                    Vector3 from = WearNTear.m_tempSupportPoints[j] - cOM;
                     from.y = 0f;
-                    for (var k = 0; k < WearNTear.m_tempSupportPoints.Count; k++)
+                    for (int k = 0; k < WearNTear.m_tempSupportPoints.Count; k++)
                     {
                         if (j != k)
                         {
-                            var to = WearNTear.m_tempSupportPoints[k] - cOM;
+                            Vector3 to = WearNTear.m_tempSupportPoints[k] - cOM;
                             to.y = 0f;
                             if (Vector3.Angle(from, to) >= 100f)
                             {
-                                var b2 = (WearNTear.m_tempSupportPointValues[j] +
-                                          WearNTear.m_tempSupportPointValues[k]) * 0.5f;
+                                float b2 = (WearNTear.m_tempSupportPointValues[j] +
+                                            WearNTear.m_tempSupportPointValues[k]) * 0.5f;
                                 a = Mathf.Max(a, b2);
                             }
                         }
                     }
                 }
+
                 Profiler.EndSample();
             }
 
             __instance.m_support = Mathf.Min(a, maxSupport);
             __instance.m_nview.GetZDO().Set("support", __instance.m_support);
-            
-            /*if (what >= boundCount && myCache.SupportCached)
-            {
-                if (Math.Abs(myCache.Support - __instance.m_support) > 0.0001)
-                {
-                    ValheimPerformanceOptimizations.Logger.LogInfo($"why {myCache.Support} {__instance.m_support}");
-                }
-                ValheimPerformanceOptimizations.Logger.LogInfo($"less go {boundCount}");
-            }*/
 
             myCache.Support = Mathf.Min(a, maxSupport);
 
-            WearNTearCache[__instance] = myCache;
-            
+            WearNTearCache[__instance.GetInstanceID()] = myCache;
+
             return false;
         }
     }
@@ -377,7 +410,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
                 colliderSupports.Add(colliderSupportData);
             }
-            
+
             return colliderSupports;
         }
     }
@@ -385,12 +418,34 @@ namespace ValheimPerformanceOptimizations.Patches
     public class ColliderSupportData
     {
         public Collider Collider;
-        public float OtherWNTSupport = -1f;
 
-        public Vector3 SupportPoint;
+        public float OtherWntSupport { get; set; } = -1f;
+        public float DistanceToOtherWnt { get; set; } = -1f;
 
         [CanBeNull]
         public WearNTear WearNTear;
+
+        public Vector3 SupportPoint
+        {
+            get => supportPoint;
+            set
+            {
+                supportPoint = value;
+                SupportPointCached = true;
+            }
+        }
+
+        public bool SupportPointCached { get; private set; }
+
+        private Vector3 supportPoint;
+
+        public bool CheckSupportUnchanged(float distanceToWnt, float otherWntSupport)
+        {
+            if (this.OtherWntSupport < 0 || DistanceToOtherWnt < 0) { return false; }
+
+            return DistanceToOtherWnt.IsNearlyEqual(distanceToWnt)
+                   && this.OtherWntSupport.IsNearlyEqual(otherWntSupport);
+        }
     }
 
     internal class BoundDataComparer : EqualityComparer<WearNTear.BoundData>
@@ -411,6 +466,19 @@ namespace ValheimPerformanceOptimizations.Patches
                 hashCode = (hashCode * 397) ^ boundData.m_size.GetHashCode();
                 return hashCode;
             }
+        }
+    }
+
+    internal class IntEqualityComparer : EqualityComparer<int>
+    {
+        public override bool Equals(int x, int y)
+        {
+            return x == y;
+        }
+
+        public override int GetHashCode(int obj)
+        {
+            return obj.GetHashCode();
         }
     }
 }

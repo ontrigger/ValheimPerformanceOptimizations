@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 /*
  *   
@@ -48,12 +47,8 @@ namespace ValheimPerformanceOptimizations
 
         // Minimum side length that a node can be - essentially an alternative to having a max depth
         private readonly float minSize;
+
         // For collision visualisation. Automatically removed in builds.
-#if UNITY_EDITOR
-	const int numCollisionsToSave = 4;
-	readonly Queue<Bounds> lastBoundsCollisionChecks = new Queue<Bounds>();
-	readonly Queue<Ray> lastRayCollisionChecks = new Queue<Ray>();
-#endif
 
         /// <summary>
         /// Constructor for the bounds octree.
@@ -62,7 +57,8 @@ namespace ValheimPerformanceOptimizations
         /// <param name="initialWorldPos">Position of the centre of the initial node.</param>
         /// <param name="minNodeSize">Nodes will stop splitting if the new nodes would be smaller than this (metres).</param>
         /// <param name="loosenessVal">Clamped between 1 and 2. Values > 1 let nodes overlap.</param>
-        public BoundsOctree(float initialWorldSize, Vector3 initialWorldPos, float minNodeSize, float loosenessVal)
+        /// <param name="comparer"></param>
+        public BoundsOctree(float initialWorldSize, Vector3 initialWorldPos, float minNodeSize, float loosenessVal, IEqualityComparer<T> comparer = null)
         {
             if (minNodeSize > initialWorldSize)
             {
@@ -75,8 +71,9 @@ namespace ValheimPerformanceOptimizations
             initialSize = initialWorldSize;
             minSize = minNodeSize;
             looseness = Mathf.Clamp(loosenessVal, 1.0f, 2.0f);
-            rootNode = new BoundsOctreeNode<T>(initialSize, minSize, looseness, initialWorldPos);
+            rootNode = new BoundsOctreeNode<T>(initialSize, minSize, looseness, initialWorldPos, comparer);
         }
+        
 
         // #### PUBLIC METHODS ####
 
@@ -182,6 +179,11 @@ namespace ValheimPerformanceOptimizations
             rootNode.GetOverlapping(ref checkBounds, collidingWith);
         }
         
+        public void GetOverlapping(List<T> collidingWith, Vector3 center, float radius)
+        {
+            rootNode.GetOverlapping(center, radius, collidingWith);
+        }
+
         public void GetOverlappingXZ(List<T> collidingWith, Bounds checkBounds)
         {
             rootNode.GetOverlappingXZ(ref checkBounds, collidingWith);

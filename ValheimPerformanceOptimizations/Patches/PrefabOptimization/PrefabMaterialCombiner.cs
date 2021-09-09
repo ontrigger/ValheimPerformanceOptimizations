@@ -89,14 +89,13 @@ namespace ValheimPerformanceOptimizations.Patches
                     var groupMaterials = materialGroup.ToList();
 
                     var atlas = new Texture2D(1024, 1024) {filterMode = FilterMode.Point};
-                    var albedoTextures = groupMaterials.Select(m =>
-                                                                   ConvertToReadableTexture(m.mainTexture)).ToArray();
+                    var albedoTextures = groupMaterials.Select(
+                        m => ConvertToReadableTexture(m.mainTexture)).ToArray();
                     Rect[] uvBounds = atlas.PackTextures(albedoTextures, 2, 1024);
 
-                    var normalAtlas = new Texture2D(1024, 1024);
-                    var normalTextures = groupMaterials.Select(m =>
-                                                                   ConvertToReadableTexture(m.GetTexture("_BumpMap")))
-                                                       .ToArray();
+                    var normalAtlas = new Texture2D(1024, 1024) {filterMode = FilterMode.Point};
+                    var normalTextures = groupMaterials.Select(
+                            m => ConvertToReadableTexture(m.GetTexture("_BumpMap"))).ToArray();
                     normalAtlas.PackTextures(normalTextures, 2, 1024);
 
                     var oldMaterial = groupMaterials[0];

@@ -64,6 +64,7 @@ namespace ValheimPerformanceOptimizations
 
         // Bounds of potential children to this node. These are actual size (with looseness taken into account), not base size
         Bounds[] childBounds;
+        private IEqualityComparer<T> comparator;
 
         // If there are already NUM_OBJECTS_ALLOWED in a node, we split it into children
         // A generally good number seems to be something around 8-15
@@ -83,9 +84,11 @@ namespace ValheimPerformanceOptimizations
         /// <param name="minSizeVal">Minimum size of nodes in this octree.</param>
         /// <param name="loosenessVal">Multiplier for baseLengthVal to get the actual size.</param>
         /// <param name="centerVal">Centre position of this node.</param>
-        public BoundsOctreeNode(float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal)
+        /// <param name="comparer"></param>
+        public BoundsOctreeNode(
+            float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal, IEqualityComparer<T> comparer = null)
         {
-            SetValues(baseLengthVal, minSizeVal, loosenessVal, centerVal);
+            SetValues(baseLengthVal, minSizeVal, loosenessVal, centerVal, comparer);
         }
 
         // #### PUBLIC METHODS ####
@@ -114,13 +117,14 @@ namespace ValheimPerformanceOptimizations
         /// <returns>True if the object was removed successfully.</returns>
         public bool Remove(T obj)
         {
-            bool removed = false;
+            var removed = false;
 
             for (int i = 0; i < objects.Count; i++)
             {
-                if (objects[i].Obj.Equals(obj))
+                if (comparator.Equals(objects[i].Obj, obj))
                 {
-                    removed = objects.Remove(objects[i]);
+                    objects.RemoveBySwap(i);
+                    removed = true;
                     break;
                 }
             }
@@ -160,6 +164,16 @@ namespace ValheimPerformanceOptimizations
             }
 
             return SubRemove(obj, objBounds);
+        }
+        
+        public int RemoveAll(Bounds objBounds)
+        {
+            if (!Encapsulates(bounds, objBounds))
+            {
+                return 0;
+            }
+
+            return SubRemoveAll(objBounds);
         }
 
         /// <summary>
@@ -267,6 +281,32 @@ namespace ValheimPerformanceOptimizations
                 for (int i = 0; i < 8; i++)
                 {
                     children[i].GetOverlapping(ref checkBounds, result);
+                }
+            }
+        }
+        
+        public void GetOverlapping(Vector3 center, float sqrRadius, List<T> collidingWith)
+        {
+            if (!bounds.IntersectsSphere(center, sqrRadius))
+            {
+                return;
+            }
+
+            // Check against any objects in this node
+            for (int i = 0; i < objects.Count; i++)
+            {
+                if (objects[i].Bounds.IntersectsSphere(center, sqrRadius))
+                {
+                    collidingWith.Add(objects[i].Obj);
+                }
+            }
+
+            // Check children
+            if (children != null)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    children[i].GetOverlapping(center, sqrRadius, collidingWith);
                 }
             }
         }
@@ -388,10 +428,9 @@ namespace ValheimPerformanceOptimizations
         public void DrawAllBounds(float depth = 0)
         {
             float tintVal = depth / 7; // Will eventually get values > 1. Color rounds to 1 automatically
-            Gizmos.color = new Color(tintVal, 0, 1.0f - tintVal);
+            var color = new Color(tintVal, 0, 1.0f - tintVal);
 
             Bounds thisBounds = new Bounds(Center, new Vector3(adjLength, adjLength, adjLength));
-            Gizmos.DrawWireCube(thisBounds.center, thisBounds.size);
 
             if (children != null)
             {
@@ -578,7 +617,7 @@ namespace ValheimPerformanceOptimizations
         /// <param name="minSizeVal">Minimum size of nodes in this octree.</param>
         /// <param name="loosenessVal">Multiplier for baseLengthVal to get the actual size.</param>
         /// <param name="centerVal">Centre position of this node.</param>
-        void SetValues(float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal)
+        void SetValues(float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal, IEqualityComparer<T> comparer = null)
         {
             BaseLength = baseLengthVal;
             minSize = minSizeVal;
@@ -602,6 +641,8 @@ namespace ValheimPerformanceOptimizations
             childBounds[5] = new Bounds(Center + new Vector3(quarter, -quarter, -quarter), childActualSize);
             childBounds[6] = new Bounds(Center + new Vector3(-quarter, -quarter, quarter), childActualSize);
             childBounds[7] = new Bounds(Center + new Vector3(quarter, -quarter, quarter), childActualSize);
+            
+            comparator = comparer ?? EqualityComparer<T>.Default;
         }
 
         /// <summary>
@@ -675,15 +716,18 @@ namespace ValheimPerformanceOptimizations
         /// <param name="obj">Object to remove.</param>
         /// <param name="objBounds">3D bounding box around the object.</param>
         /// <returns>True if the object was removed successfully.</returns>
-        bool SubRemove(T obj, Bounds objBounds)
+        private bool SubRemove(T obj, Bounds objBounds)
         {
             bool removed = false;
 
             for (int i = 0; i < objects.Count; i++)
             {
-                if (objects[i].Obj.Equals(obj))
+                var octreeObject = objects[i];
+                if (comparator.Equals(octreeObject.Obj, obj))
                 {
-                    removed = objects.Remove(objects[i]);
+                    objects.RemoveBySwap(i);
+                    removed = true;
+                    
                     break;
                 }
             }
@@ -704,6 +748,28 @@ namespace ValheimPerformanceOptimizations
             }
 
             return removed;
+        }
+
+        private int SubRemoveAll(Bounds objBounds)
+        {
+            var removedCount = objects.RemoveAll((obj) => obj.Bounds.Intersects(objBounds));
+
+            if (removedCount < 1 && children != null)
+            {
+                int bestFitChild = BestFitChild(objBounds.center);
+                removedCount = children[bestFitChild].SubRemoveAll(objBounds);
+            }
+
+            if (removedCount > 0 && children != null)
+            {
+                // Check if we should merge nodes now that we've removed an item
+                if (ShouldMerge())
+                {
+                    Merge();
+                }
+            }
+
+            return removedCount;
         }
 
         /// <summary>
