@@ -16,12 +16,9 @@ namespace ValheimPerformanceOptimizations.Patches
     {
         private static int _maskToCheck;
 
-        private static readonly HashSet<string> StaticPrefabs = new HashSet<string>();
-
         private static readonly Dictionary<string, Bounds> MaxBoundsForPrefab = new Dictionary<string, Bounds>();
 
-        private static readonly BoundsOctree<int> WearNTearIdTree =
-            new BoundsOctree<int>(192f, Vector3.zero, 2f, 1.12f);
+        private static BoundsOctree<int> WearNTearIdTree;
 
         private static readonly Dictionary<int, CachedWearNTearData> WearNTearCache
             = new Dictionary<int, CachedWearNTearData>();
@@ -51,6 +48,9 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 RegisterPrefabs();
             }
+
+            var refPos = ZNet.instance.GetReferencePosition();
+            WearNTearIdTree = new BoundsOctree<int>(192f, refPos, 2f, 1.12f);
         }
 
         private static void RegisterPrefabs()
@@ -104,8 +104,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
 
                 MaxBoundsForPrefab[prefab.name] = maxPossibleBounds;
-
-                StaticPrefabs.Add(prefab.name);
             });
         }
 
@@ -115,8 +113,6 @@ namespace ValheimPerformanceOptimizations.Patches
             if (ZNetView.m_ghostInit || __instance == null) return;
 
             var prefabName = ZNetViewPrefabNamePatch.PrefabNameHack ?? __instance.GetPrefabName();
-
-            if (!StaticPrefabs.Contains(prefabName)) return;
 
             if (!MaxBoundsForPrefab.TryGetValue(prefabName, out var maxBounds)) return;
 
@@ -134,6 +130,13 @@ namespace ValheimPerformanceOptimizations.Patches
         private static void ClearWearNTearCaches(List<int> toClear)
         {
             toClear.ForEach(wearNTearId => WearNTearCache.Remove(wearNTearId));
+        }
+
+        [HarmonyPatch(typeof(ZNetScene), nameof(Game.Shutdown)), HarmonyPostfix]
+        private static void ZNetScene_OnDestroy_Postfix(ZNetScene __instance)
+        {
+            WearNTearCache.Clear();
+            //WearNTearIdTree = null;
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Awake)), HarmonyPostfix]
@@ -401,7 +404,6 @@ namespace ValheimPerformanceOptimizations.Patches
                         }
                     }
                 }
-
                 Profiler.EndSample();
             }
 
@@ -519,19 +521,6 @@ namespace ValheimPerformanceOptimizations.Patches
                 hashCode = (hashCode * 397) ^ boundData.m_size.GetHashCode();
                 return hashCode;
             }
-        }
-    }
-
-    internal class IntEqualityComparer : EqualityComparer<int>
-    {
-        public override bool Equals(int x, int y)
-        {
-            return x == y;
-        }
-
-        public override int GetHashCode(int obj)
-        {
-            return obj.GetHashCode();
         }
     }
 }

@@ -201,7 +201,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
             Piece.m_allPieces.Add(piece);
             piece.m_myListIndex = Piece.m_allPieces.Count - 1;
-            piece.m_creator = componentCache.NetView.GetZDO().GetLong(Piece.m_creatorHash);
+            if (piece.m_nview && piece.m_nview.IsValid())
+            {
+                piece.m_creator = componentCache.NetView.GetZDO().GetLong(Piece.m_creatorHash);
+            }
         }
 
         private static void PieceDisabledProcessor(ComponentCache componentCache)
@@ -243,7 +246,7 @@ namespace ValheimPerformanceOptimizations.Patches
             destructible.CancelInvoke(nameof(Destructible.DestroyNow));
         }
 
-        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPostfix]
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPrefix]
         private static void ZNetScene_OnDestroy_Prefix(ZNetScene __instance)
         {
             ReleaseZoneSystemPool();

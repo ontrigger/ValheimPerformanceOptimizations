@@ -104,8 +104,33 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void ReleaseZNetScenePool()
         {
-            PersistentPoolByName.Values.ToList().ForEach(pool => pool.ReleaseAll());
+            var tempZDO = ZDOMan.instance.CreateNewZDO(Vector3.zero);
+            PersistentPoolByName.Values.ToList().ForEach(pool =>
+            {
+                foreach (var gameObject in pool.Pool)
+                {
+                    ZNetView netView = gameObject.GetComponent<ZNetView>();
+                    ZNetView.m_initZDO = tempZDO;
+                    ZNetView.m_useInitZDO = true;
+                    OnRetrievedFromPool(gameObject);
+                    ZNetView.m_initZDO = null;
+                    ZNetView.m_useInitZDO = false;
+                    
+                    ZDO zDO = netView.GetZDO();
+                    if (netView && zDO != null)
+                    {
+                        netView.ResetZDO();
+                        ZNetScene.instance.m_instances.Remove(zDO);
+                        ZDOMan.instance.DestroyZDO(zDO);
+                    }
+                    UnityEngine.Object.Destroy(gameObject);
+                }
+            });
+            
             PersistentPoolByName.Clear();
+            
+            tempZDO.m_zdoMan.RemoveFromSector(tempZDO, tempZDO.m_sector);
+            ZDOMan.instance.m_objectsByID.Remove(tempZDO.m_uid);
         }
     }
 }

@@ -10,12 +10,12 @@ namespace ValheimPerformanceOptimizations
     {
         public readonly Stack<GameObject> Pool = new Stack<GameObject>();
 
-        public int MaxObjects;
+        public readonly int MaxObjects;
 
-        public int PooledObjects => Pool.Count;
+        public int PooledObjectCount => Pool.Count;
 
-        public Action<GameObject> OnRetrieve;
-        public Action<GameObject> OnReturn;
+        private readonly Action<GameObject> onRetrieve;
+        private readonly Action<GameObject> onReturn;
         
         private readonly GameObject toPool;
 
@@ -25,8 +25,9 @@ namespace ValheimPerformanceOptimizations
         {
             toPool = pooledObject;
             MaxObjects = maxObjects;
-            OnRetrieve = onRetrieve;
-            OnReturn = onReturn;
+            
+            this.onRetrieve = onRetrieve;
+            this.onReturn = onReturn;
         }
 
         public void Populate(int count, Action<GameObject> setupObjectAction)
@@ -62,7 +63,7 @@ namespace ValheimPerformanceOptimizations
             obj.transform.position = position;
             obj.transform.rotation = rotation;
 
-            OnRetrieve?.Invoke(obj);
+            onRetrieve?.Invoke(obj);
 
             return obj;
         }
@@ -75,7 +76,7 @@ namespace ValheimPerformanceOptimizations
                 return;
             }
             
-            OnReturn?.Invoke(toRelease);
+            onReturn?.Invoke(toRelease);
             
             toRelease.SetActive(false);
 
@@ -86,7 +87,7 @@ namespace ValheimPerformanceOptimizations
         {
             foreach (var gameObject in Pool)
             {
-                OnRetrieve?.Invoke(gameObject);
+                onRetrieve?.Invoke(gameObject);
             }
 
             Pool.Clear();
