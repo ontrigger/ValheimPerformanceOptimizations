@@ -285,9 +285,9 @@ namespace ValheimPerformanceOptimizations
             }
         }
         
-        public void GetOverlapping(Vector3 center, float sqrRadius, List<T> collidingWith)
+        public void GetOverlapping(Vector3 center, float radius, List<T> collidingWith)
         {
-            if (!bounds.IntersectsSphere(center, sqrRadius))
+            if (!bounds.IntersectsSphere(center, radius))
             {
                 return;
             }
@@ -295,7 +295,7 @@ namespace ValheimPerformanceOptimizations
             // Check against any objects in this node
             for (int i = 0; i < objects.Count; i++)
             {
-                if (objects[i].Bounds.IntersectsSphere(center, sqrRadius))
+                if (objects[i].Bounds.IntersectsSphere(center, radius))
                 {
                     collidingWith.Add(objects[i].Obj);
                 }
@@ -306,7 +306,7 @@ namespace ValheimPerformanceOptimizations
             {
                 for (int i = 0; i < 8; i++)
                 {
-                    children[i].GetOverlapping(center, sqrRadius, collidingWith);
+                    children[i].GetOverlapping(center, radius, collidingWith);
                 }
             }
         }

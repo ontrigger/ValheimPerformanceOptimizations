@@ -13,8 +13,13 @@ namespace ValheimPerformanceOptimizations.Extensions
 
         public static bool IntersectsSphere(this Bounds bounds, Vector3 center, float radius)
         {
-            Vector3 min = bounds.center - bounds.extents;
-            Vector3 max = bounds.center + bounds.extents;
+            if (radius == 0)
+            {
+                return bounds.Contains(center);
+            }
+            
+            var min = bounds.center - bounds.extents;
+            var max = bounds.center + bounds.extents;
 
             double ex = Math.Max(min.x - center.x, 0) + Math.Max(center.x - max.x, 0);
             double ey = Math.Max(min.y - center.y, 0) + Math.Max(center.y - max.y, 0);

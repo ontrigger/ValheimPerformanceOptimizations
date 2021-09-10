@@ -13,9 +13,9 @@ namespace ValheimPerformanceOptimizations.Patches
         public static readonly Dictionary<string, GameObjectPool>
             PersistentPoolByName = new Dictionary<string, GameObjectPool>();
         
-        public static int FreePoolObjects => PersistentPoolByName.Sum(pair => pair.Value.PooledObjects);
+        public static int FreePoolObjects => PersistentPoolByName.Sum(pair => pair.Value.PooledObjectCount);
         
-        public static int UsedPoolObjects => PersistentPoolByName.Sum(pair => pair.Value.MaxObjects - pair.Value.PooledObjects);
+        public static int UsedPoolObjects => PersistentPoolByName.Sum(pair => pair.Value.MaxObjects - pair.Value.PooledObjectCount);
         public static int MaxPooledObjects => PersistentPoolByName.Sum(pair => pair.Value.MaxObjects);
 
         private static readonly FieldInfo PersistentPoolByNameField =

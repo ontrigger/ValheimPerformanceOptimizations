@@ -278,13 +278,17 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if (PrefabDestroyProcessors.TryGetValue(prefabName, out var processor))
             {
+                Profiler.BeginSample("component cache");
                 if (!ComponentCacheForObject.TryGetValue(obj, out var componentCache))
                 {
                     componentCache = new ComponentCache(obj.GetComponentInChildren<ZNetView>());
                     ComponentCacheForObject.Add(obj, componentCache);
                 }
+                Profiler.EndSample();
 
+                Profiler.BeginSample("running processors");
                 processor(componentCache);
+                Profiler.EndSample();
             }
         }
 
