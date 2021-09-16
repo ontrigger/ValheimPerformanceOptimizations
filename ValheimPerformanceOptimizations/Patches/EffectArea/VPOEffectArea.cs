@@ -16,6 +16,8 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly BoundsOctree<VPOEffectArea>[] AreaTreeByType
             = new BoundsOctree<VPOEffectArea>[EffectAreaTypeCount];
 
+        private static bool _areaTreeInitialized;
+
         private new void Awake()
         {
             if (m_characterMask == 0)
@@ -26,6 +28,8 @@ namespace ValheimPerformanceOptimizations.Patches
                     var refPos = ZNet.instance.GetReferencePosition();
                     AreaTreeByType[i] = new BoundsOctree<VPOEffectArea>(192f, refPos, 8f, 1.1f);
                 }
+
+                _areaTreeInitialized = true;
             }
 
             m_collider = GetComponent<Collider>();
@@ -81,6 +85,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static void ZNetScene_OnDestroy_Postfix(ZNetScene __instance)
         {
             m_characterMask = 0;
+            _areaTreeInitialized = false;
         }
 
         private void OnTriggerEnter(Collider other)
@@ -124,6 +129,12 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.IsPointInsideArea)), HarmonyPrefix]
         private static bool IsPointInsideArea(Vector3 p, Type type, out EffectArea __result, float radius = 0f)
         {
+            if (!_areaTreeInitialized)
+            {
+                __result = null;
+                return false;
+            }
+            
             var index = GetIndexFromType(type);
 
             Profiler.BeginSample("octree search");

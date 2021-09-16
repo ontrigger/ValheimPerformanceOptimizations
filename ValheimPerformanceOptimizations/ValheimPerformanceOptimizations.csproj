@@ -49,6 +49,9 @@
         <Reference Include="BepInEx.Harmony, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\BepInEx.Harmony.dll</HintPath>
         </Reference>
+        <Reference Include="Jotunn, Version=2.3.0.0, Culture=neutral, PublicKeyToken=null">
+          <HintPath>D:\SteamLibrary\steamapps\common\Valheim\BepInEx\plugins\Jotunn.dll</HintPath>
+        </Reference>
         <Reference Include="Microsoft.CSharp" />
         <Reference Include="System" />
         <Reference Include="System.Core" />
@@ -81,10 +84,6 @@
         <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>D:\SteamLibrary\steamapps\common\Valheim\unstripped_corlib\UnityEngine.UI.dll</HintPath>
         </Reference>
-        <Reference Include="Jotunn, Version=2.2.6.0, Culture=neutral, PublicKeyToken=null">
-            <HintPath>$(VALHEIM_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
-            <Private>false</Private>
-        </Reference>
     </ItemGroup>
     <ItemGroup>
         <Compile Include="Patches\ClutterSystemRenderQueuePatch.cs" />
@@ -112,7 +111,6 @@
         <Compile Include="Patches\ThreadedHeightmapCollisionBake\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
-        <Compile Include="Patches\ZNetSceneObjectIterationPatch.cs" />
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
         <Compile Include="Patches\WaterVolumeVisibilityPatch.cs" />
         <Compile Include="Utils\AssetBundleHelper.cs" />
@@ -120,7 +118,6 @@
         <Compile Include="Utils\Extensions\ListX.cs" />
         <Compile Include="Utils\Extensions\NumberX.cs" />
         <Compile Include="Utils\ModCompatibility.cs" />
-        <Compile Include="Utils\RuntimeDebugDraw.cs" />
         <Compile Include="Utils\Storage\BoundsOctree.cs" />
         <Compile Include="Utils\Storage\BoundsOctreeNode.cs" />
         <Compile Include="Utils\Storage\GameObjectPool.cs" />
