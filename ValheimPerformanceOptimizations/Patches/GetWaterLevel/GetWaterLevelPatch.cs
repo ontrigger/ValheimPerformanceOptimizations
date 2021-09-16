@@ -10,7 +10,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
     ///     and getting it via simple Vector2i dict lookup
     ///     This is probably the most massive CPU speedup due to this method being used in 15 places
     /// </summary>
-    [HarmonyPatch]
+    /*[HarmonyPatch]
     public static class GetWaterLevelPatch
     {
         private static bool _isPatched;
@@ -62,5 +62,5 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
             __result = -10000f;
             return false;
         }
-    }
+    }*/
 }

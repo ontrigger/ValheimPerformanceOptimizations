@@ -86,7 +86,8 @@ namespace ValheimPerformanceOptimizations
         /// <param name="centerVal">Centre position of this node.</param>
         /// <param name="comparer"></param>
         public BoundsOctreeNode(
-            float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal, IEqualityComparer<T> comparer = null)
+            float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal,
+            IEqualityComparer<T> comparer = null)
         {
             SetValues(baseLengthVal, minSizeVal, loosenessVal, centerVal, comparer);
         }
@@ -163,9 +164,9 @@ namespace ValheimPerformanceOptimizations
                 return false;
             }
 
-            return SubRemove(obj, objBounds);
+            return SubRemove(obj, objBounds, false);
         }
-        
+
         public int RemoveAll(Bounds objBounds)
         {
             if (!Encapsulates(bounds, objBounds))
@@ -284,7 +285,7 @@ namespace ValheimPerformanceOptimizations
                 }
             }
         }
-        
+
         public void GetOverlapping(Vector3 center, float radius, List<T> collidingWith)
         {
             if (!bounds.IntersectsSphere(center, radius))
@@ -310,7 +311,7 @@ namespace ValheimPerformanceOptimizations
                 }
             }
         }
-        
+
         public void GetOverlappingXZ(ref Bounds checkBounds, List<T> result)
         {
             // Are the input bounds at least partially in this node?
@@ -617,7 +618,9 @@ namespace ValheimPerformanceOptimizations
         /// <param name="minSizeVal">Minimum size of nodes in this octree.</param>
         /// <param name="loosenessVal">Multiplier for baseLengthVal to get the actual size.</param>
         /// <param name="centerVal">Centre position of this node.</param>
-        void SetValues(float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal, IEqualityComparer<T> comparer = null)
+        void SetValues(
+            float baseLengthVal, float minSizeVal, float loosenessVal, Vector3 centerVal,
+            IEqualityComparer<T> comparer = null)
         {
             BaseLength = baseLengthVal;
             minSize = minSizeVal;
@@ -641,7 +644,7 @@ namespace ValheimPerformanceOptimizations
             childBounds[5] = new Bounds(Center + new Vector3(quarter, -quarter, -quarter), childActualSize);
             childBounds[6] = new Bounds(Center + new Vector3(-quarter, -quarter, quarter), childActualSize);
             childBounds[7] = new Bounds(Center + new Vector3(quarter, -quarter, quarter), childActualSize);
-            
+
             comparator = comparer ?? EqualityComparer<T>.Default;
         }
 
@@ -716,7 +719,7 @@ namespace ValheimPerformanceOptimizations
         /// <param name="obj">Object to remove.</param>
         /// <param name="objBounds">3D bounding box around the object.</param>
         /// <returns>True if the object was removed successfully.</returns>
-        private bool SubRemove(T obj, Bounds objBounds)
+        private bool SubRemove(T obj, Bounds objBounds, bool parentContained)
         {
             bool removed = false;
 
@@ -727,15 +730,43 @@ namespace ValheimPerformanceOptimizations
                 {
                     objects.RemoveBySwap(i);
                     removed = true;
-                    
+
                     break;
                 }
             }
 
             if (!removed && children != null)
             {
-                int bestFitChild = BestFitChild(objBounds.center);
-                removed = children[bestFitChild].SubRemove(obj, objBounds);
+                var bestFitIndex = BestFitChild(objBounds.center);
+                removed = children[bestFitIndex].SubRemove(obj, objBounds, false);
+
+                if (!removed)
+                {
+                    for (var i = 0; i < children.Length; i++)
+                    {
+                        if (bestFitIndex == i) { continue; }
+
+                        var child = children[i];
+
+                        var contained = parentContained;
+                        if (!contained)
+                        {
+                            if (Encapsulates(objBounds, child.bounds))
+                            {
+                                contained = true;
+                            }
+                            else if (!objBounds.Intersects(child.bounds))
+                            {
+                                continue;
+                            }
+                        }
+
+                        if (!objBounds.Intersects(child.bounds)) { continue; }
+
+                        removed = child.SubRemove(obj, objBounds, contained);
+                        if (removed) { break; }
+                    }
+                }
             }
 
             if (removed && children != null)
