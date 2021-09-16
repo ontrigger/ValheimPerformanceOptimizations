@@ -15,7 +15,7 @@ namespace ValheimPerformanceOptimizations
         private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
         {
             // only patch the current data version to not risk any world file breaking
-            if (version != 27)
+            if (version != 28)
             {
                 string message = $"ZDOMan.Load() unsupported data version: {version}. Fallback to original method";
                 ValheimPerformanceOptimizations.Logger.LogInfo(message);

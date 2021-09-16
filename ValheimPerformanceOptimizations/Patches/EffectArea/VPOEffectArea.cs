@@ -20,16 +20,20 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private new void Awake()
         {
-            if (m_characterMask == 0)
+            if (m_characterMask == 0 || !_areaTreeInitialized)
             {
                 m_characterMask = LayerMask.GetMask("character_trigger");
-                for (var i = 0; i < EffectAreaTypeCount; i++)
-                {
-                    var refPos = ZNet.instance.GetReferencePosition();
-                    AreaTreeByType[i] = new BoundsOctree<VPOEffectArea>(192f, refPos, 8f, 1.1f);
-                }
 
-                _areaTreeInitialized = true;
+                if (ZNet.instance)
+                {
+                    for (var i = 0; i < EffectAreaTypeCount; i++)
+                    {
+                        var refPos = ZNet.instance.GetReferencePosition();
+                        AreaTreeByType[i] = new BoundsOctree<VPOEffectArea>(192f, refPos, 8f, 1.1f);
+                    }
+
+                    _areaTreeInitialized = true;
+                }
             }
 
             m_collider = GetComponent<Collider>();
@@ -38,8 +42,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private void Start()
         {
-            var index = GetIndexFromType(m_type);
+            if (!_areaTreeInitialized) return;
 
+            var index = GetIndexFromType(m_type);
             AreaTreeByType[index].Add(this, this.m_collider.bounds);
         }
 
@@ -72,6 +77,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private new void OnDestroy()
         {
+            if (!_areaTreeInitialized) { return; }
+
             var index = GetIndexFromType(m_type);
 
             var removed = AreaTreeByType[index].Remove(this, m_collider.bounds);
@@ -81,8 +88,8 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ZNetScene), nameof(Game.Shutdown)), HarmonyPostfix]
-        private static void ZNetScene_OnDestroy_Postfix(ZNetScene __instance)
+        [HarmonyPatch(typeof(Game), nameof(Game.Shutdown)), HarmonyPostfix]
+        private static void Game_Shutdown_Postfix(Game __instance)
         {
             m_characterMask = 0;
             _areaTreeInitialized = false;
@@ -134,7 +141,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 __result = null;
                 return false;
             }
-            
+
             var index = GetIndexFromType(type);
 
             Profiler.BeginSample("octree search");

@@ -132,8 +132,8 @@ namespace ValheimPerformanceOptimizations.Patches
             toClear.ForEach(wearNTearId => WearNTearCache.Remove(wearNTearId));
         }
 
-        [HarmonyPatch(typeof(ZNetScene), nameof(Game.Shutdown)), HarmonyPostfix]
-        private static void ZNetScene_OnDestroy_Postfix(ZNetScene __instance)
+        [HarmonyPatch(typeof(Game), nameof(Game.Shutdown)), HarmonyPostfix]
+        private static void Game_Shutdown_Postfix(Game __instance)
         {
             WearNTearCache.Clear();
             //WearNTearIdTree = null;
