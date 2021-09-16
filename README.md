@@ -1,4 +1,4 @@
-# ValheimPerformanceOptimizations
+# ValheimPerformanceOptimizations [H&H Compatible]
 
 Rendering, logic, and loading time optimizations for both client and server versions of Valheim.
 
@@ -6,6 +6,7 @@ You can use the mod on either the server or the client, or both, it should work 
 
 ## New in 0.7.0
 
+* Optimizations for structural integrity
 * New object pooling system for build pieces - less lag when entering bases
 * New smoke rendering solution - less lag rendering smoke puffs
 * Snow storms no longer tank fps
@@ -13,6 +14,17 @@ You can use the mod on either the server or the client, or both, it should work 
 * Fixed objects spawning at 0 0
 
 Rest of the changes can be found in `CHANGELOG.md`
+
+## Features
+
+* New object pooling system for build pieces - less lag when entering bases
+* New smoke rendering solution - less lag rendering smoke puffs
+* Snow storms no longer tank fps
+* Various optimizations for GPU rendering
+* Multithreaded terrain loading
+* Much faster loading times
+* Various improvements to AI
+* Optimizations for structural integrity
 
 ## Stats
 

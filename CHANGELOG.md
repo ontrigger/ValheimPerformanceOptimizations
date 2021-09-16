@@ -1,5 +1,6 @@
 # Changes in 0.7
 
+* Optimizations for structural integrity
 * New object pooling system for build pieces - less lag when entering bases
 * New smoke rendering solution - less lag rendering smoke puffs
 * Snow storms no longer tank fps
