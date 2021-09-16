@@ -29,7 +29,7 @@ namespace ValheimPerformanceOptimizations.Patches
                   + "The lowest you can go is 5";
 
             var valueConfig = new ConfigDescription(description, new AcceptableValueRange<int>(5, 15));
-            _maxUpdatesPerFrame = configFile.Bind("General", key, 6, valueConfig);
+            _maxUpdatesPerFrame = configFile.Bind("General", key, 8, valueConfig);
 
             harmony.PatchAll(typeof(MaxPhysicsTimeStepPatch));
         }
