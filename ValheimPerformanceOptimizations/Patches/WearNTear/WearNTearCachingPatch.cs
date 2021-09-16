@@ -50,7 +50,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             var refPos = ZNet.instance.GetReferencePosition();
-            WearNTearIdTree = new BoundsOctree<int>(192f, refPos, 2f, 1.12f);
+            WearNTearIdTree = new BoundsOctree<int>(192f, refPos, 4f, 1f);
         }
 
         private static void RegisterPrefabs()
@@ -187,7 +187,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
             Profiler.EndSample();
 
+            Profiler.BeginSample("Cache remove");
             WearNTearCache.Remove(__instance.GetInstanceID());
+            Profiler.EndSample();
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.HaveRoof)), HarmonyPrefix]

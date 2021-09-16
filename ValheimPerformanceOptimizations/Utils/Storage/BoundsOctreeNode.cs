@@ -738,7 +738,12 @@ namespace ValheimPerformanceOptimizations
             if (!removed && children != null)
             {
                 var bestFitIndex = BestFitChild(objBounds.center);
-                removed = children[bestFitIndex].SubRemove(obj, objBounds, false);
+                var child = children[bestFitIndex];
+                
+                if (objBounds.Intersects(child.bounds))
+                {
+                    removed = child.SubRemove(obj, objBounds, parentContained);
+                }
 
                 if (!removed)
                 {
@@ -746,7 +751,7 @@ namespace ValheimPerformanceOptimizations
                     {
                         if (bestFitIndex == i) { continue; }
 
-                        var child = children[i];
+                        child = children[i];
 
                         var contained = parentContained;
                         if (!contained)
