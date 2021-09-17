@@ -1,3 +1,8 @@
+# Changes in 0.7.2
+
+* Fixed the 'Collection was modified' error
+* Potential fix for leaking roofs
+
 # Changes in 0.7.1
 
 * Fixed snow storm particles appearing inside buildings
