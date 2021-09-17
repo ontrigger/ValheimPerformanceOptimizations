@@ -18,8 +18,16 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static bool _areaTreeInitialized;
 
+        private static RequiredEffectAreaFields _requiredFieldsHack;
+
         private new void Awake()
         {
+            if (_requiredFieldsHack != null)
+            {
+                m_type = _requiredFieldsHack.EffectAreaType;
+                m_statusEffect = _requiredFieldsHack.StatusEffect;
+            }
+
             if (m_characterMask == 0 || !_areaTreeInitialized)
             {
                 m_characterMask = LayerMask.GetMask("character_trigger");
@@ -38,10 +46,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             m_collider = GetComponent<Collider>();
             m_allAreas.Add(this);
-        }
 
-        private void Start()
-        {
             if (!_areaTreeInitialized) return;
 
             var index = GetIndexFromType(m_type);
@@ -129,6 +134,9 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             var typeValue = (int)type;
             if (typeValue > 512) return EffectAreaTypeCount - 1;
+            
+            // WHY is Heat 3 and not 1 ????
+            if (typeValue == 3) typeValue = 1;
 
             return (int)Math.Log(typeValue, 2);
         }
@@ -143,14 +151,39 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             var index = GetIndexFromType(type);
-
+            
             Profiler.BeginSample("octree search");
             var collidingWith = new List<VPOEffectArea>();
             AreaTreeByType[index].GetOverlapping(collidingWith, p, radius);
+
             __result = collidingWith.FirstOrDefault();
             Profiler.EndSample();
 
             return false;
+        }
+
+        [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.Awake))]
+        private static bool Prefix(EffectArea __instance)
+        {
+            _requiredFieldsHack = new RequiredEffectAreaFields(__instance.m_statusEffect, __instance.m_type);
+            __instance.gameObject.AddComponent<VPOEffectArea>();
+            _requiredFieldsHack = null;
+
+            Destroy(__instance);
+
+            return false;
+        }
+    }
+    
+    internal class RequiredEffectAreaFields
+    {
+        public readonly string StatusEffect;
+        public readonly EffectArea.Type EffectAreaType;
+        
+        public RequiredEffectAreaFields(string statusEffect, EffectArea.Type effectAreaType)
+        {
+            StatusEffect = statusEffect;
+            EffectAreaType = effectAreaType;
         }
     }
 }
