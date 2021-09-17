@@ -117,7 +117,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (!MaxBoundsForPrefab.TryGetValue(prefabName, out var maxBounds)) return;
 
             maxBounds.center = __instance.transform.position;
-            
+
             Profiler.BeginSample("check overlap");
             var overlapList = new List<int>();
             WearNTearIdTree.GetOverlappingXZ(overlapList, maxBounds);
@@ -193,7 +193,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static bool HaveRoof(WearNTear __instance, out bool __result)
         {
             __result = false;
-            if (WearNTearCache.TryGetValue(__instance.GetInstanceID(), out var myCache))
+            if (WearNTearCache.TryGetValue(__instance.GetInstanceID(), out var myCache) && myCache.RoofCheckCached)
             {
                 __result = myCache.HaveRoof;
                 return false;
@@ -424,6 +424,7 @@ namespace ValheimPerformanceOptimizations.Patches
             new Dictionary<WearNTear.BoundData, List<ColliderSupportData>>(new BoundDataComparer());
 
         private float support = -1f;
+        private bool haveRoof;
 
         public float Support
         {
@@ -437,7 +438,17 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public bool SupportCached { get; private set; }
 
-        public bool HaveRoof { get; set; }
+        public bool HaveRoof
+        {
+            get => haveRoof;
+            set
+            {
+                haveRoof = value;
+                RoofCheckCached = true;
+            }
+        }
+
+        public bool RoofCheckCached { get; private set; }
 
         public List<ColliderSupportData> GetOrComputeColliderSupportData(
             WearNTear.BoundData boundData, Predicate<Collider> colliderPredicate)
