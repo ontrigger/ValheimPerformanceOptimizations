@@ -4,6 +4,10 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+## Changes in 0.7.3
+
+* Another attempt at fixing the roof checks
+
 ## Changes in 0.7.2
 
 * Fixed the 'Collection was modified' error

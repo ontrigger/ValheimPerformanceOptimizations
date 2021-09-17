@@ -1,3 +1,7 @@
+# Changes in 0.7.3
+
+* Another attempt at fixing the roof checks
+
 # Changes in 0.7.2
 
 * Fixed the 'Collection was modified' error
