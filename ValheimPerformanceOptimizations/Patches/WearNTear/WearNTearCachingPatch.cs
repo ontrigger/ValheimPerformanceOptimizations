@@ -116,12 +116,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if (!MaxBoundsForPrefab.TryGetValue(prefabName, out var maxBounds)) return;
 
-            var extents = maxBounds.extents;
-            var maxRadius = Mathf.Max(extents.x, extents.y, extents.z);
-
+            maxBounds.center = __instance.transform.position;
+            
             Profiler.BeginSample("check overlap");
             var overlapList = new List<int>();
-            WearNTearIdTree.GetOverlapping(overlapList, __instance.transform.position, maxRadius);
+            WearNTearIdTree.GetOverlappingXZ(overlapList, maxBounds);
             Profiler.EndSample();
 
             ClearWearNTearCaches(overlapList);
@@ -174,10 +173,8 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 var toClear = new List<int>();
                 maxBounds.Expand(0.5f);
-                var extents = maxBounds.extents;
 
-                var maxRadius = Mathf.Max(extents.x, extents.y, extents.z);
-                WearNTearIdTree.GetOverlapping(toClear, maxBounds.center, maxRadius);
+                WearNTearIdTree.GetOverlappingXZ(toClear, maxBounds);
 
                 var maxBoundsCenter = maxBounds.center;
                 maxBoundsCenter.y += 0.5f;

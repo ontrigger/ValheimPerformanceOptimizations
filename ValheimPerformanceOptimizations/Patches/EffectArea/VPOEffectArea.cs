@@ -47,7 +47,7 @@ namespace ValheimPerformanceOptimizations.Patches
                     _areaTreeInitialized = true;
                 }
             }
-
+            
             m_collider = GetComponent<Collider>();
             m_allAreas.Add(this);
 
@@ -167,6 +167,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void ReinsertAllForIndex(Type type)
         {
+            var toRemove = new List<VPOEffectArea>();
             foreach (var area in ChangedTransforms)
             {
                 if ((area.m_type & type) == 0) continue;
@@ -181,8 +182,10 @@ namespace ValheimPerformanceOptimizations.Patches
                 InsertAreaWithIndex(index, area);
                 Profiler.EndSample();
 
-                ChangedTransforms.Remove(area);
+                toRemove.Add(area);
             }
+            
+            toRemove.ForEach(area => ChangedTransforms.Remove(area));
         }
 
         [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.IsPointInsideArea)), HarmonyPrefix]
