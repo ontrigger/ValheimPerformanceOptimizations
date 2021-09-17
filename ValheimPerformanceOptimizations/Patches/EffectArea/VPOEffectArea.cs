@@ -11,7 +11,6 @@ namespace ValheimPerformanceOptimizations.Patches
     public class VPOEffectArea : EffectArea
     {
         private static readonly int EffectAreaTypeCount = Enum.GetNames(typeof(Type)).Length;
-        private readonly List<Character> inside = new List<Character>();
 
         private static readonly BoundsOctree<VPOEffectArea>[] AreaTreeByType
             = new BoundsOctree<VPOEffectArea>[EffectAreaTypeCount];
@@ -19,6 +18,11 @@ namespace ValheimPerformanceOptimizations.Patches
         private static bool _areaTreeInitialized;
 
         private static RequiredEffectAreaFields _requiredFieldsHack;
+        private static readonly HashSet<VPOEffectArea> ChangedTransforms = new HashSet<VPOEffectArea>();
+
+        private readonly List<Character> inside = new List<Character>();
+
+        public Vector3 lastPosition;
 
         private new void Awake()
         {
@@ -47,10 +51,13 @@ namespace ValheimPerformanceOptimizations.Patches
             m_collider = GetComponent<Collider>();
             m_allAreas.Add(this);
 
+            transform.hasChanged = false;
+            lastPosition = m_collider.bounds.center;
+
             if (!_areaTreeInitialized) return;
 
             var index = GetIndexFromType(m_type);
-            AreaTreeByType[index].Add(this, this.m_collider.bounds);
+            InsertAreaWithIndex(index, this);
         }
 
         private void Update()
@@ -78,26 +85,23 @@ namespace ValheimPerformanceOptimizations.Patches
                     character.OnNearFire(transform.position);
                 }
             }
+
+            if (transform.hasChanged)
+            {
+                transform.hasChanged = false;
+                ChangedTransforms.Add(this);
+            }
         }
 
         private new void OnDestroy()
         {
-            if (!_areaTreeInitialized) { return; }
+            if (!_areaTreeInitialized) return;
 
             var index = GetIndexFromType(m_type);
 
-            var removed = AreaTreeByType[index].Remove(this, m_collider.bounds);
-            if (!removed)
-            {
-                AreaTreeByType[index].Remove(this);
-            }
-        }
-
-        [HarmonyPatch(typeof(Game), nameof(Game.Shutdown)), HarmonyPostfix]
-        private static void Game_Shutdown_Postfix(Game __instance)
-        {
-            m_characterMask = 0;
-            _areaTreeInitialized = false;
+            RemoveAreaWithIndex(index, this);
+            
+            ChangedTransforms.Remove(this);
         }
 
         private void OnTriggerEnter(Collider other)
@@ -130,15 +134,55 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private new void OnTriggerStay(Collider collider) { }
 
+        private static void InsertAreaWithIndex(int index, VPOEffectArea area)
+        {
+            AreaTreeByType[index].Add(area, area.m_collider.bounds);
+
+            area.lastPosition = area.m_collider.bounds.center;
+        }
+        
+        private static void RemoveAreaWithIndex(int index, VPOEffectArea area)
+        {
+            var bounds = area.m_collider.bounds;
+            bounds.center = area.lastPosition;
+            
+            var removed = AreaTreeByType[index].Remove(area, bounds);
+            if (!removed)
+            {
+                AreaTreeByType[index].Remove(area);
+            }
+        }
+
         private static int GetIndexFromType(Type type)
         {
             var typeValue = (int)type;
             if (typeValue > 512) return EffectAreaTypeCount - 1;
-            
-            // WHY is Heat 3 and not 1 ????
+
+            // it seems like bed warmth sources can have > 1 type, this one is Heat+Fire
+            // TODO: do this properly if someone encounters an issue with this
             if (typeValue == 3) typeValue = 1;
 
             return (int)Math.Log(typeValue, 2);
+        }
+
+        private static void ReinsertAllForIndex(Type type)
+        {
+            foreach (var area in ChangedTransforms)
+            {
+                if ((area.m_type & type) == 0) continue;
+                
+                var index = GetIndexFromType(type);
+                
+                Profiler.BeginSample("removin");
+                RemoveAreaWithIndex(index, area);
+                Profiler.EndSample();
+                
+                Profiler.BeginSample("insertin");
+                InsertAreaWithIndex(index, area);
+                Profiler.EndSample();
+
+                ChangedTransforms.Remove(area);
+            }
         }
 
         [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.IsPointInsideArea)), HarmonyPrefix]
@@ -150,8 +194,12 @@ namespace ValheimPerformanceOptimizations.Patches
                 return false;
             }
 
-            var index = GetIndexFromType(type);
+            Profiler.BeginSample("reinsertion");
+            ReinsertAllForIndex(type);
+            Profiler.EndSample();
             
+            var index = GetIndexFromType(type);
+
             Profiler.BeginSample("octree search");
             var collidingWith = new List<VPOEffectArea>();
             AreaTreeByType[index].GetOverlapping(collidingWith, p, radius);
@@ -173,13 +221,20 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return false;
         }
+        
+        [HarmonyPatch(typeof(Game), nameof(Game.Shutdown)), HarmonyPostfix]
+        private static void Game_Shutdown_Postfix(Game __instance)
+        {
+            m_characterMask = 0;
+            _areaTreeInitialized = false;
+        }
     }
-    
+
     internal class RequiredEffectAreaFields
     {
-        public readonly string StatusEffect;
         public readonly EffectArea.Type EffectAreaType;
-        
+        public readonly string StatusEffect;
+
         public RequiredEffectAreaFields(string statusEffect, EffectArea.Type effectAreaType)
         {
             StatusEffect = statusEffect;

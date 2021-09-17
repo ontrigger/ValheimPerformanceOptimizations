@@ -20,7 +20,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly List<string> MaterialsWithDisabledInstancing = new List<string>
         {
             "straw_roof", "straw_roof_worn", "Grill_mat", "meadbase", "poison",
-            "poisonres_potion", "stamina_potion"
+            "poisonres_potion", "stamina_potion", "portal_small", "cloudberry"
         }.Select(material => material + " (Instance)").ToList();
 
         private static readonly List<string> PrefabsWithDisabledInstancing = new List<string>
@@ -29,7 +29,8 @@ namespace ValheimPerformanceOptimizations.Patches
             "OLD_wood_roof_ocorner", "wood_roof_45", "wood_roof_top_45", "wood_roof_ocorner_45",
             "wood_roof", "wood_roof_top", "OLD_wood_roof", "piece_cookingstation", "MeadBaseFrostResist",
             "MeadBaseHealthMedium", "MeadBaseHealthMinor", "MeadBasePoisonResist", "MeadBaseStaminaMedium",
-            "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor"
+            "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor",
+            "portal_wood", "CloudberryBush"
         };
 
         private static readonly List<string> PrefabsWithWastedMaterials = new List<string>
@@ -138,7 +139,6 @@ namespace ValheimPerformanceOptimizations.Patches
             var snowPsRenderer = snow.GetComponent<ParticleSystemRenderer>();
             var snowClusterMaterial = snowPsRenderer.material;
             snowClusterMaterial.mainTexture = null;
-            snowClusterMaterial.shader = luxLitShader;
             snowClusterMaterial.DisableKeyword("GEOM_TYPE_FROND");
         }
 
