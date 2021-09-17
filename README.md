@@ -4,6 +4,12 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+## Changes in 0.7.1
+
+* Fixed snow storm particles appearing inside buildings
+* Fixed being unable to sleep
+* Fixed other related AOE effects not working
+
 ## New in 0.7.0
 
 * Optimizations for structural integrity

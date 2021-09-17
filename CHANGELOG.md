@@ -1,3 +1,9 @@
+# Changes in 0.7.1
+
+* Fixed snow storm particles appearing inside buildings
+* Fixed being unable to sleep
+* Fixed other related AOE effects not working
+
 # Changes in 0.7
 
 * Optimizations for structural integrity
