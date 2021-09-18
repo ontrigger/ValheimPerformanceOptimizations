@@ -182,16 +182,25 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void WearNTearDisabledProcessor(ComponentCache componentCache)
         {
-            componentCache.WearNTear.OnDestroy();
-            
+            var wearNTear = componentCache.WearNTear;
+            wearNTear.OnDestroy();
+
             var zNetView = componentCache.NetView;
             zNetView.Unregister("WNTRemove");
             zNetView.Unregister("WNTDamage");
             zNetView.Unregister("WNTRepair");
             zNetView.Unregister("WNTHealthChanged");
             zNetView.Unregister("WNTCreateFragments");
-            
-            componentCache.WearNTear.m_colliders = null;
+
+            wearNTear.m_colliders = null;
+        }
+
+        // this fixes crashes with ValheimRaft
+        // TODO: fix object pooling massively fucking up rafts
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.OnDestroy)), HarmonyPrefix]
+        private static bool WearNTear_OnDestroy_Prefix(WearNTear __instance)
+        {
+            return __instance.m_myIndex < WearNTear.m_allInstances.Count;
         }
 
         private static void PieceEnabledProcessor(ComponentCache componentCache)

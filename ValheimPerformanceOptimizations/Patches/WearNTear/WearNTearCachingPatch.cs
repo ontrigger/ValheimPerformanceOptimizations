@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using BepInEx.Configuration;
 using HarmonyLib;
 using JetBrains.Annotations;
 using UnityEngine;
@@ -11,8 +12,7 @@ using ValheimPerformanceOptimizations.Extensions;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-    [HarmonyPatch]
-    public class WearNTearCachingPatch
+    public static class WearNTearCachingPatch
     {
         private static int _maskToCheck;
 
@@ -31,6 +31,24 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly MethodInfo IsWetMethod
             = AccessTools.DeclaredMethod(typeof(EnvMan), nameof(EnvMan.IsWet));
+
+        static WearNTearCachingPatch()
+        {
+            ValheimPerformanceOptimizations.OnInitialized += Initialize;
+        }
+
+        private static void Initialize(ConfigFile configFile, Harmony harmony)
+        {
+            if (ModCompatibility.IsValheimRaftPresent)
+            {
+                ValheimPerformanceOptimizations.Logger.LogWarning(
+                    "!!! ValheimRAFT present !!! disabling structural integrity optimizations to maintain compatibility");
+            }
+            else
+            {
+                harmony.PatchAll(typeof(GetStandingOnShipPatch));
+            }
+        }
 
         [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake)), HarmonyPostfix]
         private static void Postfix(ZNetScene __instance)
