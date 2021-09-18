@@ -86,7 +86,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
             }
 
-            if (transform.hasChanged)
+            if (transform.hasChanged && ZNet.instance)
             {
                 transform.hasChanged = false;
                 ChangedTransforms.Add(this);
@@ -171,16 +171,19 @@ namespace ValheimPerformanceOptimizations.Patches
             foreach (var area in ChangedTransforms)
             {
                 if ((area.m_type & type) == 0) continue;
+
+                if (area != null)
+                {
+                    var index = GetIndexFromType(type);
                 
-                var index = GetIndexFromType(type);
+                    Profiler.BeginSample("removin");
+                    RemoveAreaWithIndex(index, area);
+                    Profiler.EndSample();
                 
-                Profiler.BeginSample("removin");
-                RemoveAreaWithIndex(index, area);
-                Profiler.EndSample();
-                
-                Profiler.BeginSample("insertin");
-                InsertAreaWithIndex(index, area);
-                Profiler.EndSample();
+                    Profiler.BeginSample("insertin");
+                    InsertAreaWithIndex(index, area);
+                    Profiler.EndSample();
+                }
 
                 toRemove.Add(area);
             }
@@ -230,6 +233,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             m_characterMask = 0;
             _areaTreeInitialized = false;
+            ChangedTransforms.Clear();
         }
     }
 
