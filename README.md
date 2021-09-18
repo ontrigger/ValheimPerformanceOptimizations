@@ -85,6 +85,8 @@ create a file called `Environment.props` inside the project base and change the 
   <PropertyGroup>
     <!-- Needs to be your path to the base Valheim folder -->
     <VALHEIM_INSTALL>E:\Steam\steamapps\common\Valheim</VALHEIM_INSTALL>
+    <!-- Optional, needs to be your path to a r2modmanPlus profile folder -->
+    <R2MODMAN_INSTALL>C:/Users/maxsc/AppData/Roaming/r2modmanPlus-local/Valheim/profiles/Develop</R2MODMAN_INSTALL>
   </PropertyGroup>
 </Project>
 ```
