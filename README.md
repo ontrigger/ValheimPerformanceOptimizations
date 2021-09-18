@@ -4,6 +4,14 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+
+## Changes in 0.7.4
+
+* Fixed crazy spawnrates
+* Fixed being unable to breed animals
+* ValheimRaft compatibility (at the cost of performance)
+* Fix errors after logging out/quitting
+
 ## Changes in 0.7.3
 
 * Another attempt at fixing the roof checks

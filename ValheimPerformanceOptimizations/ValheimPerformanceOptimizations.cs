@@ -5,16 +5,18 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using Jotunn.Utils;
 
 namespace ValheimPerformanceOptimizations
 {
     [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(JotunnId, BepInDependency.DependencyFlags.SoftDependency)]
+    [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.None)]
     [BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";
-        public const string PluginVersion = "0.7.3";
+        public const string PluginVersion = "0.7.4";
 
         public static event Action<ConfigFile, Harmony> OnInitialized;
 
