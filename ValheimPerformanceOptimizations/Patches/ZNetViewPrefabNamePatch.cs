@@ -20,11 +20,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly MethodInfo ObjectInstantiateField =
             AccessTools.GetDeclaredMethods(typeof(Object))
-                       .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
-                       .Select(m => m.MakeGenericMethod(typeof(GameObject)))
-                       .First(m =>
-                                  m.GetParameters().Length == 3 &&
-                                  m.GetParameters()[1].ParameterType == typeof(Vector3));
+                .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
+                .Select(m => m.MakeGenericMethod(typeof(GameObject)))
+                .First(m =>
+                           m.GetParameters().Length == 3 &&
+                           m.GetParameters()[1].ParameterType == typeof(Vector3));
 
         private static readonly MethodInfo GameObjectNameGetter = AccessTools.PropertyGetter(
             typeof(GameObject), nameof(GameObject.name));
@@ -41,15 +41,33 @@ namespace ValheimPerformanceOptimizations.Patches
             __result = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
             return false;
         }
-        
-        [HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake))]
+
+        [HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake)), HarmonyPostfix]
         private static void Postfix(ZNetView __instance)
         {
             if (ZNetView.m_ghostInit || __instance == null) return;
-            
+
             __instance.name = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
         }
-        
+
+        // GetNrOfInstances expects objects to have (Clone) in the name
+        // so we remove that shit
+        [HarmonyTranspiler]
+        [HarmonyPatch(
+            typeof(SpawnSystem), nameof(SpawnSystem.GetNrOfInstances),
+            typeof(GameObject), typeof(Vector3),
+            typeof(float), typeof(bool), typeof(bool)
+        )]
+        public static IEnumerable<CodeInstruction> Transpile_SpawnSystem_GetNrOfInstances(
+            IEnumerable<CodeInstruction> instructions)
+        {
+            var code = new List<CodeInstruction>(instructions);
+            var objGetNameCallIndex = code.FindIndex(c => c.opcode == OpCodes.Callvirt);
+            code.RemoveRange(objGetNameCallIndex + 1, 2);
+
+            return code.AsEnumerable();
+        }
+
         // this gets overwritten if object pooling is enabled
         [HarmonyTranspiler, HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.PlaceVegetation))]
         public static IEnumerable<CodeInstruction> Transpile_ZoneSystem_PlaceVegetation(
