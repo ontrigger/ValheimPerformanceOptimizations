@@ -50,8 +50,8 @@
             <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\BepInEx.Harmony.dll</HintPath>
         </Reference>
         <Reference Include="Jotunn, Culture=neutral, PublicKeyToken=null">
-          <HintPath>$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll</HintPath>
-          <HintPath>$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
+          <HintPath Condition="Exists('$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll')">$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll</HintPath>
+          <HintPath Condition="Exists('$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll')">$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
         </Reference>
         <Reference Include="Microsoft.CSharp" />
         <Reference Include="System" />
