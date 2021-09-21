@@ -1,3 +1,8 @@
+# Changes in 0.7.5
+
+* Jotunn is no longer required to use the mod
+* Fixed more EffectArea errors
+
 # Changes in 0.7.4
 
 * Fixed crazy spawnrates
