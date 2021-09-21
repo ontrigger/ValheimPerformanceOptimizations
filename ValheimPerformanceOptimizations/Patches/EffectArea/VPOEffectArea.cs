@@ -52,9 +52,9 @@ namespace ValheimPerformanceOptimizations.Patches
             m_allAreas.Add(this);
 
             transform.hasChanged = false;
-            lastPosition = m_collider.bounds.center;
+            lastPosition = transform.position;
 
-            if (!_areaTreeInitialized) return;
+            if (!_areaTreeInitialized || m_collider == null) return;
 
             var index = GetIndexFromType(m_type);
             InsertAreaWithIndex(index, this);
@@ -95,7 +95,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private new void OnDestroy()
         {
-            if (!_areaTreeInitialized) return;
+            if (!_areaTreeInitialized || m_collider == null) return;
 
             var index = GetIndexFromType(m_type);
 
@@ -138,7 +138,7 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             AreaTreeByType[index].Add(area, area.m_collider.bounds);
 
-            area.lastPosition = area.m_collider.bounds.center;
+            area.lastPosition = area.transform.position;
         }
         
         private static void RemoveAreaWithIndex(int index, VPOEffectArea area)
@@ -172,7 +172,7 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 if ((area.m_type & type) == 0) continue;
 
-                if (area != null)
+                if (area != null && area.m_collider != null)
                 {
                     var index = GetIndexFromType(type);
                 

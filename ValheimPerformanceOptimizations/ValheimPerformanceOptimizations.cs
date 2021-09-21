@@ -5,13 +5,11 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
-using Jotunn.Utils;
 
 namespace ValheimPerformanceOptimizations
 {
     [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(JotunnId, BepInDependency.DependencyFlags.SoftDependency)]
-    [NetworkCompatibility(CompatibilityLevel.NoNeedForSync, VersionStrictness.None)]
     [BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
