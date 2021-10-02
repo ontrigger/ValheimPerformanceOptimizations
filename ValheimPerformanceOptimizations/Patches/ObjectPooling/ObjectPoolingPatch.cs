@@ -170,7 +170,12 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void PickableDestroyProcessor(ComponentCache componentCache)
         {
-            componentCache.Pickable.CancelInvoke(nameof(Pickable.UpdateRespawn));
+            var pickable = componentCache.Pickable;
+            pickable.CancelInvoke(nameof(Pickable.UpdateRespawn));
+            if (pickable.m_hideWhenPicked)
+            {
+                pickable.m_hideWhenPicked.SetActive(true);
+            }
         }
 
         private static void WearNTearEnabledProcessor(ComponentCache componentCache)
