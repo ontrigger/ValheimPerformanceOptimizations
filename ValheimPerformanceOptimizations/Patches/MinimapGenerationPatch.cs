@@ -70,7 +70,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public static string MinimapTextureFilePath()
         {
-            var file = ZNet.m_world.m_name + "_" + ZNet.m_world.m_seed + "_" + Version.GetVersionString() + ".map";
+            // for some reason Weyland adds a forward slash to the version string instead of literally anything else
+            var cleanedVersionString = Version.GetVersionString().Replace("/", "_");
+            
+            var file = $"{ZNet.m_world.m_name}_{ZNet.m_world.m_seed}_{cleanedVersionString}.map";
+            
             return MinimapTextureFolderPath() + "/" + file;
         }
 
