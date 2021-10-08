@@ -26,11 +26,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly MethodInfo ObjectInstantiateMethod =
             AccessTools.GetDeclaredMethods(typeof(Object))
-                       .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
-                       .Select(m => m.MakeGenericMethod(typeof(GameObject)))
-                       .First(m =>
-                                  m.GetParameters().Length == 3 &&
-                                  m.GetParameters()[1].ParameterType == typeof(Vector3));
+                .Where(m => m.Name == "Instantiate" && m.GetGenericArguments().Length == 1)
+                .Select(m => m.MakeGenericMethod(typeof(GameObject)))
+                .First(m =>
+                           m.GetParameters().Length == 3 &&
+                           m.GetParameters()[1].ParameterType == typeof(Vector3));
 
         private static readonly MethodInfo ObjectDestroyMethod =
             AccessTools.Method(typeof(Object), "Destroy", new[] { typeof(Object) });
@@ -127,14 +127,22 @@ namespace ValheimPerformanceOptimizations.Patches
 
             if (prefab.GetComponentInChildren<TerrainModifier>())
             {
-                objectEnabledProcessor += TerrainModifierEnabledProcessor;
-                objectDisabledProcessor += TerrainModifierDisabledProcessor;
+                objectEnabledProcessor += cache => cache.TerrainModifier.Awake();
+                objectDisabledProcessor += cache => cache.TerrainModifier.OnDestroy();
             }
 
             if (prefab.GetComponentInChildren<Destructible>())
             {
                 objectEnabledProcessor += DestructibleEnabledProcessor;
                 objectDisabledProcessor += DestructibleDisabledProcessor;
+            }
+
+            if (prefab.GetComponentInChildren<CreatureSpawner>())
+            {
+                objectEnabledProcessor += cache => cache.GetComponentInChildren<CreatureSpawner>().Awake();
+                objectDisabledProcessor += cache =>
+                    cache.GetComponentInChildren<CreatureSpawner>()
+                        .CancelInvoke(nameof(CreatureSpawner.UpdateSpawner));
             }
 
             PrefabAwakeProcessors[prefab.name] = objectEnabledProcessor;
@@ -226,17 +234,9 @@ namespace ValheimPerformanceOptimizations.Patches
             // RuneMagic destroys the piece component on some rocks causing the unchecked code to crash
             if (componentCache.Piece == null) { return; }
 
+            Profiler.BeginSample("PieceDisabledProcessor");
             componentCache.Piece.OnDestroy();
-        }
-
-        private static void TerrainModifierEnabledProcessor(ComponentCache componentCache)
-        {
-            componentCache.TerrainModifier.Awake();
-        }
-
-        private static void TerrainModifierDisabledProcessor(ComponentCache componentCache)
-        {
-            componentCache.TerrainModifier.OnDestroy();
+            Profiler.EndSample();
         }
 
         private static void DestructibleEnabledProcessor(ComponentCache componentCache)

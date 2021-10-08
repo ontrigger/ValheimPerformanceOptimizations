@@ -47,25 +47,23 @@ namespace ValheimPerformanceOptimizations.Patches
                     _areaTreeInitialized = true;
                 }
             }
-            
+
             m_collider = GetComponent<Collider>();
             m_allAreas.Add(this);
 
             transform.hasChanged = false;
             lastPosition = transform.position;
+        }
 
-            if (!_areaTreeInitialized || m_collider == null) return;
-
+        private void OnEnable()
+        {
             var index = GetIndexFromType(m_type);
             InsertAreaWithIndex(index, this);
         }
 
         private void Update()
         {
-            if (ZNet.instance == null)
-            {
-                return;
-            }
+            if (ZNet.instance == null) { return; }
 
             inside.RemoveAll(character => character == null);
             foreach (var character in inside)
@@ -86,30 +84,29 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
             }
 
-            if (transform.hasChanged && ZNet.instance)
+            if (transform.hasChanged)
             {
                 transform.hasChanged = false;
                 ChangedTransforms.Add(this);
             }
         }
 
-        private new void OnDestroy()
+        private new void OnDestroy() { }
+
+        private void OnDisable()
         {
             if (!_areaTreeInitialized || m_collider == null) return;
 
             var index = GetIndexFromType(m_type);
 
             RemoveAreaWithIndex(index, this);
-            
+
             ChangedTransforms.Remove(this);
         }
 
         private void OnTriggerEnter(Collider other)
         {
-            if (ZNet.instance == null)
-            {
-                return;
-            }
+            if (ZNet.instance == null) { return; }
 
             var character = other.GetComponent<Character>();
             if (character && character.IsOwner())
@@ -120,10 +117,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private void OnTriggerExit(Collider other)
         {
-            if (ZNet.instance == null)
-            {
-                return;
-            }
+            if (ZNet.instance == null) { return; }
 
             var character = other.GetComponent<Character>();
             if (character && character.IsOwner())
@@ -136,16 +130,19 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void InsertAreaWithIndex(int index, VPOEffectArea area)
         {
-            AreaTreeByType[index].Add(area, area.m_collider.bounds);
+            if (area.m_collider == null) { return; }
 
+            AreaTreeByType[index].Add(area, area.m_collider.bounds);
             area.lastPosition = area.transform.position;
         }
-        
+
         private static void RemoveAreaWithIndex(int index, VPOEffectArea area)
         {
+            if (area.m_collider == null) { return; }
+            
             var bounds = area.m_collider.bounds;
             bounds.center = area.lastPosition;
-            
+
             var removed = AreaTreeByType[index].Remove(area, bounds);
             if (!removed)
             {
@@ -165,7 +162,7 @@ namespace ValheimPerformanceOptimizations.Patches
             return (int)Math.Log(typeValue, 2);
         }
 
-        private static void ReinsertAllForIndex(Type type)
+        private static void ReinsertAllForType(Type type)
         {
             var toRemove = new List<VPOEffectArea>();
             foreach (var area in ChangedTransforms)
@@ -175,11 +172,11 @@ namespace ValheimPerformanceOptimizations.Patches
                 if (area != null && area.m_collider != null)
                 {
                     var index = GetIndexFromType(type);
-                
+
                     Profiler.BeginSample("removin");
                     RemoveAreaWithIndex(index, area);
                     Profiler.EndSample();
-                
+
                     Profiler.BeginSample("insertin");
                     InsertAreaWithIndex(index, area);
                     Profiler.EndSample();
@@ -187,7 +184,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
                 toRemove.Add(area);
             }
-            
+
             toRemove.ForEach(area => ChangedTransforms.Remove(area));
         }
 
@@ -201,9 +198,9 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             Profiler.BeginSample("reinsertion");
-            ReinsertAllForIndex(type);
+            ReinsertAllForType(type);
             Profiler.EndSample();
-            
+
             var index = GetIndexFromType(type);
 
             Profiler.BeginSample("octree search");
@@ -227,7 +224,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return false;
         }
-        
+
         [HarmonyPatch(typeof(Game), nameof(Game.Shutdown)), HarmonyPostfix]
         private static void Game_Shutdown_Postfix(Game __instance)
         {

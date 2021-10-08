@@ -691,8 +691,7 @@ namespace ValheimPerformanceOptimizations
                         // Does it fit?
                         if (Encapsulates(children[bestFitChild].bounds, existingObj.Bounds))
                         {
-                            children[bestFitChild]
-                                .SubAdd(existingObj.Obj, existingObj.Bounds); // Go a level deeper					
+                            children[bestFitChild].SubAdd(existingObj.Obj, existingObj.Bounds); // Go a level deeper					
                             objects.Remove(existingObj); // Remove from here
                         }
                     }

@@ -32,10 +32,7 @@ namespace ValheimPerformanceOptimizations.Patches
         [HarmonyPatch(typeof(Piece), nameof(Piece.OnDestroy)), HarmonyPostfix]
         public static void OnDestroyPatch(Piece __instance)
         {
-            if (AllComfortPieces.ContainsKey(__instance.GetInstanceID()))
-            {
-                AllComfortPieces.Remove(__instance.GetInstanceID());
-            }
+            AllComfortPieces.Remove(__instance.GetInstanceID());
         }
 
         public static List<Piece> GetNearbyComfortPieces(Vector3 position)
