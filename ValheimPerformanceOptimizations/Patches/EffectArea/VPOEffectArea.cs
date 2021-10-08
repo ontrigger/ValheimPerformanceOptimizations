@@ -130,7 +130,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void InsertAreaWithIndex(int index, VPOEffectArea area)
         {
-            if (area.m_collider == null) { return; }
+            if (area.m_collider == null || !_areaTreeInitialized) { return; }
 
             AreaTreeByType[index].Add(area, area.m_collider.bounds);
             area.lastPosition = area.transform.position;
@@ -138,7 +138,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void RemoveAreaWithIndex(int index, VPOEffectArea area)
         {
-            if (area.m_collider == null) { return; }
+            if (area.m_collider == null || !_areaTreeInitialized) { return; }
             
             var bounds = area.m_collider.bounds;
             bounds.center = area.lastPosition;
