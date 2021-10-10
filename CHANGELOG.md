@@ -1,3 +1,9 @@
+# Changes in 0.7.6
+
+* Fixed conflict with SharedMap
+* Fixed pickable objects sometimes not visually appearing as regrown
+* Fixed camps never respawning enemies within them
+
 # Changes in 0.7.5
 
 * Jotunn is no longer required to use the mod

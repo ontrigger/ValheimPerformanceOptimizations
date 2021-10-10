@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace ValheimPerformanceOptimizations
 {
-    public class AssetBundleHelper
+    public static class AssetBundleHelper
     {
         public static AssetBundle GetAssetBundleFromResources(string fileName)
         {

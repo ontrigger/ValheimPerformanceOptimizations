@@ -4,6 +4,12 @@ Rendering, logic, and loading time optimizations for both client and server vers
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+## Changes in 0.7.6
+
+* Fixed conflict with SharedMap
+* Fixed pickable objects sometimes not visually appearing as regrown
+* Fixed camps never respawning enemies within them
+
 ## Changes in 0.7.5
 
 * Jotunn is no longer required to use the mod

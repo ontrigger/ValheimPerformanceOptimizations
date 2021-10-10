@@ -14,7 +14,7 @@ namespace ValheimPerformanceOptimizations
     public class ValheimPerformanceOptimizations : BaseUnityPlugin
     {
         public const string PluginId = "dev.ontrigger.vpo";
-        public const string PluginVersion = "0.7.5";
+        public const string PluginVersion = "0.7.6";
 
         public static event Action<ConfigFile, Harmony> OnInitialized;
 
