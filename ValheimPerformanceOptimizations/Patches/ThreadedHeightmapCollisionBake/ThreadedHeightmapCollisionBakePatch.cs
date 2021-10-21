@@ -55,7 +55,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 if (heightmap.IsPointInside(pos))
                 {
                     any = true;
-                    ready = ready && HeightmapFinished[heightmap];
+                    ready = ready && HeightmapFinished.ContainsKey(heightmap) && HeightmapFinished[heightmap];
                 }
             }
 
