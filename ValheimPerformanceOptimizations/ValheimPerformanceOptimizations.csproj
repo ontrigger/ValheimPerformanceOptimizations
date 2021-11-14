@@ -88,8 +88,6 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="Patches\ClutterSystemRenderQueuePatch.cs" />
-        <Compile Include="Patches\ComfortCalculation\GetNearbyPiecesPatch.cs" />
-        <Compile Include="Patches\ComfortCalculation\CalculateComfortLevelPatch.cs" />
         <Compile Include="Patches\EffectArea\VPOEffectArea.cs" />
         <Compile Include="Patches\GetStandingOnShipPatch.cs" />
         <Compile Include="Patches\GetWaterLevel\GetWaterLevelPatch.cs" />
