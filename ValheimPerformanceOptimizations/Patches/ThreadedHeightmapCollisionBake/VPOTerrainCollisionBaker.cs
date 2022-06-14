@@ -1,104 +1,120 @@
 using System.Collections.Generic;
+using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Jobs.LowLevel.Unsafe;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-    public class VPOTerrainCollisionBaker : MonoBehaviour
-    {
-        private static VPOTerrainCollisionBaker instance;
+	[DefaultExecutionOrder(-1000)]
+	public class VPOTerrainCollisionBaker : MonoBehaviour
+	{
+		private static VPOTerrainCollisionBaker _instance;
 
-        private readonly Dictionary<Heightmap, int> ImmediateRegenerateRequests = new Dictionary<Heightmap, int>();
+		private readonly List<Heightmap> bakeRequests = new List<Heightmap>();
 
-        private readonly Dictionary<Heightmap, int> LateRegenerateRequests = new Dictionary<Heightmap, int>();
+		private JobHandle pendingBake;
+		private List<Heightmap> pendingHeightmaps = new List<Heightmap>();
 
-        public static VPOTerrainCollisionBaker Instance
-        {
-            get
-            {
-                if (!(bool) instance)
-                {
-                    GameObject backerGameObject = new GameObject("VPOTerrainCollisionBaker");
-                    instance = backerGameObject.AddComponent<VPOTerrainCollisionBaker>();
-                }
+		public static VPOTerrainCollisionBaker Instance
+		{
+			get
+			{
+				if (!_instance)
+				{
+					var bakeGameObject = new GameObject("VPOTerrainCollisionBaker");
+					_instance = bakeGameObject.AddComponent<VPOTerrainCollisionBaker>();
+				}
 
-                return instance;
-            }
-        }
+				return _instance;
+			}
+		}
 
-        public void RequestCollisionBake(Heightmap heightmap, bool immediate = false)
-        {
-            if (immediate)
-            {
-                ImmediateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
-                return;
-            }
+		public bool RequestAsyncCollisionBake(Heightmap heightmap)
+		{
+			if (heightmap.m_isDistantLod) { return false; }
 
-            if (!ImmediateRegenerateRequests.ContainsKey(heightmap))
-            {
-                LateRegenerateRequests[heightmap] = heightmap.m_collisionMesh.GetInstanceID();
-            }
-        }
+			if (bakeRequests.Count >= JobsUtility.JobWorkerCount) { return false; }
 
-        private void Update()
-        {
-            // remove duplicated requests
-            foreach (var request in ImmediateRegenerateRequests)
-            {
-                if (LateRegenerateRequests.TryGetValue(request.Key, out var meshId) && request.Value == meshId)
-                {
-                    LateRegenerateRequests.Remove(request.Key);
-                }
-            }
+			if (!bakeRequests.Contains(heightmap))
+			{
+				bakeRequests.Add(heightmap);
+			}
 
-            BakeRequested(ImmediateRegenerateRequests);
-        }
+			return true;
+		}
 
-        private void LateUpdate()
-        {
-            BakeRequested(LateRegenerateRequests);
+		private void Update()
+		{
+			pendingBake.Complete();
 
-            LateRegenerateRequests.Clear();
-            ImmediateRegenerateRequests.Clear();
-        }
+			foreach (var heightmap in pendingHeightmaps)
+			{
+				if (heightmap == null) { continue; }
 
-        private void BakeRequested(Dictionary<Heightmap, int> bakeRequests)
-        {
-            var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
-            var i = 0;
-            foreach (var meshId in bakeRequests.Values)
-            {
-                meshIds[i] = meshId;
-                i++;
-            }
+				heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
+				heightmap.m_dirty = true;
+				ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
+			}
 
-            var bakeJob = new BakeCollisionJob {MeshIds = meshIds};
-            bakeJob.Schedule(meshIds.Length, 1).Complete();
-            meshIds.Dispose();
+			pendingHeightmaps.Clear();
+		}
 
-            foreach (var heightmap in bakeRequests.Keys)
-            {
-                if (heightmap == null)
-                {
-                    continue;
-                }
+		private void LateUpdate()
+		{
+			var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
+			for (var i = 0; i < bakeRequests.Count; i++)
+			{
+				var heightmap = bakeRequests[i];
+				if (heightmap == null) { continue; }
 
-                heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
-                heightmap.m_dirty = true;
-                ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
-            }
-        }
+				var meshId = heightmap.m_collisionMesh.GetInstanceID();
+				meshIds[i] = meshId;
+			}
 
-        private struct BakeCollisionJob : IJobParallelFor
-        {
-            [ReadOnly]
-            public NativeArray<int> MeshIds;
+			var bakeJob = new BakeCollisionJob { MeshIds = meshIds };
+			pendingBake = bakeJob.Schedule(meshIds.Length, 1);
+			JobHandle.ScheduleBatchedJobs();
 
-            public void Execute(int index)
-            {
-                Physics.BakeMesh(MeshIds[index], false);
-            }
-        }
-    }
+			pendingHeightmaps.AddRange(bakeRequests);
+			bakeRequests.Clear();
+		}
+
+		private struct BakeCollisionJob : IJobParallelFor
+		{
+			[ReadOnly]
+			[DeallocateOnJobCompletion]
+			public NativeArray<int> MeshIds;
+
+			public void Execute(int index)
+			{
+				Physics.BakeMesh(MeshIds[index], false);
+			}
+		}
+
+		private struct BakeRequest
+		{
+			private readonly Heightmap owner;
+			private JobHandle jobHandle;
+
+			public BakeRequest(Heightmap owner, JobHandle jobHandle)
+			{
+				this.owner = owner;
+				this.jobHandle = jobHandle;
+			}
+
+			public void Complete()
+			{
+				jobHandle.Complete();
+
+				if (owner == null) { return; }
+
+				owner.m_collider.sharedMesh = owner.m_collisionMesh;
+				owner.m_dirty = true;
+				ThreadedHeightmapCollisionBakePatch.HeightmapFinished[owner] = true;
+			}
+		}
+	}
 }

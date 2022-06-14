@@ -8,6 +8,8 @@ using HarmonyLib;
 
 namespace ValheimPerformanceOptimizations
 {
+	using VPO = ValheimPerformanceOptimizations;
+	
     [BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(JotunnId, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
@@ -59,7 +61,7 @@ namespace ValheimPerformanceOptimizations
 
         private void OnDestroy()
         {
-            _harmony?.UnpatchAll(PluginId);
+            _harmony?.UnpatchSelf();
         }
     }
 }

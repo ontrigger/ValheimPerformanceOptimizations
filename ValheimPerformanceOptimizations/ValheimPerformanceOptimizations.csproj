@@ -11,6 +11,7 @@
         <AssemblyName>ValheimPerformanceOptimizations</AssemblyName>
         <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
         <FileAlignment>512</FileAlignment>
+        <LangVersion>8</LangVersion>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <PlatformTarget>AnyCPU</PlatformTarget>
@@ -58,6 +59,15 @@
         <Reference Include="System.Core" />
         <Reference Include="System.Data" />
         <Reference Include="System.Xml" />
+        <Reference Include="Unity.Collections">
+          <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\Unity.Collections.dll</HintPath>
+        </Reference>
+        <Reference Include="Unity.Jobs">
+          <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\Unity.Jobs.dll</HintPath>
+        </Reference>
+        <Reference Include="Unity.Mathematics">
+          <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\Unity.Mathematics.dll</HintPath>
+        </Reference>
         <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
           <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.dll</HintPath>
         </Reference>
@@ -109,6 +119,7 @@
         <Compile Include="Patches\ThreadedHeightmapCollisionBake\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
+        <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs" />
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
         <Compile Include="Patches\WaterVolumeVisibilityPatch.cs" />
         <Compile Include="Utils\AssetBundleHelper.cs" />
