@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 /*
  *   
@@ -129,12 +130,14 @@ namespace ValheimPerformanceOptimizations
         {
             bool removed = rootNode.Remove(obj, objBounds);
 
+			Profiler.BeginSample("shrinking");
             // See if we can shrink the octree down now that we've removed the item
             if (removed)
             {
                 Count--;
                 Shrink();
             }
+			Profiler.EndSample();
 
             return removed;
         }

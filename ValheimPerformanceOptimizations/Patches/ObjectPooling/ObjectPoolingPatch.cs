@@ -140,8 +140,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (prefab.GetComponentInChildren<CreatureSpawner>())
             {
                 objectEnabledProcessor += cache => cache.GetComponentInChildren<CreatureSpawner>().Awake();
-                objectDisabledProcessor += cache =>
-                    cache.GetComponentInChildren<CreatureSpawner>()
+                objectDisabledProcessor += cache => cache.GetComponentInChildren<CreatureSpawner>()
                         .CancelInvoke(nameof(CreatureSpawner.UpdateSpawner));
             }
 
@@ -256,8 +255,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static void DestructibleDisabledProcessor(ComponentCache componentCache)
         {
+            Profiler.BeginSample("DestructibleDisabledProcessor");
             var destructible = componentCache.GetComponentInChildren<Destructible>();
             destructible.CancelInvoke(nameof(Destructible.DestroyNow));
+            Profiler.EndSample();
         }
 
         [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPrefix]
@@ -298,6 +299,7 @@ namespace ValheimPerformanceOptimizations.Patches
                     componentCache = new ComponentCache(obj.GetComponentInChildren<ZNetView>());
                     ComponentCacheForObject.Add(obj, componentCache);
                 }
+
                 Profiler.EndSample();
 
                 Profiler.BeginSample("running processors");
@@ -357,9 +359,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
         public Piece Piece => _piece == null ? _piece = NetView.GetComponentInChildren<Piece>() : _piece;
 
-        public TerrainModifier TerrainModifier => _terrainModifier == null
-            ? _terrainModifier = NetView.GetComponentInChildren<TerrainModifier>()
-            : _terrainModifier;
+        public TerrainModifier TerrainModifier =>
+            _terrainModifier == null
+                ? _terrainModifier = NetView.GetComponentInChildren<TerrainModifier>()
+                : _terrainModifier;
 
         public Pickable Pickable =>
             _pickable == null ? _pickable = NetView.GetComponentInChildren<Pickable>() : _pickable;

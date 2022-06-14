@@ -1,8 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Configuration;
 using HarmonyLib;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Profiling;
+using Object = UnityEngine.Object;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -17,6 +23,10 @@ namespace ValheimPerformanceOptimizations.Patches
         private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
 
         private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
+		
+		private static NativeArray<Vector3> _heightmapVerts;
+
+		private static int _lastHeightmapWidth = -1;
 
         static ThreadedHeightmapCollisionBakePatch()
         {
@@ -41,8 +51,14 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
             {
-                VPOTerrainCollisionBaker.Instance.RequestCollisionBake(__instance, true);
-            }
+				var deferBake = VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance);
+				
+				// insta finish if we can't bake
+				if (!deferBake)
+				{
+					HeightmapFinished[__instance] = true;
+				}
+			}
         }
 
         private static bool IsHeightmapReady(Vector3 pos)
@@ -75,43 +91,93 @@ namespace ValheimPerformanceOptimizations.Patches
             }
 
             HeightmapFinished.Add(__instance, false);
-        }
+			
+			if (_lastHeightmapWidth != __instance.m_width)
+			{
+				if (_heightmapVerts.IsCreated)
+				{
+					_heightmapVerts.Dispose();
+				}
 
-        // remove line: 'm_collider.sharedMesh = m_collisionMesh;'
-        // it must not be called yet, no collision data is baked
-        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> RebuildCollisionMeshTranspiler(
-            IEnumerable<CodeInstruction> instructions)
+				var w1 = __instance.m_width + 1;
+				_heightmapVerts = new NativeArray<Vector3>(w1 * w1, Allocator.Persistent);
+			}
+
+			_lastHeightmapWidth = __instance.m_width;
+		}
+
+		// enqueue current collision mesh to be baked in the separate thread
+        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyPrefix]
+        private static bool RebuildCollisionMeshPatch(Heightmap __instance)
         {
-            var code = new List<CodeInstruction>(instructions);
+			var mesh = __instance.m_collisionMesh;
+			if (mesh == null)
+			{
+				mesh = new Mesh();
+			}
 
-            var foundIndex = -1;
-            for (var i = 0; i < code.Count; i++)
-            {
-                var instruction = code[i];
-                if (instruction.ToString().Contains("set_sharedMesh"))
-                {
-                    foundIndex = i;
-                }
-            }
+			var width = __instance.m_width;
+			var num = width + 1;
+			var maxHeight = -999999f;
+			var minHeight = 999999f;
+			Heightmap.m_tempVertises.Clear();
 
-            if (foundIndex > -1)
-            {
-                code.RemoveRange(foundIndex - 4, 5);
-            }
+			for (var idx = 0; idx < num * num; idx++)
+			{
+				var i = (int)math.floor((float)idx / num);
+				var j = idx % num;
+				
+				var vtx = __instance.CalcVertex(j, i);
+				Heightmap.m_tempVertises.Add(vtx);
+				if (vtx.y > maxHeight)
+				{
+					maxHeight = vtx.y;
+				}
+				if (vtx.y < minHeight)
+				{
+					minHeight = vtx.y;
+				}
+			}
 
-            return code.AsEnumerable();
-        }
+			mesh.SetVertices(Heightmap.m_tempVertises);
+			var prevIndexCount = (num - 1) * (num - 1) * 6;
+			if (mesh.GetIndexCount(0) != prevIndexCount)
+			{
+				Heightmap.m_tempIndices.Clear();
+				for (var k = 0; k < num - 1; k++)
+				{
+					for (var l = 0; l < num - 1; l++)
+					{
+						int item2 = k * num + l;
+						int item3 = k * num + l + 1;
+						int item4 = (k + 1) * num + l + 1;
+						int item5 = (k + 1) * num + l;
+						Heightmap.m_tempIndices.Add(item2);
+						Heightmap.m_tempIndices.Add(item5);
+						Heightmap.m_tempIndices.Add(item3);
+						Heightmap.m_tempIndices.Add(item3);
+						Heightmap.m_tempIndices.Add(item5);
+						Heightmap.m_tempIndices.Add(item4);
+					}
+				}
+				mesh.SetIndices(Heightmap.m_tempIndices, MeshTopology.Triangles, 0);
+			}
 
-        // enqueue current collision mesh to be baked in the separate thread
-        [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyPostfix]
-        private static void RebuildCollisionMeshPatch(Heightmap __instance)
-        {
-            if (__instance.m_collider)
-            {
-                VPOTerrainCollisionBaker.Instance.RequestCollisionBake(__instance);
-            }
-        }
+			var deferBake = VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance);
+			if (__instance.m_collider && !deferBake)
+			{
+				__instance.m_collider.sharedMesh = mesh;
+			}
+			
+			var num5 = width * __instance.m_scale * 0.5f;
+			__instance.m_bounds.SetMinMax(__instance.transform.position + new Vector3(0f - num5, minHeight, 0f - num5), __instance.transform.position + new Vector3(num5, maxHeight, num5));
+			__instance.m_boundingSphere.position = __instance.m_bounds.center;
+			__instance.m_boundingSphere.radius = Vector3.Distance(__instance.m_boundingSphere.position, __instance.m_bounds.max);
+
+			__instance.m_collisionMesh = mesh;
+
+			return false;
+		}
 
         [HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnDestroy)), HarmonyPostfix]
         private static void OnDestroyPatch(Heightmap __instance)
@@ -125,7 +191,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
         }
 
-        [HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady)), HarmonyPostfix]
+		[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady)), HarmonyPostfix]
         private static void IsHeightmapReadyPatch(ClutterSystem __instance, ref bool __result)
         {
             // only change the result if it was true
@@ -213,5 +279,54 @@ namespace ValheimPerformanceOptimizations.Patches
 
             return zone;
         }
+		
+		/*private struct GenerateCollisionJob : IJobParallelForBatch
+		{
+			[ReadOnly] public int Width;
+			[ReadOnly] public float Scale;
+			
+			[ReadOnly] public NativeArray<float> Heights;
+
+			[WriteOnly] public NativeArray<Vector3> Verts;
+			
+			[WriteOnly] public NativeArray<float> Mins;
+			[WriteOnly] public NativeArray<float> Maxs;
+
+			public void Execute(int startIndex, int count)
+			{
+				var w1 = Width + 1;
+				var maxHeight = -999999f;
+				var minHeight = 999999f;
+				
+				var end = startIndex + count;
+				var batchIndex = (end - 1) / w1;
+				for (var index = startIndex; index < end; index++)
+				{
+					var i = (int)math.floor((float)index / w1);
+					var j = index % w1;
+				
+					var vtx = CalcVertex(j, i, w1);
+					if (vtx.y > maxHeight)
+					{
+						maxHeight = vtx.y;
+					}
+					if (vtx.y < minHeight)
+					{
+						minHeight = vtx.y;
+					}
+
+					Verts[index] = vtx;
+				}
+
+				Mins[batchIndex] = minHeight;
+				Maxs[batchIndex] = maxHeight;
+			}
+			
+			private Vector3 CalcVertex(int x, int y, int w1)
+			{
+				return new Vector3(Width * Scale * -0.5f, 0f, Width * Scale * -0.5f) 
+					+ new Vector3(y: Heights[y * w1 + x], x: x * Scale, z: y * Scale);
+			}
+		}*/
     }
 }

@@ -46,7 +46,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
             else
             {
-                harmony.PatchAll(typeof(GetStandingOnShipPatch));
+                harmony.PatchAll(typeof(WearNTearCachingPatch));
             }
         }
 
@@ -341,13 +341,14 @@ namespace ValheimPerformanceOptimizations.Patches
                     boundCount += 1;
 
                     Profiler.BeginSample("inner loop");
-
+					
+					Profiler.BeginSample("HOW");
                     var num2 = Vector3.Distance(cOM, otherWearNTear.transform.position) + 0.1f;
-                    Profiler.BeginSample("HOW");
                     var support = otherWearNTear.GetSupport();
-                    Profiler.EndSample();
                     a = Mathf.Max(a, support - horizontalLoss * num2 * support);
+					Profiler.EndSample();
 
+					Profiler.BeginSample("nothing else works");
                     if (colliderSupportData.CheckSupportUnchanged(num2, support))
                     {
                         unchangedSupports += 1;
@@ -355,8 +356,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
                     colliderSupportData.OtherWntSupport = support;
                     colliderSupportData.DistanceToOtherWnt = num2;
+					
+					Profiler.EndSample();
 
-                    Profiler.BeginSample("find support");
+					Profiler.BeginSample("find support");
                     var vector = colliderSupportData.SupportPointCached
                         ? colliderSupportData.SupportPoint
                         : __instance.FindSupportPoint(cOM, otherWearNTear, colliderSupportData.Collider);
@@ -406,14 +409,12 @@ namespace ValheimPerformanceOptimizations.Patches
                 {
                     var from = WearNTear.m_tempSupportPoints[j] - cOM;
                     from.y = 0f;
-                    for (var k = j; k < WearNTear.m_tempSupportPoints.Count; k++)
+                    for (var k = j + 1; k < WearNTear.m_tempSupportPoints.Count; k++)
                     {
-                        if (j == k) continue;
-
-                        var to = WearNTear.m_tempSupportPoints[k] - cOM;
+						var to = WearNTear.m_tempSupportPoints[k] - cOM;
                         to.y = 0f;
 
-                        if (Vector3.Angle(@from, to) >= 100f)
+                        if (Vector3.Angle(from, to) >= 100f)
                         {
                             var b2 = (WearNTear.m_tempSupportPointValues[j] +
                                       WearNTear.m_tempSupportPointValues[k]) * 0.5f;

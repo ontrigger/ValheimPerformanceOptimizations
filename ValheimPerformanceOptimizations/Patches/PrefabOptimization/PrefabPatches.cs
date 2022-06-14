@@ -5,6 +5,8 @@ using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+using VPO = ValheimPerformanceOptimizations.ValheimPerformanceOptimizations;
+
 namespace ValheimPerformanceOptimizations.Patches
 {
     [HarmonyPatch]
@@ -19,18 +21,16 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private static readonly List<string> MaterialsWithDisabledInstancing = new List<string>
         {
-            "straw_roof", "straw_roof_worn", "Grill_mat", "meadbase", "poison",
-            "poisonres_potion", "stamina_potion", "portal_small", "cloudberry"
+			"Grill_mat", "meadbase", "poison",
+			"poisonres_potion", "stamina_potion", "portal_small"
         }.Select(material => material + " (Instance)").ToList();
 
         private static readonly List<string> PrefabsWithDisabledInstancing = new List<string>
         {
-            "OLD_wood_roof_icorner", "wood_roof_icorner_45", "wood_roof_ocorner", "wood_roof_icorner",
-            "OLD_wood_roof_ocorner", "wood_roof_45", "wood_roof_top_45", "wood_roof_ocorner_45",
-            "wood_roof", "wood_roof_top", "OLD_wood_roof", "piece_cookingstation", "MeadBaseFrostResist",
-            "MeadBaseHealthMedium", "MeadBaseHealthMinor", "MeadBasePoisonResist", "MeadBaseStaminaMedium",
-            "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor",
-            "portal_wood", "CloudberryBush"
+			"piece_cookingstation", "MeadBaseFrostResist", "MeadBaseHealthMedium", 
+			"MeadBaseHealthMinor", "MeadBasePoisonResist", "MeadBaseStaminaMedium",
+            "MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium", 
+			"MeadStaminaMinor", "portal_wood"
         };
 
         private static readonly List<string> PrefabsWithWastedMaterials = new List<string>
@@ -99,6 +99,10 @@ namespace ValheimPerformanceOptimizations.Patches
                         continue;
                     }
 
+					if (material.enableInstancing)
+					{
+						VPO.Logger.LogInfo($"material {material.name} is already instanced {prefab.name}");
+					}
                     material.enableInstancing = true;
                 }
             }
