@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -7,14 +6,9 @@ namespace ValheimPerformanceOptimizations.Patches
 {
     public class VPOSmokeSpawner : SmokeSpawner
     {
-        public readonly List<Smoke> SmokeInstances = new List<Smoke>();
-
-        public static readonly List<VPOSmokeSpawner> AllSmokeSpawners = new List<VPOSmokeSpawner>();
-
-        public static readonly List<Smoke> FreeSmoke = new List<Smoke>();
-        
         public static event Action<VPOSmokeSpawner> SpawnerAdded;
         public static event Action<VPOSmokeSpawner> SpawnerDestroyed;
+        public event Action<Smoke> SmokeSpawned;
 
         public static GameObject SmokePrefab;
 
@@ -22,7 +16,6 @@ namespace ValheimPerformanceOptimizations.Patches
         {
             m_smokePrefab = SmokePrefab;
             
-            AllSmokeSpawners.Add(this);
             SpawnerAdded?.Invoke(this);
         }
 
@@ -33,9 +26,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
         private void OnDestroy()
         {
-            FreeSmoke.AddRange(SmokeInstances);
-
-            AllSmokeSpawners.Remove(this);
             SpawnerDestroyed?.Invoke(this);
         }
 
@@ -64,7 +54,7 @@ namespace ValheimPerformanceOptimizations.Patches
                 }
 
                 var smokeObject = Instantiate(m_smokePrefab, transform.position, Random.rotation);
-                SmokeInstances.Add(smokeObject.GetComponent<Smoke>());
+				SmokeSpawned?.Invoke(smokeObject.GetComponent<Smoke>());
                 m_lastSpawnTime = Time.time;
             }
         }

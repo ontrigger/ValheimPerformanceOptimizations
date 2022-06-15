@@ -1,14 +1,14 @@
 using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
-
-namespace ValheimPerformanceOptimizations.Patches
+namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 {
     /// <summary>
-    ///     The smoke particles can be rendered up to 8 times per instance due to its shader
-    ///     doing per-pixel lighting for each light in the scene.
-    ///     This patch sets the particle material to use a modified Lux shader instead,
-    ///     which is vertex-lit by default and is rendered instanced in one pass.
+    /// The smoke particles can be rendered up to 8 times per instance due to its shader
+    /// doing per-pixel lighting for each light in the scene.
+    /// This patch sets the particle material to use a modified Lux shader instead,
+    /// which is vertex-lit by default and is rendered instanced in one pass.
+    /// Rendering everything in one drawcall does not produce correct results so I batch draws by emitter
     /// </summary>
     public static class SmokeRenderingPatch
     {
@@ -27,9 +27,7 @@ namespace ValheimPerformanceOptimizations.Patches
         private static void Initialize(ConfigFile configFile, Harmony harmony)
         {
             const string key = "Instanced smoke rendering enabled";
-            const string description =
-                "Experimental: if enabled, smoke puffs will be rendered much faster than before, however, as of right now, " +
-                "the smoke will flicker in certain situations. Disable this if you don't like the way it looks";
+			const string description = "Experimental: if enabled, smoke puffs will be rendered much faster than before.";
             _instancedSmokeRenderingEnabled = configFile.Bind("General", key, true, description);
 
             if (_instancedSmokeRenderingEnabled.Value)
@@ -55,6 +53,12 @@ namespace ValheimPerformanceOptimizations.Patches
             Object.Destroy(__instance.m_mr);
 
             return false;
+        }
+		
+        [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake)), HarmonyPostfix]
+        private static void ZNetScene_Awake_Postfix(ZNetScene __instance)
+        {
+			__instance.gameObject.AddComponent<VPOSmokeRenderer>();
         }
 
         [HarmonyPatch(typeof(SmokeSpawner), nameof(SmokeSpawner.Start)), HarmonyPrefix]
