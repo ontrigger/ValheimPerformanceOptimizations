@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
 using ValheimPerformanceOptimizations.Patches.SmokeRendering;
@@ -6,7 +6,9 @@ namespace ValheimPerformanceOptimizations.Patches
 {
 	public class VPOSmokeRenderer : MonoBehaviour
 	{
-		public const int MaxSmokeInstances = 101;
+		public static VPOSmokeRenderer Instance { get; private set; }
+		
+		private const int MaxSmokeInstances = 101;
 
 		private static readonly int SmokeColor = Shader.PropertyToID("_Color");
 
@@ -16,12 +18,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		private static MaterialPropertyBlock _materialProperties;
 
 		private static Vector4 _smokeColor;
-
 		private static int _smokeLayer;
-
-		private readonly List<SmokeGroupDrawData> freeSmokeGroups = new List<SmokeGroupDrawData>();
-
-		private readonly Dictionary<VPOSmokeSpawner, SmokeGroupDrawData> smokeGroupsBySpawner = new Dictionary<VPOSmokeSpawner, SmokeGroupDrawData>();
 
 		private bool setupDone;
 
@@ -30,10 +27,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private void Awake()
 		{
+			Instance = this;
 			_smokeLayer = LayerMask.NameToLayer("smoke");
-
-			VPOSmokeSpawner.SpawnerAdded += SpawnerAdded;
-			VPOSmokeSpawner.SpawnerDestroyed += SpawnerRemoved;
 
 			_materialProperties = new MaterialPropertyBlock();
 		}
@@ -44,50 +39,57 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				return;
 			}
-
-			foreach (var smokeGroup in smokeGroupsBySpawner.Values)
+			
+			var i = 0;
+			foreach (var smoke in Smoke.m_smoke)
 			{
-				smokeGroup.DrawInstances(smokeMesh, smokeMaterial);
+				if (smoke == null) continue;
+
+				if (smoke.m_time > smoke.m_ttl && smoke.m_fadeTimer < 0f)
+				{
+					smoke.StartFadeOut();
+				}
+
+				SmokeColors[i] = _smokeColor;
+				if (smoke.m_fadeTimer >= 0f)
+				{
+					smoke.m_fadeTimer += Time.deltaTime;
+					var a = 1f - Mathf.Clamp01(smoke.m_fadeTimer / smoke.m_fadetime);
+
+					if (smoke.m_fadeTimer >= smoke.m_fadetime)
+					{
+						Destroy(smoke.gameObject);
+						continue;
+					}
+
+					SmokeColors[i].w = a;
+				}
+
+				var t = smoke.transform;
+				SmokeTransforms[i].SetTRS(t.position, t.rotation, t.localScale);
+
+				i += 1;
 			}
 
-			freeSmokeGroups.RemoveAll(group => group.InstanceCount < 1);
-			foreach (var smokeGroup in freeSmokeGroups)
-			{
-				smokeGroup.DrawInstances(smokeMesh, smokeMaterial);
-			}
+			Smoke.m_smoke.RemoveAll(smoke => smoke == null);
+
+			if (Smoke.m_smoke.Count < 1) return;
+
+			_materialProperties.SetVectorArray(SmokeColor, SmokeColors);
+
+			Graphics.DrawMeshInstanced(
+				smokeMesh, 0, smokeMaterial,
+				SmokeTransforms, i, _materialProperties,
+				ShadowCastingMode.Off, false, _smokeLayer
+			);
 		}
 
-		private void OnDestroy()
-		{
-			VPOSmokeSpawner.SpawnerAdded -= SpawnerAdded;
-			VPOSmokeSpawner.SpawnerDestroyed -= SpawnerRemoved;
-		}
-
-		private void SpawnerAdded(VPOSmokeSpawner spawner)
-		{
-			SetupRenderingData();
-
-			var groupData = new SmokeGroupDrawData();
-			smokeGroupsBySpawner[spawner] = groupData;
-			spawner.SmokeSpawned += smoke => groupData.AddInstance(smoke);
-		}
-
-		private void SpawnerRemoved(VPOSmokeSpawner spawner)
-		{
-			var groupData = smokeGroupsBySpawner[spawner];
-			if (groupData.InstanceCount > 0)
-			{
-				freeSmokeGroups.Add(groupData);
-			}
-			smokeGroupsBySpawner.Remove(spawner);
-		}
-
-		public void SetupRenderingData()
+		public void SetupRenderingData(GameObject smokePrefab)
 		{
 			if (setupDone) return;
 
-			var meshRenderer = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshRenderer>();
-			var meshFilter = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshFilter>();
+			var meshRenderer = smokePrefab.GetComponent<MeshRenderer>();
+			var meshFilter = smokePrefab.GetComponent<MeshFilter>();
 
 			var material = meshRenderer.sharedMaterial;
 			var mesh = meshFilter.sharedMesh;
@@ -122,63 +124,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 			setupDone = true;
-		}
-
-		private class SmokeGroupDrawData
-		{
-			private readonly List<Smoke> instances = new List<Smoke>();
-			public int InstanceCount => instances.Count;
-
-			public void AddInstance(Smoke smoke)
-			{
-				instances.Add(smoke);
-			}
-
-			public void DrawInstances(Mesh smokeMesh, Material smokeMaterial)
-			{
-				var i = 0;
-				foreach (var smoke in instances)
-				{
-					if (smoke == null) continue;
-
-					if (smoke.m_time > smoke.m_ttl && smoke.m_fadeTimer < 0f)
-					{
-						smoke.StartFadeOut();
-					}
-
-					SmokeColors[i] = _smokeColor;
-					if (smoke.m_fadeTimer >= 0f)
-					{
-						smoke.m_fadeTimer += Time.deltaTime;
-						var a = 1f - Mathf.Clamp01(smoke.m_fadeTimer / smoke.m_fadetime);
-
-						if (smoke.m_fadeTimer >= smoke.m_fadetime)
-						{
-							Destroy(smoke.gameObject);
-							continue;
-						}
-
-						SmokeColors[i].w = a;
-					}
-
-					var t = smoke.transform;
-					SmokeTransforms[i].SetTRS(t.position, t.rotation, t.localScale);
-
-					i += 1;
-				}
-
-				instances.RemoveAll(smoke => smoke == null);
-
-				if (instances.Count < 1) return;
-
-				_materialProperties.SetVectorArray(SmokeColor, SmokeColors);
-
-				Graphics.DrawMeshInstanced(
-					smokeMesh, 0, smokeMaterial,
-					SmokeTransforms, i, _materialProperties,
-					ShadowCastingMode.Off, false, _smokeLayer
-				);
-			}
 		}
 	}
 }

@@ -113,7 +113,6 @@
         <Compile Include="Patches\PrefabOptimization\PrefabPatches.cs" />
         <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs" />
         <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs" />
-        <Compile Include="Patches\SmokeRendering\VPOSmokeSpawner.cs" />
         <Compile Include="Patches\TerrainShadow\TerrainPatches.cs" />
         <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
         <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />

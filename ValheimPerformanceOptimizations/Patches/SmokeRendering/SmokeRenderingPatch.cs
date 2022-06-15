@@ -8,8 +8,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
     /// doing per-pixel lighting for each light in the scene.
     /// This patch sets the particle material to use a modified Lux shader instead,
     /// which is vertex-lit by default and is rendered instanced in one pass.
-    /// Rendering everything in one drawcall does not produce correct results so I batch draws by emitter
-    /// </summary>
+	/// </summary>
     public static class SmokeRenderingPatch
     {
         private const string AssetBundleName = "smoke_instanced_shader";
@@ -60,23 +59,14 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
         {
 			__instance.gameObject.AddComponent<VPOSmokeRenderer>();
         }
+		
+		[HarmonyPatch(typeof(SmokeSpawner), nameof(SmokeSpawner.Start)), HarmonyPostfix]
+		private static void SmokeSpawner_Start_Prefix(SmokeSpawner __instance)
+		{
+			VPOSmokeRenderer.Instance.SetupRenderingData(__instance.m_smokePrefab);
+		}
 
-        [HarmonyPatch(typeof(SmokeSpawner), nameof(SmokeSpawner.Start)), HarmonyPrefix]
-        private static bool SmokeSpawner_Start_Prefix(SmokeSpawner __instance)
-        {
-            VPOSmokeSpawner.SmokePrefab = __instance.m_smokePrefab;
-            
-            var newSmokeSpawner = __instance.gameObject.AddComponent<VPOSmokeSpawner>();
-            newSmokeSpawner.m_testRadius = __instance.m_testRadius;
-            newSmokeSpawner.m_testMask = __instance.m_testMask;
-            newSmokeSpawner.m_interval = __instance.m_interval;
-
-            Object.Destroy(__instance);
-
-            return false;
-        }
-
-        [HarmonyPatch(typeof(Smoke), nameof(Smoke.OnDestroy)), HarmonyPrefix]
+		[HarmonyPatch(typeof(Smoke), nameof(Smoke.OnDestroy)), HarmonyPrefix]
         private static bool Smoke_OnDestroy_Prefix(Smoke __instance)
         {
             Smoke.m_smoke.Remove(__instance);
