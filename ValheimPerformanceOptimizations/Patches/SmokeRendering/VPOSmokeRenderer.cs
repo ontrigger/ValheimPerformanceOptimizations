@@ -1,207 +1,184 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-
+using ValheimPerformanceOptimizations.Patches.SmokeRendering;
 namespace ValheimPerformanceOptimizations.Patches
 {
-    public class VPOSmokeRenderer : MonoBehaviour
-    {
-        public const int MaxSmokeInstances = 101;
+	public class VPOSmokeRenderer : MonoBehaviour
+	{
+		public const int MaxSmokeInstances = 101;
 
-        private static readonly int SmokeColor = Shader.PropertyToID("_Color");
+		private static readonly int SmokeColor = Shader.PropertyToID("_Color");
 
-        private Material smokeMaterial;
-        private Mesh smokeMesh;
+		private static readonly Vector4[] SmokeColors = new Vector4[MaxSmokeInstances + 4 * 4];
+		private static readonly Matrix4x4[] SmokeTransforms = new Matrix4x4[MaxSmokeInstances + 4 * 4];
 
-        private bool setupDone;
+		private static MaterialPropertyBlock _materialProperties;
 
-        private static Color _smokeColor;
+		private static Vector4 _smokeColor;
 
-        private static int _smokeLayer;
+		private static int _smokeLayer;
 
-        private void Awake()
-        {
-            _smokeLayer = LayerMask.NameToLayer("smoke");
-            
-            VPOSmokeSpawner.SpawnerAdded += SpawnerCountChanged;
-            VPOSmokeSpawner.SpawnerDestroyed += SpawnerCountChanged;
-        }
-        
-        private void SpawnerCountChanged(VPOSmokeSpawner spawner)
-        {
-            if (!setupDone)
-            {
-                var meshRenderer = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshRenderer>();
-                var meshFilter = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshFilter>();
+		private readonly List<SmokeGroupDrawData> freeSmokeGroups = new List<SmokeGroupDrawData>();
 
-                SetupRenderingData(meshRenderer.sharedMaterial, meshFilter.sharedMesh);
-            }
-        }
+		private readonly Dictionary<VPOSmokeSpawner, SmokeGroupDrawData> smokeGroupsBySpawner = new Dictionary<VPOSmokeSpawner, SmokeGroupDrawData>();
 
-        private void Update()
-        {
-            if (!smokeMesh || !smokeMaterial)
-            {
-                return;
-            }
+		private bool setupDone;
 
-            var allCombinedSpawners = CombineSmokeBySpawners();
+		private Material smokeMaterial;
+		private Mesh smokeMesh;
 
-            foreach (var combinedSpawner in allCombinedSpawners)
-            {
-                combinedSpawner.DrawSmoke(smokeMesh, smokeMaterial);
-            }
-        }
+		private void Awake()
+		{
+			_smokeLayer = LayerMask.NameToLayer("smoke");
 
-        private static List<CombinedSmokeInstances> CombineSmokeBySpawners()
-        {
-            var allCombinedSpawners = new List<CombinedSmokeInstances>();
-            var alreadyCombined = new HashSet<int>();
-            foreach (var spawner in VPOSmokeSpawner.AllSmokeSpawners)
-            {
-                if (alreadyCombined.Contains(spawner.GetInstanceID())) continue;
+			VPOSmokeSpawner.SpawnerAdded += SpawnerAdded;
+			VPOSmokeSpawner.SpawnerDestroyed += SpawnerRemoved;
 
-                var combined = new CombinedSmokeInstances(spawner.SmokeInstances, spawner.transform.position);
-                foreach (var otherSpawner in VPOSmokeSpawner.AllSmokeSpawners)
-                {
-                    if (spawner == otherSpawner || alreadyCombined.Contains(otherSpawner.GetInstanceID())) continue;
+			_materialProperties = new MaterialPropertyBlock();
+		}
 
-                    if (combined.CombineWith(otherSpawner.SmokeInstances, otherSpawner.transform.position))
-                    {
-                        alreadyCombined.Add(otherSpawner.GetInstanceID());
-                    }
-                }
+		private void Update()
+		{
+			if (!smokeMesh || !smokeMaterial)
+			{
+				return;
+			}
 
-                if (combined.SmokeInstances.Count > 1)
-                {
-                    alreadyCombined.Add(spawner.GetInstanceID());
-                }
+			foreach (var smokeGroup in smokeGroupsBySpawner.Values)
+			{
+				smokeGroup.DrawInstances(smokeMesh, smokeMaterial);
+			}
 
-                allCombinedSpawners.Add(combined);
-            }
+			freeSmokeGroups.RemoveAll(group => group.InstanceCount < 1);
+			foreach (var smokeGroup in freeSmokeGroups)
+			{
+				smokeGroup.DrawInstances(smokeMesh, smokeMaterial);
+			}
+		}
 
-            if (VPOSmokeSpawner.FreeSmoke.Count > 0)
-            {
-                allCombinedSpawners.Add(new CombinedSmokeInstances(VPOSmokeSpawner.FreeSmoke, Vector3.zero));
-            }
+		private void OnDestroy()
+		{
+			VPOSmokeSpawner.SpawnerAdded -= SpawnerAdded;
+			VPOSmokeSpawner.SpawnerDestroyed -= SpawnerRemoved;
+		}
 
-            return allCombinedSpawners;
-        }
+		private void SpawnerAdded(VPOSmokeSpawner spawner)
+		{
+			SetupRenderingData();
 
-        public void SetupRenderingData(Material material, Mesh mesh)
-        {
-            if (setupDone) return;
+			var groupData = new SmokeGroupDrawData();
+			smokeGroupsBySpawner[spawner] = groupData;
+			spawner.SmokeSpawned += smoke => groupData.AddInstance(smoke);
+		}
 
-            material.shader = SmokeRenderingPatch.SmokeShader;
-            material.enableInstancing = true;
+		private void SpawnerRemoved(VPOSmokeSpawner spawner)
+		{
+			var groupData = smokeGroupsBySpawner[spawner];
+			if (groupData.InstanceCount > 0)
+			{
+				freeSmokeGroups.Add(groupData);
+			}
+			smokeGroupsBySpawner.Remove(spawner);
+		}
 
-            material.SetFloat("_ColorMode", 0);
-            material.SetFloat("_AddLightsPerPixel", 0);
-            material.SetFloat("_EnableShadows", 0);
-            material.SetFloat("_LightingEnabled", 0);
-            material.SetFloat("_ShadowsPerPixel", 0);
-            material.SetFloat("_LocalAmbientLighting", 1);
-            material.SetColor("_TintColor", new Color(0.7f, 0.7f, 0.7f, 1f));
-            
-            
-            material.DisableKeyword("GEOM_TYPE_BRANCH");
-            material.DisableKeyword("GEOM_TYPE_FROND");
-            material.DisableKeyword("GEOM_TYPE_MESH");
-            material.EnableKeyword("GEOM_TYPE_LEAF");
-            material.EnableKeyword("GEOM_TYPE_BRANCH_DETAIL");
+		public void SetupRenderingData()
+		{
+			if (setupDone) return;
 
-            /*var translucency = smokeMaterial.GetFloat(TranslucencyID);
-                smokeMaterial.SetFloat(TranslucencyID, translucency);*/
+			var meshRenderer = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshRenderer>();
+			var meshFilter = VPOSmokeSpawner.SmokePrefab.GetComponent<MeshFilter>();
 
-            smokeMaterial = material;
-            smokeMesh = mesh;
+			var material = meshRenderer.sharedMaterial;
+			var mesh = meshFilter.sharedMesh;
 
-            _smokeColor = material.color;
+			material.shader = SmokeRenderingPatch.SmokeShader;
+			material.enableInstancing = true;
 
-            setupDone = true;
-        }
+			material.SetFloat("_ColorMode", 0);
+			material.SetFloat("_AddLightsPerPixel", 0);
+			material.SetFloat("_EnableShadows", 0);
+			material.SetFloat("_LightingEnabled", 0);
+			material.SetFloat("_ShadowsPerPixel", 0);
+			material.SetFloat("_LocalAmbientLighting", 1);
+			material.SetColor("_TintColor", new Color(0.5f, 0.5f, 0.5f, 0.5f));
 
-        private class CombinedSmokeInstances
-        {
-            public readonly List<List<Smoke>> SmokeInstances = new List<List<Smoke>>();
-            
-            private Vector3 center;
+			material.DisableKeyword("GEOM_TYPE_BRANCH");
+			material.DisableKeyword("GEOM_TYPE_BRANCH_DETAIL");
+			material.DisableKeyword("GEOM_TYPE_FROND");
+			material.DisableKeyword("_EMISSION");
+			material.DisableKeyword("GEOM_TYPE_MESH");
+			
+			material.EnableKeyword("GEOM_TYPE_LEAF");
 
-            private float radius = 8 * 8;
+			smokeMaterial = material;
+			smokeMesh = mesh;
 
-            private readonly Vector4[] smokeColors = new Vector4[MaxSmokeInstances + 4 * 4];
-            private readonly Matrix4x4[] smokeTransforms = new Matrix4x4[MaxSmokeInstances + 4 * 4];
+			_smokeColor = material.color;
 
-            private readonly MaterialPropertyBlock materialProperties = new MaterialPropertyBlock();
+			for (var i = 0; i < MaxSmokeInstances + 4 * 4; i++)
+			{
+				SmokeColors[i] = _smokeColor;
+			}
 
-            public CombinedSmokeInstances(List<Smoke> instances, Vector3 instanceSpawnPosition)
-            {
-                SmokeInstances.Add(instances);
-                center = instanceSpawnPosition;
-            }
+			setupDone = true;
+		}
 
-            public bool CombineWith(List<Smoke> instances, Vector3 instanceSpawnPosition)
-            {
-                var vec1 = center - instanceSpawnPosition;
-                var sqrDistance = Vector3.SqrMagnitude(vec1);
+		private class SmokeGroupDrawData
+		{
+			private readonly List<Smoke> instances = new List<Smoke>();
+			public int InstanceCount => instances.Count;
 
-                if (sqrDistance < radius && SmokeInstances.Count < 6)
-                {
-                    SmokeInstances.Add(instances);
+			public void AddInstance(Smoke smoke)
+			{
+				instances.Add(smoke);
+			}
 
-                    radius = (radius * 2 + sqrDistance) / 2f;
-                    center = (center + instanceSpawnPosition) / 2f;
+			public void DrawInstances(Mesh smokeMesh, Material smokeMaterial)
+			{
+				var i = 0;
+				foreach (var smoke in instances)
+				{
+					if (smoke == null) continue;
 
-                    return true;
-                }
+					if (smoke.m_time > smoke.m_ttl && smoke.m_fadeTimer < 0f)
+					{
+						smoke.StartFadeOut();
+					}
 
-                return false;
-            }
+					SmokeColors[i] = _smokeColor;
+					if (smoke.m_fadeTimer >= 0f)
+					{
+						smoke.m_fadeTimer += Time.deltaTime;
+						var a = 1f - Mathf.Clamp01(smoke.m_fadeTimer / smoke.m_fadetime);
 
-            public void DrawSmoke(Mesh smokeMesh, Material smokeMaterial)
-            {
-                var i = 0;
-                foreach (var instances in SmokeInstances)
-                {
-                    instances.RemoveAll(smoke => smoke == null);
+						if (smoke.m_fadeTimer >= smoke.m_fadetime)
+						{
+							Destroy(smoke.gameObject);
+							continue;
+						}
 
-                    instances.ForEach(smoke =>
-                    {
-                        if (smoke.m_time > smoke.m_ttl && smoke.m_fadeTimer < 0f)
-                        {
-                            smoke.StartFadeOut();
-                        }
+						SmokeColors[i].w = a;
+					}
 
-                        smokeColors[i] = _smokeColor;
-                        if (smoke.m_fadeTimer >= 0f)
-                        {
-                            smoke.m_fadeTimer += Time.deltaTime;
-                            var a = 1f - Mathf.Clamp01(smoke.m_fadeTimer / smoke.m_fadetime);
-                            smokeColors[i].w = a;
+					var t = smoke.transform;
+					SmokeTransforms[i].SetTRS(t.position, t.rotation, t.localScale);
 
-                            if (smoke.m_fadeTimer >= smoke.m_fadetime)
-                            {
-                                Smoke.m_smoke.Remove(smoke);
-                                Destroy(smoke.gameObject);
-                                return;
-                            }
-                        }
+					i += 1;
+				}
 
-                        var t = smoke.transform;
-                        smokeTransforms[i].SetTRS(t.position, t.rotation, t.localScale);
+				instances.RemoveAll(smoke => smoke == null);
 
-                        i += 1;
-                    });
-                }
+				if (instances.Count < 1) return;
 
-                materialProperties.SetVectorArray(SmokeColor, smokeColors);
+				_materialProperties.SetVectorArray(SmokeColor, SmokeColors);
 
-                Graphics.DrawMeshInstanced(
-                    smokeMesh, 0, smokeMaterial,
-                    smokeTransforms, i, materialProperties,
-                    ShadowCastingMode.Off, false, _smokeLayer
-                );
-            }
-        }
-    }
+				Graphics.DrawMeshInstanced(
+					smokeMesh, 0, smokeMaterial,
+					SmokeTransforms, i, _materialProperties,
+					ShadowCastingMode.Off, false, _smokeLayer
+				);
+			}
+		}
+	}
 }

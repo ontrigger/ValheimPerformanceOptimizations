@@ -186,10 +186,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
             ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
-            var gameMain = GameObject.Find("_GameMain");
-            gameMain.AddComponent<VPOSmokeRenderer>();
-
-            _isPatched = true;
+			_isPatched = true;
         }
     }
 }
