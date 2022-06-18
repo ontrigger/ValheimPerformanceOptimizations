@@ -1,10 +1,11 @@
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Jobs.LowLevel.Unsafe;
-using Unity.Mathematics;
 using UnityEngine;
+using ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -13,10 +14,22 @@ namespace ValheimPerformanceOptimizations.Patches
 	{
 		private static VPOTerrainCollisionBaker _instance;
 
-		private readonly List<Heightmap> bakeRequests = new List<Heightmap>();
+		private readonly List<BakeData> bakeRequests = new List<BakeData>();
 
 		private JobHandle pendingBake;
-		private List<Heightmap> pendingHeightmaps = new List<Heightmap>();
+		private List<BakeData> pendingHeightmaps = new List<BakeData>();
+		
+		private class BakeData
+		{
+			public Action<Heightmap> Callback;
+			public Heightmap Heightmap;
+			
+			public BakeData(Heightmap heightmap, Action<Heightmap> callback)
+			{
+				Heightmap = heightmap;
+				Callback = callback;
+			}
+		}
 
 		public static VPOTerrainCollisionBaker Instance
 		{
@@ -32,15 +45,17 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 		}
 
-		public bool RequestAsyncCollisionBake(Heightmap heightmap)
+		public bool RequestAsyncCollisionBake(Heightmap heightmap, Action<Heightmap> bakeDoneCallback)
 		{
 			if (heightmap.m_isDistantLod) { return false; }
 
+			// can't bake with jobs if all workers are busy
 			if (bakeRequests.Count >= JobsUtility.JobWorkerCount) { return false; }
 
-			if (!bakeRequests.Contains(heightmap))
+			var bakeData = new BakeData(heightmap, bakeDoneCallback);
+			if (!bakeRequests.Contains(bakeData))
 			{
-				bakeRequests.Add(heightmap);
+				bakeRequests.Add(bakeData);
 			}
 
 			return true;
@@ -49,15 +64,8 @@ namespace ValheimPerformanceOptimizations.Patches
 		private void Update()
 		{
 			pendingBake.Complete();
-
-			foreach (var heightmap in pendingHeightmaps)
-			{
-				if (heightmap == null) { continue; }
-
-				heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
-				heightmap.m_dirty = true;
-				ThreadedHeightmapCollisionBakePatch.HeightmapFinished[heightmap] = true;
-			}
+			
+			pendingHeightmaps.ForEach(data => data.Callback(data.Heightmap));
 
 			pendingHeightmaps.Clear();
 		}
@@ -67,10 +75,10 @@ namespace ValheimPerformanceOptimizations.Patches
 			var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
 			for (var i = 0; i < bakeRequests.Count; i++)
 			{
-				var heightmap = bakeRequests[i];
-				if (heightmap == null) { continue; }
+				var data = bakeRequests[i];
+				if (data.Heightmap == null) { continue; }
 
-				var meshId = heightmap.m_collisionMesh.GetInstanceID();
+				var meshId = data.Heightmap.m_collisionMesh.GetInstanceID();
 				meshIds[i] = meshId;
 			}
 

@@ -102,7 +102,7 @@
         <Compile Include="Patches\GetStandingOnShipPatch.cs" />
         <Compile Include="Patches\GetWaterLevel\GetWaterLevelPatch.cs" />
         <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs" />
-        <Compile Include="Patches\HeightmapColorAllocationPatch.cs" />
+        <Compile Include="Patches\HeightmapGeneration\HeightmapColorAllocationPatch.cs" />
         <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs" />
         <Compile Include="Patches\MinimapGenerationPatch.cs" />
         <Compile Include="Patches\ObjectPooling\ConnectPanelPatch.cs" />
@@ -115,8 +115,8 @@
         <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs" />
         <Compile Include="Patches\SmokeRendering\VPOSmokeSpawner.cs" />
         <Compile Include="Patches\TerrainShadow\TerrainPatches.cs" />
-        <Compile Include="Patches\ThreadedHeightmapCollisionBake\ThreadedHeightmapCollisionBakePatch.cs" />
-        <Compile Include="Patches\ThreadedHeightmapCollisionBake\VPOTerrainCollisionBaker.cs" />
+        <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
+        <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
         <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs" />
