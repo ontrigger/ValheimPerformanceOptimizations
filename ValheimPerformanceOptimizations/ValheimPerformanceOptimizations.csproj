@@ -38,6 +38,9 @@
         <Reference Include="0Harmony, Culture=neutral, PublicKeyToken=null">
             <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\0Harmony.dll</HintPath>
         </Reference>
+        <Reference Include="assembly_guiutils">
+          <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\publicized_assemblies\assembly_guiutils_publicized.dll</HintPath>
+        </Reference>
         <Reference Include="assembly_utils, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
           <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\publicized_assemblies\assembly_utils_publicized.dll</HintPath>
         </Reference>
@@ -117,6 +120,8 @@
         <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
         <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
+        <Compile Include="Patches\UIOptimization\LocalizePatch.cs" />
+        <Compile Include="Patches\UIOptimization\VPOUIInputHint.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
         <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs" />
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />

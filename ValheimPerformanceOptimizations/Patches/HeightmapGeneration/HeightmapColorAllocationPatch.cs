@@ -22,7 +22,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		private static NativeArray<Color32> _heightmapColors;
 		private static NativeArray<Color32> _distantHeightmapColors;
 
-		private static Queue<Mesh> _regenerateTangentQueue = new Queue<Mesh>();
+		private static readonly Queue<Mesh> RegenerateTangentQueue = new Queue<Mesh>();
 
 		private static int _lastHeightmapWidth = -1;
 		private static int _lastDistantHeightmapWidth = -1;
@@ -182,18 +182,18 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				Profiler.BeginSample("recalc");
 				__instance.m_renderMesh.RecalculateNormals();
 				
-				/*_regenerateTangentQueue.Enqueue(__instance.m_renderMesh);
+				RegenerateTangentQueue.Enqueue(__instance.m_renderMesh);
 
-				var mesh = _regenerateTangentQueue.Dequeue();
-				while (mesh == null && _regenerateTangentQueue.Count > 0)
+				var mesh = RegenerateTangentQueue.Dequeue();
+				while (mesh == null && RegenerateTangentQueue.Count > 0)
 				{
-					mesh = _regenerateTangentQueue.Dequeue();
+					mesh = RegenerateTangentQueue.Dequeue();
 				}
 
 				if (mesh != null)
 				{
 					mesh.RecalculateTangents();
-				}*/
+				}
 
 				Profiler.EndSample();
 			}
@@ -257,9 +257,11 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			{
 				var w1 = Width + 1;
 
-				var k = math.floor(index / (float)w1);
-				var iy = math.smoothstep(0f, 1f, k / Width);
-				var ix = math.smoothstep(0f, 1f, index % w1 / (float)Width);
+				var i = math.floor(index / (float)w1);
+				var j = index % w1;
+
+				var iy = math.smoothstep(0f, 1f, i / Width);
+				var ix = math.smoothstep(0f, 1f, j / (float)Width);
 
 				Colors[index] = GetBiomeColor(ix, iy);
 			}
