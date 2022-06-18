@@ -3,8 +3,6 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using Unity.Mathematics;
 using UnityEngine;
-using Object = UnityEngine.Object;
-
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	/// <summary>
@@ -38,7 +36,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
 			}
 		}
-		
+
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake)), HarmonyPostfix]
 		private static void AwakePatch(Heightmap __instance)
 		{
@@ -119,10 +117,10 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				{
 					for (var l = 0; l < num - 1; l++)
 					{
-						int item2 = k * num + l;
-						int item3 = k * num + l + 1;
-						int item4 = (k + 1) * num + l + 1;
-						int item5 = (k + 1) * num + l;
+						var item2 = k * num + l;
+						var item3 = k * num + l + 1;
+						var item4 = (k + 1) * num + l + 1;
+						var item5 = (k + 1) * num + l;
 						Heightmap.m_tempIndices.Add(item2);
 						Heightmap.m_tempIndices.Add(item5);
 						Heightmap.m_tempIndices.Add(item3);
@@ -217,7 +215,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			__result = true;
 			return false;
 		}
-		
+
 		[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady)), HarmonyPostfix]
 		private static void IsHeightmapReadyPatch(ClutterSystem __instance, ref bool __result)
 		{
@@ -227,7 +225,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			var mainCamera = Utils.GetMainCamera();
 			__result = IsHeightmapReady(mainCamera.transform.position);
 		}
-		
+
 		private static bool IsHeightmapReady(Vector3 pos)
 		{
 			var any = false;
