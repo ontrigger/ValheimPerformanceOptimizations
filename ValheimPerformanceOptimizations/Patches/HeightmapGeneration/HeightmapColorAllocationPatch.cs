@@ -5,11 +5,10 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Profiling;
-namespace ValheimPerformanceOptimizations.Patches
+namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
-	using VPO = ValheimPerformanceOptimizations;
 	/// <summary>
-	/// Remove a pointless Color[32x32] allocation just to clear the paintmask
+	/// Remove pointless Color[32x32]/ToArray() allocations
 	/// </summary>
 	[HarmonyPatch]
 	public class HeightmapColorAllocationPatch
@@ -22,6 +21,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static NativeArray<Color32> _heightmapColors;
 		private static NativeArray<Color32> _distantHeightmapColors;
+
+		private static Queue<Mesh> _regenerateTangentQueue = new Queue<Mesh>();
 
 		private static int _lastHeightmapWidth = -1;
 		private static int _lastDistantHeightmapWidth = -1;
@@ -105,32 +106,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Regenerate)), HarmonyPrefix]
-		public static bool RegeneratePostfix(Heightmap __instance)
-		{
-			Profiler.BeginSample("Regenerate");
-			{
-				if (__instance.HaveQueuedRebuild())
-				{
-					__instance.CancelInvoke("Regenerate");
-				}
-				Profiler.BeginSample("generate");
-				__instance.Generate();
-				Profiler.EndSample();
-				Profiler.BeginSample("rebuil col mesh");
-				__instance.RebuildCollisionMesh();
-				Profiler.EndSample();
-
-				Profiler.BeginSample("update corner depth");
-				__instance.UpdateCornerDepths();
-				Profiler.EndSample();
-				__instance.m_dirty = true;
-			}
-			Profiler.EndSample();
-
-			return false;
-		}
-
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildRenderMesh)), HarmonyPrefix]
 		public static bool RebuildRenderMeshPostfix(Heightmap __instance)
 		{
@@ -206,7 +181,20 @@ namespace ValheimPerformanceOptimizations.Patches
 
 				Profiler.BeginSample("recalc");
 				__instance.m_renderMesh.RecalculateNormals();
-				//__instance.m_renderMesh.RecalculateTangents();
+				
+				/*_regenerateTangentQueue.Enqueue(__instance.m_renderMesh);
+
+				var mesh = _regenerateTangentQueue.Dequeue();
+				while (mesh == null && _regenerateTangentQueue.Count > 0)
+				{
+					mesh = _regenerateTangentQueue.Dequeue();
+				}
+
+				if (mesh != null)
+				{
+					mesh.RecalculateTangents();
+				}*/
+
 				Profiler.EndSample();
 			}
 			Profiler.EndSample();
