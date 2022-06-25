@@ -8,7 +8,7 @@ using UnityEngine.Profiling;
 namespace ValheimPerformanceOptimizations.Patches
 {
 	using VPO = ValheimPerformanceOptimizations;
-	[HarmonyPatch]
+	// [HarmonyPatch]
 	public static class ZNetSceneObjectManagementPatch
 	{
 		public static bool CreateRemoveHack;
@@ -26,6 +26,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedNearObjects = new Dictionary<Vector2i, List<ZDO>>();
 		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedDistantObjects = new Dictionary<Vector2i, List<ZDO>>();
+		
+		private static readonly List<ZDO> RemoveQueue = new List<ZDO>();
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects)), HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
@@ -57,12 +59,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				var (nearZones, distantZones) = GetActiveZoneSet(refZone);
 				VPO.Logger.LogInfo($"Changed zone from {currentZone} to {refZone}");
-				/*
-				 * near load: if cell is marked as "distant loading" then only get near objs, else get all
-				 * near unload: get all near objs to unload, remove them from create queue and destroy
-				 * far load: queue shit up for load, mark as "distant loading"
-				 * far unload: get all distant objs to unload, remove them from create queue and destroy
-				 */
 
 				Profiler.BeginSample("near");
 				nearZonesToUnload = new HashSet<Vector2i>(lastNearZoneSet.Except(nearZones));
@@ -70,11 +66,6 @@ namespace ValheimPerformanceOptimizations.Patches
 				
 				distantZonesToUnload = new HashSet<Vector2i>(lastDistantZoneSet.Except(distantZones));
 				distantZonesToLoad = new HashSet<Vector2i>(distantZones.Except(lastDistantZoneSet));
-
-				/*foreach (var zone in nearZonesToUnload)
-				{
-					CollectZoneObjects(zone, nearObjectsToDestroy, zdo => !zdo.m_distant);
-				}*/
 
 				foreach (var zone in nearZonesToLoad)
 				{
@@ -104,7 +95,9 @@ namespace ValheimPerformanceOptimizations.Patches
 					{
 						// we moved forward so that a near zone became a distant zone,
 						// remove all non-distant objects from it
+						var moveables = QueuedNearObjects[zone].Where(zdo => !zdo.m_distant);
 						QueuedNearObjects[zone].RemoveAll(zdo => !zdo.m_distant);
+						RemoveQueue.AddRange(moveables);
 					}
 					else
 					{
@@ -116,28 +109,22 @@ namespace ValheimPerformanceOptimizations.Patches
 				foreach (var zone in distantZonesToLoad)
 				{
 					var toCreate = new List<ZDO>();
-					CollectZoneObjects(zone, toCreate, (zdo) => zdo.m_distant);
-					QueuedDistantObjects[zone] = toCreate;
+					// if we moved forward and a near zone became a distant zone, 
+					// the loop above will remove all non distant objects from the creation queue
+					// this is done to match vanilla behavior
+					if (!lastNearZoneSet.Contains(zone))
+					{
+						CollectZoneObjects(zone, toCreate, (zdo) => zdo.m_distant);
+						QueuedDistantObjects[zone] = toCreate;
+					}
 				}
 				
 				foreach (var zone in distantZonesToUnload)
 				{
+					RemoveQueue.AddRange(QueuedDistantObjects[zone]);
 					QueuedDistantObjects.Remove(zone);
 				}
 
-				/*foreach (var zone in distantZonesToUnload)
-				{
-					CollectZoneObjects(zone, distantObjectsToDestroy, zdo => zdo.m_distant);
-				}
-
-				distantObjectsToCreate.RemoveAll(zdo => distantZonesToUnload.Contains(zdo.m_sector));
-
-				foreach (var zone in distantZonesToLoad)
-				{
-					distantZonesInLoading.Add(zone);
-					CollectZoneObjects(zone, distantObjectsToCreate, zdo => zdo.m_distant);
-				}*/
-				
 				Profiler.EndSample();
 
 				lastNearZoneSet = nearZones;
@@ -271,17 +258,17 @@ namespace ValheimPerformanceOptimizations.Patches
 			int num = Mathf.Max(__instance.m_tempCurrentObjects2.Count / 100, maxCreatedPerFrame);
 			__instance.m_tempCurrentObjects2.Sort(ZNetScene.ZDOCompare);
 
-			/*var correctObjects = new HashSet<ZDO>();
+			var correctObjects = new HashSet<ZDO>();
 			__instance.m_tempCurrentObjects2.ForEach(zdo => correctObjects.Add(zdo));
 
-			var objectsMine = new HashSet<ZDO>(queuedNearObjects.Values.SelectMany(zdos => zdos));
+			var objectsMine = new HashSet<ZDO>(QueuedNearObjects.Values.SelectMany(zdos => zdos));
 
 			var notInZonesToLoad = correctObjects.Except(objectsMine).ToList();
 			var notInCorrectSectors = objectsMine.Except(correctObjects).ToList();
 			if (notInCorrectSectors.Count > 0)
 			{
 				VPO.Logger.LogInfo($"les go? {String.Join("|", notInCorrectSectors.Select(zdo => __instance.GetPrefab(zdo.m_prefab)))}");
-			}*/
+			}
 			
 			foreach (ZDO item in __instance.m_tempCurrentObjects2)
 			{
@@ -326,10 +313,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
 			var notInZonesToLoad = correctObjects.Except(objectsMine).ToList();
 			var notInCorrectSectors = objectsMine.Except(correctObjects).ToList();
-			if (notInCorrectSectors.Count > 0)
+			if (notInCorrectSectors.Count > 0 || notInZonesToLoad.Count > 0)
 			{
-				var uniqSectors = new HashSet<Vector2i>(notInCorrectSectors.Select(zdo => zdo.m_sector));
-				VPO.Logger.LogInfo($"les go? {notInCorrectSectors.Count} " + $"{String.Join("|", uniqSectors)}");
+				VPO.Logger.LogInfo($"les go? {notInCorrectSectors.Count} {notInZonesToLoad.Count}");
 			}
 			foreach (ZDO @object in objects)
 			{
@@ -353,6 +339,28 @@ namespace ValheimPerformanceOptimizations.Patches
 					ZLog.Log("Destroyed invalid predab ZDO:" + uid.ToString() + "  prefab hash:" + @object.GetPrefab());
 					ZDOMan.instance.DestroyZDO(@object);
 				}
+			}
+
+			return false;
+		}
+		
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.RemoveObjects)), HarmonyPrefix]
+		private static bool RemoveObjects(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
+		{
+			__instance.m_tempRemoved.Clear();
+
+			for (var i = RemoveQueue.Count - 1; i >= 0; i--)
+			{
+				var zdo = RemoveQueue[i];
+				var zNetView = __instance.m_instances[zdo];
+				zNetView.ResetZDO();
+				UnityEngine.Object.Destroy(zNetView.gameObject);
+				if (!zdo.m_persistent && zdo.IsOwner())
+				{
+					ZDOMan.instance.DestroyZDO(zdo);
+				}
+				__instance.m_instances.Remove(zdo);
+				RemoveQueue.RemoveAt(i);
 			}
 
 			return false;
