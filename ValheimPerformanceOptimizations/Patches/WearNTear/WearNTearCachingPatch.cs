@@ -46,7 +46,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
             else
             {
-                harmony.PatchAll(typeof(WearNTearCachingPatch));
+                //harmony.PatchAll(typeof(WearNTearCachingPatch));
             }
         }
 
