@@ -48,7 +48,7 @@ namespace ValheimPerformanceOptimizations.Patches
             if (ZNetView.m_ghostInit || __instance == null) return;
 
             __instance.name = PrefabNameHack ?? Utils.GetPrefabName(__instance.gameObject);
-        }
+		}
 
         // GetNrOfInstances expects objects to have (Clone) in the name
         // so we remove that shit
