@@ -5,6 +5,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Profiling;
+using UnityEngine.Rendering;
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	/// <summary>
@@ -104,6 +105,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 				_lastHeightmapWidth = width;
 			}
+
+			__instance.m_material.renderQueue = (int)RenderQueue.GeometryLast;
 		}
 
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildRenderMesh)), HarmonyPrefix]

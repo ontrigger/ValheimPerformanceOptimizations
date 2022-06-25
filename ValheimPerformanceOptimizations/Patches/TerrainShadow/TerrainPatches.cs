@@ -5,9 +5,9 @@ using UnityEngine.Rendering;
 namespace ValheimPerformanceOptimizations.Patches
 {
     /// <summary>
-    ///     The large terrain lod is being rendered into the shadowmap for all shadowed lights
-    ///     yet doesn't survive the depth test, making it an entirely useless computation
-    ///     This patch simply disables shadow casting for the terrain lod.
+    /// The large terrain lod is being rendered into the shadowmap for all shadowed lights
+    /// yet doesn't survive the depth test, making it an entirely useless computation
+    /// This patch simply disables shadow casting for the terrain lod.
     /// </summary>
     [HarmonyPatch]
     public static class LargeTerrainShadowPatch
