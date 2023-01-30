@@ -138,7 +138,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				{
 					Width = width,
 					CornerBiomes = new NativeArray<Heightmap.Biome>(__instance.m_cornerBiomes, Allocator.TempJob),
-					Colors = _heightmapColors
+					Colors = _heightmapColors,
 				};
 
 				job.Schedule(_heightmapColors.Length, __instance.m_width + 1).Complete();
@@ -205,7 +205,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			return false;
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Generate)), HarmonyPrefix]
+		/*[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Generate)), HarmonyPrefix]
 		public static bool Prefix(Heightmap __instance)
 		{
 			Profiler.BeginSample("heightmap init");
@@ -245,7 +245,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			Profiler.EndSample();
 
 			return false;
-		}
+		}*/
 
 		private struct GenerateColorsJob : IJobParallelFor
 		{

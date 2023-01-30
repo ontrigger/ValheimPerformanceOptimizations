@@ -36,37 +36,35 @@ namespace ValheimPerformanceOptimizations.Patches
         }
 
         private static void SaveToFile(Minimap minimap)
-        {
-            using (var fileStream = File.Create(MinimapTextureFilePath()))
-            using (var compressionStream = new GZipStream(fileStream, CompressionMode.Compress))
-            {
-                var package = new ZPackage();
-                package.Write(minimap.m_forestMaskTexture.GetRawTextureData());
-                package.Write(minimap.m_mapTexture.GetRawTextureData());
-                package.Write(minimap.m_heightTexture.GetRawTextureData());
+		{
+			using var fileStream = File.Create(MinimapTextureFilePath());
+			using var compressionStream = new GZipStream(fileStream, CompressionMode.Compress);
+			
+			var package = new ZPackage();
+			package.Write(minimap.m_forestMaskTexture.GetRawTextureData());
+			package.Write(minimap.m_mapTexture.GetRawTextureData());
+			package.Write(minimap.m_heightTexture.GetRawTextureData());
 
-                byte[] data = package.GetArray();
-                compressionStream.Write(data, 0, data.Length);
-            }
-        }
+			byte[] data = package.GetArray();
+			compressionStream.Write(data, 0, data.Length);
+		}
 
         private static void LoadFromFile(Minimap minimap)
-        {
-            using (var fileStream = File.OpenRead(MinimapTextureFilePath()))
-            using (var decompressionStream = new GZipStream(fileStream, CompressionMode.Decompress))
-            using (var resultStream = new MemoryStream())
-            {
-                decompressionStream.CopyTo(resultStream);
-                var package = new ZPackage(resultStream.ToArray());
+		{
+			using var fileStream = File.OpenRead(MinimapTextureFilePath());
+			using var decompressionStream = new GZipStream(fileStream, CompressionMode.Decompress);
+			using var resultStream = new MemoryStream();
+			
+			decompressionStream.CopyTo(resultStream);
+			var package = new ZPackage(resultStream.ToArray());
 
-                minimap.m_forestMaskTexture.LoadRawTextureData(package.ReadByteArray());
-                minimap.m_forestMaskTexture.Apply();
-                minimap.m_mapTexture.LoadRawTextureData(package.ReadByteArray());
-                minimap.m_mapTexture.Apply();
-                minimap.m_heightTexture.LoadRawTextureData(package.ReadByteArray());
-                minimap.m_heightTexture.Apply();
-            }
-        }
+			minimap.m_forestMaskTexture.LoadRawTextureData(package.ReadByteArray());
+			minimap.m_forestMaskTexture.Apply();
+			minimap.m_mapTexture.LoadRawTextureData(package.ReadByteArray());
+			minimap.m_mapTexture.Apply();
+			minimap.m_heightTexture.LoadRawTextureData(package.ReadByteArray());
+			minimap.m_heightTexture.Apply();
+		}
 
         public static string MinimapTextureFilePath()
         {

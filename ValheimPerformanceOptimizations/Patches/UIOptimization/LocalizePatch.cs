@@ -17,7 +17,7 @@ namespace ValheimPerformanceOptimizations.Patches.UIOptimization
 
 		// I can't be sure that ReLocalizeVisible is called once per frame due to other mods,
 		// so I put it in localize update 
-		[HarmonyPatch(typeof(Localize), nameof(Localize.Update))]
+		[HarmonyPatch(typeof(FejdStartup), nameof(FejdStartup.Update))]
 		private static void Prefix(Localize __instance)
 		{
 			_recheckTimer -= Time.deltaTime;

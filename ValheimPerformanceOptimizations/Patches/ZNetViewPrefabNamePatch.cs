@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations.Patches
     ///     ZNetView tries to get the object name by removing the (Clone) part,
     ///     which causes gc allocations along with a ~3ms slowdown in a typical ZoneSystem spawn cycle
     /// </summary>
-    [HarmonyPatch]
+    // [HarmonyPatch]
     public class ZNetViewPrefabNamePatch
     {
         [UsedImplicitly]

@@ -66,6 +66,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				}
 			}
 		}
+		
 		private static void OnBakeDone(Heightmap heightmap)
 		{
 			if (heightmap == null) { return; }

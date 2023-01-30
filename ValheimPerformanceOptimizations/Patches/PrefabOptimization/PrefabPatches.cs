@@ -21,7 +21,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		private static readonly List<string> MaterialsWithDisabledInstancing = new List<string>
 		{
 			"Grill_mat", "meadbase", "poison",
-			"poisonres_potion", "stamina_potion", "portal_small"
+			"poisonres_potion", "stamina_potion", "portal_small",
 		}.Select(material => material + " (Instance)").ToList();
 
 		private static readonly List<string> PrefabsWithDisabledInstancing = new List<string>
@@ -114,7 +114,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static void PatchSnowStormParticle()
 		{
-			var environment = GameObject.Find("_GameMain/environment");
+			var environment = GameObject.Find("_GameMain/_Environment");
 
 			var luxLitShader = Shader.Find("Lux Lit Particles/ Bumped");
 
@@ -180,8 +180,8 @@ namespace ValheimPerformanceOptimizations.Patches
 				ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
 			}
 
-			PatchSnowStormParticle();
-			patched += 1;
+			//PatchSnowStormParticle();
+			//patched += 1;
 
 			ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
