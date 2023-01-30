@@ -7,7 +7,7 @@ using UnityEngine.Profiling;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-    [HarmonyPatch]
+    //[HarmonyPatch]
     public class VPOEffectArea : EffectArea
     {
         private static readonly int EffectAreaTypeCount = Enum.GetNames(typeof(Type)).Length;

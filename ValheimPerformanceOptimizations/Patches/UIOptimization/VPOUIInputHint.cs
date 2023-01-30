@@ -18,15 +18,13 @@ namespace ValheimPerformanceOptimizations.Patches.UIOptimization
 		{
 			Invalid = -1,
 			Keyboard,
-			Gamepad
+			Gamepad,
 		}
 		
 		[HarmonyPatch(typeof(UIInputHint), nameof(UIInputHint.Start))]
 		private static bool Prefix(UIInputHint __instance)
 		{
-			var inputHint = __instance.gameObject.AddComponent<VPOUIInputHint>();
-			inputHint.m_gamepadHint = __instance.m_gamepadHint;
-			inputHint.m_mouseKeyboardHint = __instance.m_mouseKeyboardHint;
+			__instance.gameObject.AddComponent<VPOUIInputHint>();
 
 			Destroy(__instance);
 
@@ -37,6 +35,7 @@ namespace ValheimPerformanceOptimizations.Patches.UIOptimization
 		{
 			m_group = GetComponentInParent<UIGroupHandler>();
 			m_button = GetComponent<Button>();
+			m_localize = GetComponentInParent<Localize>();
 			if (m_gamepadHint)
 			{
 				m_gamepadHint.gameObject.SetActive(false);
@@ -70,6 +69,8 @@ namespace ValheimPerformanceOptimizations.Patches.UIOptimization
 				m_mouseKeyboardHint.gameObject.SetActive(flag && ZInput.IsMouseActive());
 				LayoutRebuilder.ForceRebuildLayoutImmediate(m_mouseKeyboardHint.transform as RectTransform);
 			}
+			
+			m_localize.RefreshLocalization();
 			Profiler.EndSample();
 
 			lastInputMethod = ZInput.IsGamepadActive() ? InputMethod.Gamepad : InputMethod.Keyboard;

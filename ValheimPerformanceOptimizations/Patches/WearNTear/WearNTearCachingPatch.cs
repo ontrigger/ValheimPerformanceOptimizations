@@ -46,7 +46,7 @@ namespace ValheimPerformanceOptimizations.Patches
             }
             else
             {
-                //harmony.PatchAll(typeof(WearNTearCachingPatch));
+                harmony.PatchAll(typeof(WearNTearCachingPatch));
             }
         }
 
@@ -476,11 +476,11 @@ namespace ValheimPerformanceOptimizations.Patches
             {
                 return colliderSupports;
             }
-
-            colliderSupports = new List<ColliderSupportData>();
-
+            
             var num = Physics.OverlapBoxNonAlloc(boundData.m_pos, boundData.m_size,
                                                  WearNTear.m_tempColliders, boundData.m_rot, WearNTear.m_rayMask);
+            
+            colliderSupports = new List<ColliderSupportData>(num);
             for (var i = 0; i < num; i++)
             {
                 var collider = WearNTear.m_tempColliders[i];
