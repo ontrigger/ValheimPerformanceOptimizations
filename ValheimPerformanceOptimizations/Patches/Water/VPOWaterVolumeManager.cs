@@ -59,7 +59,6 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			if (ZNetScene.instance == null) { return; }
 			
-			Profiler.BeginSample("Base update");
 			waveLevelRequests.Clear();
 			foreach (var waterVolume in volumes)
 			{
@@ -99,9 +98,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					waveLevelRequests.Add(request);
 				}
 
-				Profiler.BeginSample("remove null?");
 				waterVolume.m_inWater.RemoveAll(interactable => interactable.GetTransform() == null);
-				Profiler.EndSample();
 			}
 			
 			transformPositions = new NativeArray<Vector3>(waveLevelRequests.Count, Allocator.TempJob);
@@ -135,21 +132,16 @@ namespace ValheimPerformanceOptimizations.Patches
 				Time = ZNet.instance.GetWrappedDayTimeSeconds(),
 				Results = results,
 			};
-			Profiler.EndSample();
 
-			Profiler.BeginSample("main thread??");
 			handle = bakeJob.Schedule(waveLevelRequests.Count, default);
 			JobHandle.ScheduleBatchedJobs();
-			Profiler.EndSample();
 		}
 
 		private void LateUpdate()
 		{
 			if (!ZNetScene.instance) { return; }
 			
-			Profiler.BeginSample("complete");
 			handle.Complete();
-			Profiler.EndSample();
 			
 			Profiler.BeginSample("set stuff");
 			for (var i = 0; i < waveLevelRequests.Count; i++)
@@ -169,7 +161,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				results.Dispose();
 			}
-			Profiler.EndSample();
 		}
 
 		public void AddVolume(WaterVolume volume)
