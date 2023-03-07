@@ -120,8 +120,6 @@
         <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
         <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
         <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
-        <Compile Include="Patches\UIOptimization\LocalizePatch.cs" />
-        <Compile Include="Patches\UIOptimization\VPOUIInputHint.cs" />
         <Compile Include="Patches\Water\VPOWaterVolumeManager.cs" />
         <Compile Include="Patches\Water\WaterVolumeVisibilityPatch.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
