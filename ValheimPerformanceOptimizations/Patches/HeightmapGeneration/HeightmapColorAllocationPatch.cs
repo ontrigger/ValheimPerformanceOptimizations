@@ -31,9 +31,14 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
 		public static void Postfix(Heightmap __instance)
 		{
+			ReallocateArrays(__instance);
+		}
+
+		private static void ReallocateArrays(Heightmap __instance)
+		{
 			var width = __instance.m_width;
 
-			if (__instance.m_isDistantLod)
+			if (__instance.IsDistantLod)
 			{
 				if (_distantClearColors == null || _lastDistantHeightmapWidth != width)
 				{
@@ -105,8 +110,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 				_lastHeightmapWidth = width;
 			}
-
-			__instance.m_material.renderQueue = (int)RenderQueue.GeometryLast;
 		}
 
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildRenderMesh)), HarmonyPrefix]
@@ -128,7 +131,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			var width = __instance.m_width;
 			var scale = __instance.m_scale;
 
-			var isDistant = __instance.m_isDistantLod;
+			var isDistant = __instance.IsDistantLod;
 
 			Profiler.BeginSample("generatin shit");
 
@@ -145,6 +148,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 			else
 			{
+				ReallocateArrays(__instance);
+				
 				var num = width + 1;
 				var vector = __instance.transform.position + new Vector3(width * scale * -0.5f, 0f, width * scale * -0.5f);
 				for (var idx = 0; idx < num * num; idx++)
