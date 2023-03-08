@@ -14,8 +14,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 	/// </summary>
 	public static class ThreadedHeightmapCollisionBakePatch
 	{
-		public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new Dictionary<Heightmap, bool>();
-		private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new Dictionary<Vector2i, GameObject>();
+		public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new();
+		private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new();
 
 		private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
 
@@ -202,7 +202,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				{
 					foreach (var tempSpawnedObject in __instance.m_tempSpawnedObjects)
 					{
-						ObjectPoolingPatch.DestroyOrReturnPooledObject(ObjectPoolingPatch.VegetationPoolByName, tempSpawnedObject);
+						Object.Destroy(tempSpawnedObject);
 					}
 
 					__instance.m_tempSpawnedObjects.Clear();
