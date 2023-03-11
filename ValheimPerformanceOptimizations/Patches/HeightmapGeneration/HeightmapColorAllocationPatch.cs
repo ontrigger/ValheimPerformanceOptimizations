@@ -200,7 +200,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 				if (mesh != null)
 				{
-					mesh.RecalculateTangents();
+					mesh.RecalculateTangents(~MeshUpdateFlags.Default);
 				}
 
 				Profiler.EndSample();

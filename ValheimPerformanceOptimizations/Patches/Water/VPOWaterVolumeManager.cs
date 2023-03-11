@@ -101,6 +101,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				waterVolume.m_inWater.RemoveAll(interactable => interactable.GetTransform() == null);
 			}
 			
+			Profiler.BeginSample("alloc and set");
 			transformPositions = new NativeArray<Vector3>(waveLevelRequests.Count, Allocator.TempJob);
 			heightOffsets = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
 			depths = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
@@ -132,9 +133,12 @@ namespace ValheimPerformanceOptimizations.Patches
 				Time = ZNet.instance.GetWrappedDayTimeSeconds(),
 				Results = results,
 			};
+			Profiler.EndSample();
 
+			Profiler.BeginSample("schedule");
 			handle = bakeJob.Schedule(waveLevelRequests.Count, default);
 			JobHandle.ScheduleBatchedJobs();
+			Profiler.EndSample();
 		}
 
 		private void LateUpdate()

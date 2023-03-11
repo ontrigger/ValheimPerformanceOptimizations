@@ -1,162 +1,146 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using HarmonyLib;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Profiling;
+using ValheimPerformanceOptimizations.Storage;
+using Object = UnityEngine.Object;
+
 namespace ValheimPerformanceOptimizations.Patches
 {
 	using VPO = ValheimPerformanceOptimizations;
+
+	[HarmonyPatch]
 	public static class ZNetSceneObjectManagementPatch
 	{
 		public static bool CreateRemoveHack;
 
-		private static Vector2i currentZone = new Vector2i(Int32.MinValue, Int32.MinValue);
+		private static Vector2i _currentZone = new(Int32.MinValue, Int32.MinValue);
 
-		private static HashSet<Vector2i> lastNearZoneSet = new HashSet<Vector2i>();
-		private static HashSet<Vector2i> lastDistantZoneSet = new HashSet<Vector2i>();
+		private static HashSet<Vector2i> _lastNearZoneSet = new();
+		private static HashSet<Vector2i> _lastDistantZoneSet = new();
 
-		private static HashSet<Vector2i> nearZonesToUnload;
-		private static HashSet<Vector2i> nearZonesToLoad;
+		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedNearObjectsByZone = new();
+		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedDistantObjectsByZone = new();
 
-		private static HashSet<Vector2i> distantZonesToUnload;
-		private static HashSet<Vector2i> distantZonesToLoad;
+		private static readonly List<ZDO> QueuedNearObjects = new();
+		private static readonly List<ZDO> QueuedDistantObjects = new();
 
-		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedNearObjects = new Dictionary<Vector2i, List<ZDO>>();
-		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedDistantObjects = new Dictionary<Vector2i, List<ZDO>>();
+		// dynamic objects that were spawned outside the CreateDestroy loop such as NPCs, vfx/sfx and so on
+		private static readonly List<ZNetView> ExternallySpawnedObjects = new();
 
-		private static readonly HashSet<ZDO> RemoveQueue = new HashSet<ZDO>();
+		private static readonly List<ZDO> RemoveQueue = new();
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects)), HarmonyPrefix]
+		private static readonly Predicate<ZDO> GetDistant = zdo => !zdo.m_distant;
+		private static readonly Predicate<ZDO> GetNear = zdo => zdo.m_distant;
+
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))] [HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
 		{
 			var refZone = ZoneSystem.instance.GetZone(ZNet.instance.GetReferencePosition());
 			__instance.m_tempCurrentObjects.Clear();
 			__instance.m_tempCurrentDistantObjects.Clear();
 
-			var what = QueuedNearObjects
-				.Where(pair => pair.Value.Count == 0)
-				.Select(pair => pair.Key)
-				.ToList();
-			foreach (var key in what)
-			{
-				QueuedNearObjects.Remove(key);
-			}
-
-			var what2 = QueuedDistantObjects
-				.Where(pair => pair.Value.Count == 0)
-				.Select(pair => pair.Key)
-				.ToList();
-			foreach (var key in what2)
-			{
-				QueuedDistantObjects.Remove(key);
-			}
-
 			Profiler.BeginSample("my cool logic");
-			if (refZone != currentZone)
+			if (refZone != _currentZone)
 			{
-				var (nearZones, distantZones) = GetActiveZoneSet(refZone);
-				VPO.Logger.LogInfo($"Changed zone from {currentZone} to {refZone}");
+				//VPO.Logger.LogInfo($"Changed zone from {_currentZone} to {refZone}");
+
+				Profiler.BeginSample("get zone set");
+				HashSet<Vector2i> nearZones = SetPool<Vector2i>.Get();
+				HashSet<Vector2i> distantZones = SetPool<Vector2i>.Get();
+
+				GetActiveZoneSet(refZone, nearZones, distantZones);
+				Profiler.EndSample();
 
 				Profiler.BeginSample("near");
-				nearZonesToUnload = new HashSet<Vector2i>(lastNearZoneSet.Except(nearZones));
-				nearZonesToLoad = new HashSet<Vector2i>(nearZones.Except(lastNearZoneSet));
 
-				distantZonesToUnload = new HashSet<Vector2i>(lastDistantZoneSet.Except(distantZones));
-				distantZonesToLoad = new HashSet<Vector2i>(distantZones.Except(lastDistantZoneSet));
+				HashSet<Vector2i> nearZonesToLoad = SetPool<Vector2i>.Get();
+				foreach (var zone in nearZones)
+				{
+					if (!_lastNearZoneSet.Contains(zone))
+					{
+						nearZonesToLoad.Add(zone);
+					}
+				}
+
+				HashSet<Vector2i> nearZonesToUnload = SetPool<Vector2i>.Get();
+				foreach (var zone in _lastNearZoneSet)
+				{
+					if (!nearZones.Contains(zone))
+					{
+						nearZonesToUnload.Add(zone);
+					}
+				}
+
+				Profiler.BeginSample("remove all");
+				QueuedNearObjects.RemoveAll(zdo => nearZonesToUnload.Contains(zdo.m_sector));
+				Profiler.EndSample();
+
+				foreach (var zone in nearZonesToUnload)
+				{
+					CollectZoneObjects(zone, RemoveQueue, GetDistant);
+				}
 
 				foreach (var zone in nearZonesToLoad)
 				{
-					var toCreate = new List<ZDO>();
-					if (lastDistantZoneSet.Contains(zone))
-					{
-						// we moved into a zone that was previously distant, collect only non distant zdos
-						// the zone might not have fully loaded, so watch out for queuedDistantObjects
-						CollectZoneObjects(zone, toCreate, zdo => !zdo.m_distant);
-						QueuedNearObjects[zone] = toCreate;
-					}
-					else
-					{
-						// we teleported in the zone, hence it has no previous distant objects
-						CollectAllZoneObjects(zone, toCreate);
-						QueuedNearObjects[zone] = toCreate;
-					}
+					CollectZoneObjects(zone, QueuedNearObjects, GetDistant);
 				}
-				
-				VPO.Logger.LogInfo($"nearZonesToLoad {String.Join("|", nearZonesToLoad)}");
+
+				SetPool<Vector2i>.Return(nearZonesToLoad);
+				SetPool<Vector2i>.Return(nearZonesToUnload);
 
 				Profiler.EndSample();
 
 				Profiler.BeginSample("far");
 
-				foreach (var zone in nearZonesToUnload)
+				HashSet<Vector2i> distantZonesToLoad = SetPool<Vector2i>.Get();
+				foreach (var zone in distantZones)
 				{
-					if (distantZonesToUnload.Contains(zone))
+					if (!_lastDistantZoneSet.Contains(zone))
 					{
-						// we moved forward so that a near zone became a distant zone,
-						// remove all non-distant objects from it
-						var moveables = QueuedNearObjects[zone].Where(zdo => !zdo.m_distant);
-						QueuedNearObjects[zone].RemoveAll(zdo => !zdo.m_distant);
-						foreach (var moveable in moveables)
-						{
-							//RemoveQueue.Add(moveable);
-						}
-					}
-					else
-					{
-						// we teleported to the zone, remove all queued stuff
-						QueuedNearObjects.Remove(zone);
+						distantZonesToLoad.Add(zone);
 					}
 				}
-				
+
+				HashSet<Vector2i> distantZonesToUnload = SetPool<Vector2i>.Get();
+				foreach (var zone in _lastDistantZoneSet)
+				{
+					if (!distantZones.Contains(zone))
+					{
+						distantZonesToUnload.Add(zone);
+					}
+				}
+
+				QueuedDistantObjects.RemoveAll(zdo => distantZonesToUnload.Contains(zdo.m_sector));
 				foreach (var zone in distantZonesToUnload)
 				{
-					if (QueuedDistantObjects.TryGetValue(zone, out var zdoList))
-					{
-						foreach (var zdo in zdoList)
-						{
-							RemoveQueue.Add(zdo);
-						}
-					}
-						
-					QueuedDistantObjects.Remove(zone);
+					CollectZoneObjects(zone, RemoveQueue, GetNear);
 				}
 
-				var toAdd = new List<Vector2i>();
 				foreach (var zone in distantZonesToLoad)
 				{
-					var toCreate = new List<ZDO>();
-					// if we moved forward and a near zone became a distant zone, 
-					// the loop above will remove all non distant objects from the creation queue
-					// this is done to match vanilla behavior
-
-					//if (!lastNearZoneSet.Contains(zone))
-					//{
-					CollectZoneObjects(zone, toCreate, (zdo) => 
-						zdo.m_distant && (!lastNearZoneSet.Contains(zdo.m_sector) || zdo.m_tempCreateEarmark == -1));
-
-					QueuedDistantObjects[zone] = toCreate;
-					VPO.Logger.LogInfo(String.Join("|", toCreate.GroupBy(zdo => zdo.m_dataRevision).Select(group => $"{group.Key}")));
-					toAdd.Add(zone);
-					//}
+					CollectZoneObjects(zone, QueuedDistantObjects, GetNear);
 				}
 
-				VPO.Logger.LogInfo($"Addin distant {String.Join("|", toAdd)}");
-				
-				VPO.Logger.LogInfo($"Unloadin zones {String.Join("|", distantZonesToUnload)}");  
-				
-				Profiler.EndSample();
+				SetPool<Vector2i>.Return(distantZonesToLoad);
+				SetPool<Vector2i>.Return(distantZonesToUnload);
 
-				lastNearZoneSet = nearZones;
-				lastDistantZoneSet = distantZones;
+				SetPool<Vector2i>.Return(_lastNearZoneSet);
+				SetPool<Vector2i>.Return(_lastDistantZoneSet);
+
+				_lastNearZoneSet = nearZones;
+				_lastDistantZoneSet = distantZones;
+
+				Profiler.EndSample();
 			}
 
 			Profiler.EndSample();
-			currentZone = refZone;
+			_currentZone = refZone;
 
 			Profiler.BeginSample("vanilla");
-			ZDOMan.instance.FindSectorObjects(refZone, ZoneSystem.instance.m_activeArea, ZoneSystem.instance.m_activeDistantArea, __instance.m_tempCurrentObjects, __instance.m_tempCurrentDistantObjects);
 			CreateRemoveHack = true;
 			__instance.CreateObjects(__instance.m_tempCurrentObjects, __instance.m_tempCurrentDistantObjects);
 			__instance.RemoveObjects(__instance.m_tempCurrentObjects, __instance.m_tempCurrentDistantObjects);
@@ -166,26 +150,34 @@ namespace ValheimPerformanceOptimizations.Patches
 			return false;
 		}
 
-		private static (HashSet<Vector2i>, HashSet<Vector2i>) GetActiveZoneSet(Vector2i zone)
+		private static void GetActiveZoneSet(
+			Vector2i zone, HashSet<Vector2i> nearSectors, HashSet<Vector2i> distantSectors)
 		{
 			var nearArea = ZoneSystem.instance.m_activeArea;
-			var nearSectors = new HashSet<Vector2i> { zone };
+
+			nearSectors.Add(zone);
+			distantSectors.Add(zone);
 			for (var i = 1; i <= nearArea; i++)
 			{
 				for (var j = zone.x - i; j <= zone.x + i; j++)
 				{
 					nearSectors.Add(new Vector2i(j, zone.y - i));
 					nearSectors.Add(new Vector2i(j, zone.y + i));
+
+					distantSectors.Add(new Vector2i(j, zone.y - i));
+					distantSectors.Add(new Vector2i(j, zone.y + i));
 				}
 				for (var k = zone.y - i + 1; k <= zone.y + i - 1; k++)
 				{
 					nearSectors.Add(new Vector2i(zone.x - i, k));
 					nearSectors.Add(new Vector2i(zone.x + i, k));
+
+					distantSectors.Add(new Vector2i(zone.x - i, k));
+					distantSectors.Add(new Vector2i(zone.x + i, k));
 				}
 			}
 
 			var distantArea = ZoneSystem.instance.m_activeDistantArea;
-			var distantSectors = new HashSet<Vector2i>();
 			for (var l = nearArea + 1; l <= nearArea + distantArea; l++)
 			{
 				for (var m = zone.x - l; m <= zone.x + l; m++)
@@ -200,8 +192,6 @@ namespace ValheimPerformanceOptimizations.Patches
 					distantSectors.Add(new Vector2i(zone.x + l, n));
 				}
 			}
-
-			return (nearSectors, distantSectors);
 		}
 
 		private static void CollectZoneObjects(Vector2i sector, ICollection<ZDO> objects, Predicate<ZDO> predicate)
@@ -211,7 +201,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
 			if (num >= 0)
 			{
-				var sectorObjects = instance.m_objectsBySector[num];
+				List<ZDO> sectorObjects = instance.m_objectsBySector[num];
 				if (sectorObjects == null) { return; }
 
 				for (var i = 0; i < sectorObjects.Count; i++)
@@ -224,7 +214,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 			else
 			{
-				if (!instance.m_objectsByOutsideSector.TryGetValue(sector, out var sectorObjects))
+				if (!instance.m_objectsByOutsideSector.TryGetValue(sector, out List<ZDO> sectorObjects))
 				{
 					return;
 				}
@@ -240,25 +230,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		}
 
-		private static void CollectAllZoneObjects(Vector2i zone, List<ZDO> objects)
-		{
-			var instance = ZDOMan.instance;
-			var zoneId = instance.SectorToIndex(zone);
-			if (zoneId >= 0)
-			{
-				if (instance.m_objectsBySector[zoneId] != null)
-				{
-					objects.AddRange(instance.m_objectsBySector[zoneId]);
-				}
-			}
-			else if (instance.m_objectsByOutsideSector.TryGetValue(zone, out var value))
-			{
-				objects.AddRange(value);
-			}
-		}
-
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjectsSorted)), HarmonyPrefix]
-		private static bool CreateObjectsSorted(ZNetScene __instance, List<ZDO> currentNearObjects, int maxCreatedPerFrame, ref int created)
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjectsSorted))] [HarmonyPrefix]
+		private static bool CreateObjectsSorted(
+			ZNetScene __instance, List<ZDO> currentNearObjects,
+			int maxCreatedPerFrame, ref int created)
 		{
 			if (!ZoneSystem.instance.IsActiveAreaLoaded())
 			{
@@ -266,178 +241,138 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 			__instance.m_tempCurrentObjects2.Clear();
-			int frameCount = Time.frameCount;
-			Vector3 referencePosition = ZNet.instance.GetReferencePosition();
-			foreach (ZDO currentNearObject in currentNearObjects)
+			var refPos = ZNet.instance.GetReferencePosition();
+
+			var num = Mathf.Max(QueuedNearObjects.Count / 100, maxCreatedPerFrame);
+			Profiler.BeginSample("sortin");
+			foreach (var currentNearObject in QueuedNearObjects)
 			{
-				if (currentNearObject.m_tempCreateEarmark != frameCount)
-				{
-					currentNearObject.m_tempSortValue = Utils.DistanceSqr(referencePosition, currentNearObject.GetPosition());
-					__instance.m_tempCurrentObjects2.Add(currentNearObject);
-				}
+				currentNearObject.m_tempSortValue = Utils.DistanceSqr(refPos, currentNearObject.GetPosition());
 			}
-			int num = Mathf.Max(__instance.m_tempCurrentObjects2.Count / 100, maxCreatedPerFrame);
-			__instance.m_tempCurrentObjects2.Sort(ZNetScene.ZDOCompare);
 
-			/*var correctObjects = new HashSet<ZDO>();
-			__instance.m_tempCurrentObjects2.ForEach(zdo => correctObjects.Add(zdo));
+			QueuedNearObjects.Sort(ReverseZDOCompare);
+			Profiler.EndSample();
 
-			var objectsMine = new HashSet<ZDO>(QueuedNearObjects.Values.SelectMany(zdos => zdos));
-
-			var notInZonesToLoad = correctObjects.Except(objectsMine).ToList();
-			var notInCorrectSectors = objectsMine.Except(correctObjects).ToList();
-			if (notInCorrectSectors.Count > 0 || notInZonesToLoad.Count > 0)
+			Profiler.BeginSample("spawnin 1");
+			for (var i = QueuedNearObjects.Count - 1; i >= 0; i--)
 			{
-				VPO.Logger.LogInfo($"NEAR? {notInCorrectSectors.Count} {notInZonesToLoad.Count}");
-			}
-			
-			if (notInZonesToLoad.Count > 0)
-			{
-				VPO.Logger.LogInfo($"NEAR3 {String.Join("|", new HashSet<Vector2i>(notInZonesToLoad.Select(zdo => zdo.m_sector)))}");
-			}*/
+				var zdo = QueuedNearObjects[i];
 
-			foreach (ZDO item in __instance.m_tempCurrentObjects2)
-			{
-				if (__instance.CreateObject(item) != null)
+				if (__instance.CreateObject(zdo) != null)
 				{
-					QueuedNearObjects[item.m_sector].RemoveSwapBack(item);
+					QueuedNearObjects.RemoveAt(i);
 					created++;
-					if (created > num)
-					{
-						break;
-					}
+					if (created > num) { break; }
 				}
 				else if (ZNet.instance.IsServer())
 				{
-					item.SetOwner(ZDOMan.instance.GetMyID());
-					ZDOID uid = item.m_uid;
-					ZLog.Log("Destroyed invalid predab ZDO:" + uid.ToString());
-					ZDOMan.instance.DestroyZDO(item);
+					zdo.SetOwner(ZDOMan.instance.GetMyID());
+					var uid = zdo.m_uid;
+					ZLog.Log("Destroyed invalid predab ZDO:" + uid);
+					ZDOMan.instance.DestroyZDO(zdo);
 				}
 			}
+			Profiler.EndSample();
 
 			return false;
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDistantObjects)), HarmonyPrefix]
-		private static bool CreateDistantObjects(ZNetScene __instance, List<ZDO> objects, int maxCreatedPerFrame, ref int created)
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDistantObjects))] [HarmonyPrefix]
+		private static bool CreateDistantObjects(
+			ZNetScene __instance, List<ZDO> objects, int maxCreatedPerFrame,
+			ref int created)
 		{
-			if (created > maxCreatedPerFrame)
+			if (created > maxCreatedPerFrame) { return false; }
+
+			Profiler.BeginSample("spawnin 2");
+			for (var i = QueuedDistantObjects.Count - 1; i >= 0; i--)
 			{
-				return false;
-			}
-
-			int frameCount = Time.frameCount;
-			var correctObjects = new HashSet<ZDO>();
-			objects
-				.Where(zdo => zdo.m_tempCreateEarmark != frameCount)
-				.ToList()
-				.ForEach(zdo => correctObjects.Add(zdo));
-
-			var objectsMine = new HashSet<ZDO>(QueuedDistantObjects.Values.SelectMany(zdos => zdos));
-
-			var notInZonesToLoad = correctObjects.Except(objectsMine).ToList();
-			var notInCorrectSectors = objectsMine.Except(correctObjects).ToList();
-			if (notInCorrectSectors.Count > 0 || notInZonesToLoad.Count > 0)
-			{
-				VPO.Logger.LogInfo($"DISTANT? {notInCorrectSectors.Count} {notInZonesToLoad.Count}");
-			}
-
-			if (notInZonesToLoad.Count > 0)
-			{
-				VPO.Logger.LogInfo($"DISTANT2 {String.Join("|", new HashSet<Vector2i>(notInZonesToLoad.Select(zdo => zdo.m_sector)))}");
-				VPO.Logger.LogInfo($"DISTANT2 {String.Join("|", notInZonesToLoad.Select(zdo => $"{zdo.m_dataRevision} {zdo.m_uid}"))}");
-				VPO.Logger.LogInfo($"ANY IN REMOVE Q? {notInZonesToLoad.Count(zdo => RemoveQueue.Contains(zdo))}");
-			}
-
-			if (notInCorrectSectors.Count > 0)
-			{
-				VPO.Logger.LogInfo($"DISTANT3  {String.Join("|", new HashSet<Vector2i>(notInCorrectSectors.Select(zdo => zdo.m_sector)))}");
-			}
-
-			foreach (ZDO @object in objects)
-			{
-				if (@object.m_tempCreateEarmark == frameCount)
+				var zdo = QueuedDistantObjects[i];
+				if (__instance.CreateObject(zdo) != null)
 				{
-					continue;
-				}
-				if (__instance.CreateObject(@object) != null)
-				{
-					if (!QueuedDistantObjects.ContainsKey(@object.m_sector))
-					{
-						VPO.Logger.LogInfo($"WHY {@object.m_sector}");
-					}
-					QueuedDistantObjects[@object.m_sector].RemoveSwapBack(@object);
+					QueuedDistantObjects.RemoveAt(i);
 					created++;
-					if (created > maxCreatedPerFrame)
-					{
-						break;
-					}
+					if (created > maxCreatedPerFrame) { break; }
 				}
 				else if (ZNet.instance.IsServer())
 				{
-					@object.SetOwner(ZDOMan.instance.GetMyID());
-					ZDOID uid = @object.m_uid;
-					ZLog.Log("Destroyed invalid predab ZDO:" + uid.ToString() + "  prefab hash:" + @object.GetPrefab());
-					ZDOMan.instance.DestroyZDO(@object);
+					zdo.SetOwner(ZDOMan.instance.GetMyID());
+					var uid = zdo.m_uid;
+					ZLog.Log("Destroyed invalid predab ZDO:" + uid + "  prefab hash:" + zdo.GetPrefab());
+					ZDOMan.instance.DestroyZDO(zdo);
 				}
 			}
+			Profiler.EndSample();
 
 			return false;
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.RemoveObjects)), HarmonyPrefix]
-		private static bool RemoveObjects(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.RemoveObjects))] [HarmonyPrefix]
+		private static bool RemoveObjects(
+			ZNetScene __instance, List<ZDO> currentNearObjects,
+			List<ZDO> currentDistantObjects)
 		{
-			int frameCount = Time.frameCount;
-			foreach (ZDO currentNearObject in currentNearObjects)
-			{
-				currentNearObject.m_tempRemoveEarmark = frameCount;
-			}
-			foreach (ZDO currentDistantObject in currentDistantObjects)
-			{
-				currentDistantObject.m_tempRemoveEarmark = frameCount;
-			}
 			__instance.m_tempRemoved.Clear();
-			foreach (ZNetView value in __instance.m_instances.Values)
-			{
-				if (value.GetZDO().m_tempRemoveEarmark != frameCount)
-				{
-					__instance.m_tempRemoved.Add(value);
-				}
-			}
-			for (int i = 0; i < __instance.m_tempRemoved.Count; i++)
-			{
-				ZNetView zNetView = __instance.m_tempRemoved[i];
-				ZDO zDO = zNetView.GetZDO();
-				zNetView.ResetZDO();
-				UnityEngine.Object.Destroy(zNetView.gameObject);
-				if (!zDO.m_persistent && zDO.IsOwner())
-				{
-					ZDOMan.instance.DestroyZDO(zDO);
-				}
-				__instance.m_instances.Remove(zDO);
-				RemoveQueue.Remove(zDO);
-			}
 
-			/*for (var i = RemoveQueue.Count - 1; i >= 0; i--)
+			Profiler.BeginSample("removin");
+			for (var i = 0; i < RemoveQueue.Count; i++)
 			{
 				var zdo = RemoveQueue[i];
-				var zNetView = __instance.m_instances[zdo];
+				if (!__instance.m_instances.TryGetValue(zdo, out var zNetView))
+				{
+					// this object was either removed by ZNetScene.Destroy or hasn't even spawned yet
+					continue;
+				}
 				zNetView.ResetZDO();
-				UnityEngine.Object.Destroy(zNetView.gameObject);
+				Object.Destroy(zNetView.gameObject);
 				if (!zdo.m_persistent && zdo.IsOwner())
 				{
 					ZDOMan.instance.DestroyZDO(zdo);
 				}
 				__instance.m_instances.Remove(zdo);
-				RemoveQueue.RemoveAt(i);
-			}*/
+			}
+			Profiler.EndSample();
+
+			RemoveQueue.Clear();
+
+			Profiler.BeginSample("removin 2");
+			for (var i = ExternallySpawnedObjects.Count - 1; i >= 0; i--)
+			{
+				var netView = ExternallySpawnedObjects[i];
+				// this makes no fucking sense, zdo should be reset after this method
+				if (netView.GetZDO() == null || netView.GetZDO().GetPrefab() == 0)
+				{
+					ExternallySpawnedObjects.RemoveAtSwapBack(i);
+					continue;
+				}
+
+				if (netView.m_distant && !_lastDistantZoneSet.Contains(netView.GetZDO().m_sector))
+				{
+					VPO.Logger.LogInfo("Removed external distant obj " + netView);
+					ExternallySpawnedObjects.RemoveAtSwapBack(i);
+				}
+				else if (!netView.m_distant && !_lastNearZoneSet.Contains(netView.GetZDO().m_sector))
+				{
+					VPO.Logger.LogInfo("Removed external near obj " + netView);
+					ExternallySpawnedObjects.RemoveAtSwapBack(i);
+				}
+			}
+			Profiler.EndSample();
 
 			return false;
 		}
 
-		[HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector)), HarmonyPrefix]
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.AddInstance))]
+		public static void AddInstance_Postfix(ZNetScene __instance, ZDO zdo, ZNetView nview)
+		{
+			// instance spawned outside main loop
+			if (!CreateRemoveHack)
+			{
+				ExternallySpawnedObjects.Add(nview);
+			}
+		}
+
+		/*[HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))] [HarmonyPrefix]
 		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
 		{
 			if (!(__instance.m_sector == sector))
@@ -452,95 +387,109 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 			return false;
+		}*/
+
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.OnZDODestroyed))]
+		private static void OnZDODestroyed_Postfix(ZNetScene __instance, ZDO zdo)
+		{
+			//VPO.Logger.LogInfo("ZDO DESTROYED " + __instance.m_namedPrefabs[zdo.m_prefab]);
 		}
 
-		[HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.AddToSector)), HarmonyPrefix]
-		public static bool AddToSector(ZDOMan __instance, ZDO zdo, Vector2i sector)
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Destroy))]
+		private static bool Destroy_Prefix(ZNetScene __instance, GameObject go)
 		{
-			int num = __instance.SectorToIndex(sector);
-			List<ZDO> value;
-			if (num >= 0)
+			var component = go.GetComponent<ZNetView>();
+			if ((bool)component && component.GetZDO() != null)
 			{
-				if (__instance.m_objectsBySector[num] != null)
+				var zDO = component.GetZDO();
+				component.ResetZDO();
+				__instance.m_instances.Remove(zDO);
+				if (!CreateRemoveHack)
 				{
-					if (zdo.m_tempCreateEarmark >= 0)
-					{
-						VPO.Logger.LogInfo($"ADDD {ZNetScene.instance.GetPrefab(zdo.m_prefab)} {zdo.m_sector}");
-					}
-					__instance.m_objectsBySector[num].Add(zdo);
-					return false;
+					ExternallySpawnedObjects.RemoveSwapBack(component);
 				}
-				List<ZDO> list = new List<ZDO>();
-				list.Add(zdo);
-				__instance.m_objectsBySector[num] = list;
-				if (zdo.m_tempCreateEarmark >= 0)
+				if (zDO.IsOwner())
 				{
-					VPO.Logger.LogInfo($"ADDD {ZNetScene.instance.GetPrefab(zdo.m_prefab)} {zdo.m_sector}");
+					ZDOMan.instance.DestroyZDO(zDO);
 				}
 			}
-			else if (__instance.m_objectsByOutsideSector.TryGetValue(sector, out value))
+			Object.Destroy(go);
+
+			return false;
+		}
+
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.AddToSector))]
+		public static void ZDOMan_AddToSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
+		{
+			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
+
+			VPO.Logger.LogInfo($"WTF ADDED {ZNetScene.instance.GetPrefab(zdo.GetPrefab())}");
+
+			if (zdo.m_distant)
 			{
-				if (zdo.m_tempCreateEarmark >= 0)
-				{
-					VPO.Logger.LogInfo($"ADDD OUTSIDE {ZNetScene.instance.GetPrefab(zdo.m_prefab)} {zdo.m_sector}");
-				}
-				value.Add(zdo);
+				QueuedDistantObjects.Add(zdo);
 			}
 			else
 			{
-				value = new List<ZDO>();
-				value.Add(zdo);
-				__instance.m_objectsByOutsideSector.Add(sector, value);
-				if (zdo.m_tempCreateEarmark >= 0)
-				{
-					VPO.Logger.LogInfo($"ADDD OUTSIDE {ZNetScene.instance.GetPrefab(zdo.m_prefab)} {zdo.m_sector}");
-				}
-			}
-
-			return false;
-		}
-
-		[HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.RemoveFromSector)), HarmonyPrefix]
-		public static void RemoveFromSector(ZDOMan __instance, ZDO zdo, Vector2i sector)
-		{
-			int num = __instance.SectorToIndex(sector);
-			List<ZDO> value;
-			if (num >= 0)
-			{
-				if (__instance.m_objectsBySector[num] != null)
-				{
-					__instance.m_objectsBySector[num].Remove(zdo);
-				}
-			}
-			else if (__instance.m_objectsByOutsideSector.TryGetValue(sector, out value))
-			{
-				value.Remove(zdo);
+				QueuedNearObjects.Add(zdo);
 			}
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.AddInstance)), HarmonyPrefix]
-		public static bool AddInstancePrefix(ZNetScene __instance, ZDO zdo, ZNetView nview)
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.RemoveFromSector))]
+		public static void ZDOMan_RemoveFromSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
-			__instance.m_instances[zdo] = nview;
+			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
 
-			return false;
+			VPO.Logger.LogInfo($"WTF REMOVED {ZNetScene.instance.GetPrefab(zdo.GetPrefab())}");
+
+			if (zdo.m_distant)
+			{
+				QueuedDistantObjects.RemoveSwapBack(zdo);
+			}
+			else
+			{
+				QueuedNearObjects.RemoveSwapBack(zdo);
+			}
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.OnZDODestroyed)), HarmonyPrefix]
-		private static bool OnZDODestroyed(ZNetScene __instance, ZDO zdo)
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
 		{
-			if (__instance.m_instances.TryGetValue(zdo, out var value))
+			CreateRemoveHack = true;
+			return true;
+		}
+
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		private static void ZDO_SetSector_Postfix(ZDO __instance, Vector2i sector)
+		{
+			CreateRemoveHack = false;
+		}
+
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
+		private static bool ZDOMan_Load_Prefix(ZDOMan __instance, BinaryReader reader, int version)
+		{
+			CreateRemoveHack = true;
+			return true;
+		}
+
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
+		private static void ZDOMan_Load_Postfix(ZDOMan __instance, BinaryReader reader, int version)
+		{
+			CreateRemoveHack = false;
+		}
+
+		private static int ReverseZDOCompare(ZDO x, ZDO y)
+		{
+			if (x.m_type == y.m_type)
 			{
-				if (!CreateRemoveHack)
-				{
-					VPO.Logger.LogInfo($"Removin destroy {value.name} {value.m_zdo.m_sector}");
-				}
-				value.ResetZDO();
-				UnityEngine.Object.Destroy(value.gameObject);
-				__instance.m_instances.Remove(zdo);
+				return y.m_tempSortValue.CompareTo(x.m_tempSortValue);
 			}
 
-			return false;
+			if (x.m_type < y.m_type)
+			{
+				return -1;
+			}
+			return 1;
 		}
 	}
 }

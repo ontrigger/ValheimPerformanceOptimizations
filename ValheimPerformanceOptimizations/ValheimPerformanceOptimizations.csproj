@@ -123,12 +123,14 @@
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
         <Compile Include="Utils\AssetBundleHelper.cs" />
         <Compile Include="Utils\Extensions\BoundsX.cs" />
+        <Compile Include="Utils\Extensions\CollectionX.cs" />
         <Compile Include="Utils\Extensions\ListX.cs" />
         <Compile Include="Utils\Extensions\NumberX.cs" />
         <Compile Include="Utils\ModCompatibility.cs" />
         <Compile Include="Utils\Storage\BoundsOctree.cs" />
         <Compile Include="Utils\Storage\BoundsOctreeNode.cs" />
-        <Compile Include="Utils\Storage\GameObjectPool.cs" />
+        <Compile Include="Utils\Storage\ObjectPool.cs" />
+        <Compile Include="Utils\Storage\SetPool.cs" />
         <Compile Include="ValheimPerformanceOptimizations.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
