@@ -3,6 +3,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using Unity.Mathematics;
 using UnityEngine;
+
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	/// <summary>
@@ -37,7 +38,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake)), HarmonyPostfix]
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))] [HarmonyPostfix]
 		private static void AwakePatch(Heightmap __instance)
 		{
 			if (__instance.m_collider)
@@ -52,7 +53,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			HeightmapFinished[__instance] = false;
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnEnable)), HarmonyPostfix]
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnEnable))] [HarmonyPostfix]
 		private static void OnEnablePatch(Heightmap __instance)
 		{
 			if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
@@ -66,7 +67,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				}
 			}
 		}
-		
+
 		private static void OnBakeDone(Heightmap heightmap)
 		{
 			if (heightmap == null) { return; }
@@ -77,7 +78,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		}
 
 		// enqueue current collision mesh to be baked in the separate thread
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh)), HarmonyPrefix]
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildCollisionMesh))] [HarmonyPrefix]
 		private static bool RebuildCollisionMeshPatch(Heightmap __instance)
 		{
 			var mesh = __instance.m_collisionMesh;
@@ -140,19 +141,24 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 
 			var num5 = width * __instance.m_scale * 0.5f;
-			__instance.m_bounds.SetMinMax(__instance.transform.position + new Vector3(0f - num5, minHeight, 0f - num5), __instance.transform.position + new Vector3(num5, maxHeight, num5));
+			__instance.m_bounds.SetMinMax(__instance.transform.position + new Vector3(0f - num5, minHeight, 0f - num5),
+				__instance.transform.position + new Vector3(num5, maxHeight, num5));
 			__instance.m_boundingSphere.position = __instance.m_bounds.center;
-			__instance.m_boundingSphere.radius = Vector3.Distance(__instance.m_boundingSphere.position, __instance.m_bounds.max);
+			__instance.m_boundingSphere.radius
+				= Vector3.Distance(__instance.m_boundingSphere.position, __instance.m_bounds.max);
 
 			__instance.m_collisionMesh = mesh;
 
 			return false;
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnDestroy)), HarmonyPostfix]
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnDestroy))] [HarmonyPostfix]
 		private static void OnDestroyPatch(Heightmap __instance)
 		{
-			if (!ZoneSystem.instance) return;
+			if (!ZoneSystem.instance)
+			{
+				return;
+			}
 
 			var zonePos = ZoneSystem.instance.GetZone(__instance.transform.position);
 			if (SpawnedZones.ContainsKey(zonePos))
@@ -162,7 +168,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		}
 
 		// spawn the heightmap GameObject but not call any placement until the heightmap has a collision mesh
-		[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnZone)), HarmonyPrefix]
+		[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnZone))] [HarmonyPrefix]
 		private static bool SpawnZone(
 			ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
 		{
@@ -170,9 +176,9 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
 			if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
-					componentInChildren.m_scale,
-					componentInChildren.m_isDistantLod,
-					WorldGenerator.instance))
+				    componentInChildren.m_scale,
+				    componentInChildren.m_isDistantLod,
+				    WorldGenerator.instance))
 			{
 				root = null;
 				__result = false;
@@ -189,7 +195,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 
 			if ((mode == ZoneSystem.SpawnMode.Ghost || mode == ZoneSystem.SpawnMode.Full) &&
-				!__instance.IsZoneGenerated(zoneID))
+			    !__instance.IsZoneGenerated(zoneID))
 			{
 				__instance.m_tempClearAreas.Clear();
 				__instance.m_tempSpawnedObjects.Clear();
@@ -217,11 +223,14 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			return false;
 		}
 
-		[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady)), HarmonyPostfix]
+		[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.IsHeightmapReady))] [HarmonyPostfix]
 		private static void IsHeightmapReadyPatch(ClutterSystem __instance, ref bool __result)
 		{
 			// only change the result if it was true
-			if (!__result) return;
+			if (!__result)
+			{
+				return;
+			}
 
 			var mainCamera = Utils.GetMainCamera();
 			__result = IsHeightmapReady(mainCamera.transform.position);
@@ -244,7 +253,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			return any && ready;
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown)), HarmonyPostfix]
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))] [HarmonyPostfix]
 		public static void ZNetScene_Shutdown_Postfix(ZNetScene __instance)
 		{
 			SpawnedZones.Clear();

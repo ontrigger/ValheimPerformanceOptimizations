@@ -31,221 +31,227 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace ValheimPerformanceOptimizations
 {
-    public class BoundsOctree<T>
-    {
-        // The total amount of objects currently in the tree
-        public int Count { get; private set; }
+	public class BoundsOctree<T>
+	{
+		// The total amount of objects currently in the tree
+		public int Count { get; private set; }
 
-        // Root node of the octree
-        private BoundsOctreeNode<T> rootNode;
+		// Root node of the octree
+		private BoundsOctreeNode<T> rootNode;
 
-        // Should be a value between 1 and 2. A multiplier for the base size of a node.
-        // 1.0 is a "normal" octree, while values > 1 have overlap
-        private readonly float looseness;
+		// Should be a value between 1 and 2. A multiplier for the base size of a node.
+		// 1.0 is a "normal" octree, while values > 1 have overlap
+		private readonly float looseness;
 
-        // Size that the octree was on creation
-        private readonly float initialSize;
+		// Size that the octree was on creation
+		private readonly float initialSize;
 
-        // Minimum side length that a node can be - essentially an alternative to having a max depth
-        private readonly float minSize;
+		// Minimum side length that a node can be - essentially an alternative to having a max depth
+		private readonly float minSize;
 
-        // For collision visualisation. Automatically removed in builds.
+		// For collision visualisation. Automatically removed in builds.
 
-        /// <summary>
-        /// Constructor for the bounds octree.
-        /// </summary>
-        /// <param name="initialWorldSize">Size of the sides of the initial node, in metres. The octree will never shrink smaller than this.</param>
-        /// <param name="initialWorldPos">Position of the centre of the initial node.</param>
-        /// <param name="minNodeSize">Nodes will stop splitting if the new nodes would be smaller than this (metres).</param>
-        /// <param name="loosenessVal">Clamped between 1 and 2. Values > 1 let nodes overlap.</param>
-        /// <param name="comparer"></param>
-        public BoundsOctree(float initialWorldSize, Vector3 initialWorldPos, float minNodeSize, float loosenessVal, IEqualityComparer<T> comparer = null)
-        {
-            if (minNodeSize > initialWorldSize)
-            {
-                Debug.LogWarning("Minimum node size must be at least as big as the initial world size. Was: " +
-                                 minNodeSize + " Adjusted to: " + initialWorldSize);
-                minNodeSize = initialWorldSize;
-            }
+		/// <summary>
+		/// Constructor for the bounds octree.
+		/// </summary>
+		/// <param name="initialWorldSize">
+		/// Size of the sides of the initial node, in metres. The octree will never shrink smaller
+		/// than this.
+		/// </param>
+		/// <param name="initialWorldPos">Position of the centre of the initial node.</param>
+		/// <param name="minNodeSize">Nodes will stop splitting if the new nodes would be smaller than this (metres).</param>
+		/// <param name="loosenessVal">Clamped between 1 and 2. Values > 1 let nodes overlap.</param>
+		/// <param name="comparer"></param>
+		public BoundsOctree(
+			float initialWorldSize, Vector3 initialWorldPos, float minNodeSize, float loosenessVal,
+			IEqualityComparer<T> comparer = null)
+		{
+			if (minNodeSize > initialWorldSize)
+			{
+				Debug.LogWarning("Minimum node size must be at least as big as the initial world size. Was: " +
+					minNodeSize + " Adjusted to: " + initialWorldSize);
+				minNodeSize = initialWorldSize;
+			}
 
-            Count = 0;
-            initialSize = initialWorldSize;
-            minSize = minNodeSize;
-            looseness = Mathf.Clamp(loosenessVal, 1.0f, 2.0f);
-            rootNode = new BoundsOctreeNode<T>(initialSize, minSize, looseness, initialWorldPos, comparer);
-        }
-        
+			Count = 0;
+			initialSize = initialWorldSize;
+			minSize = minNodeSize;
+			looseness = Mathf.Clamp(loosenessVal, 1.0f, 2.0f);
+			rootNode = new BoundsOctreeNode<T>(initialSize, minSize, looseness, initialWorldPos, comparer);
+		}
 
-        // #### PUBLIC METHODS ####
+		// #### PUBLIC METHODS ####
 
-        /// <summary>
-        /// Add an object.
-        /// </summary>
-        /// <param name="obj">Object to add.</param>
-        /// <param name="objBounds">3D bounding box around the object.</param>
-        public void Add(T obj, Bounds objBounds)
-        {
-            // Add object or expand the octree until it can be added
-            int count = 0; // Safety check against infinite/excessive growth
-            while (!rootNode.Add(obj, objBounds))
-            {
-                Grow(objBounds.center - rootNode.Center);
-                if (++count > 20)
-                {
-                    Debug.LogError("Aborted Add operation as it seemed to be going on forever (" + (count - 1) +
-                                   ") attempts at growing the octree.");
-                    return;
-                }
-            }
+		/// <summary>
+		/// Add an object.
+		/// </summary>
+		/// <param name="obj">Object to add.</param>
+		/// <param name="objBounds">3D bounding box around the object.</param>
+		public void Add(T obj, Bounds objBounds)
+		{
+			// Add object or expand the octree until it can be added
+			var count = 0; // Safety check against infinite/excessive growth
+			while (!rootNode.Add(obj, objBounds))
+			{
+				Grow(objBounds.center - rootNode.Center);
+				if (++count > 20)
+				{
+					Debug.LogError("Aborted Add operation as it seemed to be going on forever (" + (count - 1) +
+						") attempts at growing the octree.");
+					return;
+				}
+			}
 
-            Count++;
-        }
+			Count++;
+		}
 
-        /// <summary>
-        /// Remove an object. Makes the assumption that the object only exists once in the tree.
-        /// </summary>
-        /// <param name="obj">Object to remove.</param>
-        /// <returns>True if the object was removed successfully.</returns>
-        public bool Remove(T obj)
-        {
-            bool removed = rootNode.Remove(obj);
+		/// <summary>
+		/// Remove an object. Makes the assumption that the object only exists once in the tree.
+		/// </summary>
+		/// <param name="obj">Object to remove.</param>
+		/// <returns>True if the object was removed successfully.</returns>
+		public bool Remove(T obj)
+		{
+			var removed = rootNode.Remove(obj);
 
-            // See if we can shrink the octree down now that we've removed the item
-            if (removed)
-            {
-                Count--;
-                Shrink();
-            }
+			// See if we can shrink the octree down now that we've removed the item
+			if (removed)
+			{
+				Count--;
+				Shrink();
+			}
 
-            return removed;
-        }
+			return removed;
+		}
 
-        /// <summary>
-        /// Removes the specified object at the given position. Makes the assumption that the object only exists once in the tree.
-        /// </summary>
-        /// <param name="obj">Object to remove.</param>
-        /// <param name="objBounds">3D bounding box around the object.</param>
-        /// <returns>True if the object was removed successfully.</returns>
-        public bool Remove(T obj, Bounds objBounds)
-        {
-            bool removed = rootNode.Remove(obj, objBounds);
+		/// <summary>
+		/// Removes the specified object at the given position. Makes the assumption that the object only exists once in the tree.
+		/// </summary>
+		/// <param name="obj">Object to remove.</param>
+		/// <param name="objBounds">3D bounding box around the object.</param>
+		/// <returns>True if the object was removed successfully.</returns>
+		public bool Remove(T obj, Bounds objBounds)
+		{
+			var removed = rootNode.Remove(obj, objBounds);
 
 			Profiler.BeginSample("shrinking");
-            // See if we can shrink the octree down now that we've removed the item
-            if (removed)
-            {
-                Count--;
-                Shrink();
-            }
+			// See if we can shrink the octree down now that we've removed the item
+			if (removed)
+			{
+				Count--;
+				Shrink();
+			}
 			Profiler.EndSample();
 
-            return removed;
-        }
+			return removed;
+		}
 
-        /// <summary>
-        /// Check if the specified bounds intersect with anything in the tree. See also: GetColliding.
-        /// </summary>
-        /// <param name="checkBounds">bounds to check.</param>
-        /// <returns>True if there was a collision.</returns>
-        public bool IsColliding(Bounds checkBounds)
-        {
-            //#if UNITY_EDITOR
-            // For debugging
-            //AddCollisionCheck(checkBounds);
-            //#endif
-            return rootNode.IsColliding(ref checkBounds);
-        }
+		/// <summary>
+		/// Check if the specified bounds intersect with anything in the tree. See also: GetColliding.
+		/// </summary>
+		/// <param name="checkBounds">bounds to check.</param>
+		/// <returns>True if there was a collision.</returns>
+		public bool IsColliding(Bounds checkBounds)
+		{
+			//#if UNITY_EDITOR
+			// For debugging
+			//AddCollisionCheck(checkBounds);
+			//#endif
+			return rootNode.IsColliding(ref checkBounds);
+		}
 
-        /// <summary>
-        /// Check if the specified ray intersects with anything in the tree. See also: GetColliding.
-        /// </summary>
-        /// <param name="checkRay">ray to check.</param>
-        /// <param name="maxDistance">distance to check.</param>
-        /// <returns>True if there was a collision.</returns>
-        public bool IsColliding(Ray checkRay, float maxDistance)
-        {
-            //#if UNITY_EDITOR
-            // For debugging
-            //AddCollisionCheck(checkRay);
-            //#endif
-            return rootNode.IsColliding(ref checkRay, maxDistance);
-        }
+		/// <summary>
+		/// Check if the specified ray intersects with anything in the tree. See also: GetColliding.
+		/// </summary>
+		/// <param name="checkRay">ray to check.</param>
+		/// <param name="maxDistance">distance to check.</param>
+		/// <returns>True if there was a collision.</returns>
+		public bool IsColliding(Ray checkRay, float maxDistance)
+		{
+			//#if UNITY_EDITOR
+			// For debugging
+			//AddCollisionCheck(checkRay);
+			//#endif
+			return rootNode.IsColliding(ref checkRay, maxDistance);
+		}
 
-        /// <summary>
-        /// Returns an array of objects that intersect with the specified bounds, if any. Otherwise returns an empty array. See also: IsColliding.
-        /// </summary>
-        /// <param name="collidingWith">list to store intersections.</param>
-        /// <param name="checkBounds">bounds to check.</param>
-        /// <returns>Objects that intersect with the specified bounds.</returns>
-        public void GetOverlapping(List<T> collidingWith, Bounds checkBounds)
-        {
-            rootNode.GetOverlapping(ref checkBounds, collidingWith);
-        }
-        
-        public void GetOverlapping(List<T> collidingWith, Vector3 center, float radius)
-        {
-            rootNode.GetOverlapping(center, radius, collidingWith);
-        }
+		/// <summary>
+		/// Returns an array of objects that intersect with the specified bounds, if any. Otherwise returns an empty array. See
+		/// also: IsColliding.
+		/// </summary>
+		/// <param name="collidingWith">list to store intersections.</param>
+		/// <param name="checkBounds">bounds to check.</param>
+		/// <returns>Objects that intersect with the specified bounds.</returns>
+		public void GetOverlapping(List<T> collidingWith, Bounds checkBounds)
+		{
+			rootNode.GetOverlapping(ref checkBounds, collidingWith);
+		}
 
-        public void GetOverlappingXZ(List<T> collidingWith, Bounds checkBounds)
-        {
-            rootNode.GetOverlappingXZ(ref checkBounds, collidingWith);
-        }
+		public void GetOverlapping(List<T> collidingWith, Vector3 center, float radius)
+		{
+			rootNode.GetOverlapping(center, radius, collidingWith);
+		}
 
-        /// <summary>
-        /// Returns an array of objects that intersect with the specified ray, if any. Otherwise returns an empty array. See also: IsColliding.
-        /// </summary>
-        /// <param name="collidingWith">list to store intersections.</param>
-        /// <param name="checkRay">ray to check.</param>
-        /// <param name="maxDistance">distance to check.</param>
-        /// <returns>Objects that intersect with the specified ray.</returns>
-        public void GetOverlapping(List<T> collidingWith, Ray checkRay, float maxDistance = float.PositiveInfinity)
-        {
-            //#if UNITY_EDITOR
-            // For debugging
-            //AddCollisionCheck(checkRay);
-            //#endif
-            rootNode.GetColliding(ref checkRay, collidingWith, maxDistance);
-        }
+		public void GetOverlappingXZ(List<T> collidingWith, Bounds checkBounds)
+		{
+			rootNode.GetOverlappingXZ(ref checkBounds, collidingWith);
+		}
 
-        public List<T> GetWithinFrustum(Camera cam)
-        {
-            var planes = GeometryUtility.CalculateFrustumPlanes(cam);
+		/// <summary>
+		/// Returns an array of objects that intersect with the specified ray, if any. Otherwise returns an empty array. See also:
+		/// IsColliding.
+		/// </summary>
+		/// <param name="collidingWith">list to store intersections.</param>
+		/// <param name="checkRay">ray to check.</param>
+		/// <param name="maxDistance">distance to check.</param>
+		/// <returns>Objects that intersect with the specified ray.</returns>
+		public void GetOverlapping(List<T> collidingWith, Ray checkRay, float maxDistance = float.PositiveInfinity)
+		{
+			//#if UNITY_EDITOR
+			// For debugging
+			//AddCollisionCheck(checkRay);
+			//#endif
+			rootNode.GetColliding(ref checkRay, collidingWith, maxDistance);
+		}
 
-            var list = new List<T>();
-            rootNode.GetWithinFrustum(planes, list);
-            return list;
-        }
+		public List<T> GetWithinFrustum(Camera cam)
+		{
+			Plane[] planes = GeometryUtility.CalculateFrustumPlanes(cam);
 
-        public Bounds GetMaxBounds()
-        {
-            return rootNode.GetBounds();
-        }
+			var list = new List<T>();
+			rootNode.GetWithinFrustum(planes, list);
+			return list;
+		}
 
-        /// <summary>
-        /// Draws node boundaries visually for debugging.
-        /// Must be called from OnDrawGizmos externally. See also: DrawAllObjects.
-        /// </summary>
-        public void DrawAllBounds()
-        {
-            rootNode.DrawAllBounds();
-        }
+		public Bounds GetMaxBounds()
+		{
+			return rootNode.GetBounds();
+		}
 
-        /// <summary>
-        /// Draws the bounds of all objects in the tree visually for debugging.
-        /// Must be called from OnDrawGizmos externally. See also: DrawAllBounds.
-        /// </summary>
-        public void DrawAllObjects()
-        {
-            rootNode.DrawAllObjects();
-        }
+		/// <summary>
+		/// Draws node boundaries visually for debugging.
+		/// Must be called from OnDrawGizmos externally. See also: DrawAllObjects.
+		/// </summary>
+		public void DrawAllBounds()
+		{
+			rootNode.DrawAllBounds();
+		}
 
-        // Intended for debugging. Must be called from OnDrawGizmos externally
-        // See also DrawAllBounds and DrawAllObjects
-        /// <summary>
-        /// Visualises collision checks from IsColliding and GetColliding.
-        /// Collision visualisation code is automatically removed from builds so that collision checks aren't slowed down.
-        /// </summary>
+		/// <summary>
+		/// Draws the bounds of all objects in the tree visually for debugging.
+		/// Must be called from OnDrawGizmos externally. See also: DrawAllBounds.
+		/// </summary>
+		public void DrawAllObjects()
+		{
+			rootNode.DrawAllObjects();
+		}
+
+		// Intended for debugging. Must be called from OnDrawGizmos externally
+		// See also DrawAllBounds and DrawAllObjects
+		/// <summary>
+		/// Visualises collision checks from IsColliding and GetColliding.
+		/// Collision visualisation code is automatically removed from builds so that collision checks aren't slowed down.
+		/// </summary>
 #if UNITY_EDITOR
 	public void DrawCollisionChecks() {
 		int count = 0;
@@ -264,13 +270,13 @@ namespace ValheimPerformanceOptimizations
 	}
 #endif
 
-        // #### PRIVATE METHODS ####
+		// #### PRIVATE METHODS ####
 
-        /// <summary>
-        /// Used for visualising collision checks with DrawCollisionChecks.
-        /// Automatically removed from builds so that collision checks aren't slowed down.
-        /// </summary>
-        /// <param name="checkBounds">bounds that were passed in to check for collisions.</param>
+		/// <summary>
+		/// Used for visualising collision checks with DrawCollisionChecks.
+		/// Automatically removed from builds so that collision checks aren't slowed down.
+		/// </summary>
+		/// <param name="checkBounds">bounds that were passed in to check for collisions.</param>
 #if UNITY_EDITOR
 	void AddCollisionCheck(Bounds checkBounds) {
 		lastBoundsCollisionChecks.Enqueue(checkBounds);
@@ -280,11 +286,11 @@ namespace ValheimPerformanceOptimizations
 	}
 #endif
 
-        /// <summary>
-        /// Used for visualising collision checks with DrawCollisionChecks.
-        /// Automatically removed from builds so that collision checks aren't slowed down.
-        /// </summary>
-        /// <param name="checkRay">ray that was passed in to check for collisions.</param>
+		/// <summary>
+		/// Used for visualising collision checks with DrawCollisionChecks.
+		/// Automatically removed from builds so that collision checks aren't slowed down.
+		/// </summary>
+		/// <param name="checkRay">ray that was passed in to check for collisions.</param>
 #if UNITY_EDITOR
 	void AddCollisionCheck(Ray checkRay) {
 		lastRayCollisionChecks.Enqueue(checkRay);
@@ -294,57 +300,57 @@ namespace ValheimPerformanceOptimizations
 	}
 #endif
 
-        /// <summary>
-        /// Grow the octree to fit in all objects.
-        /// </summary>
-        /// <param name="direction">Direction to grow.</param>
-        void Grow(Vector3 direction)
-        {
-            int xDirection = direction.x >= 0 ? 1 : -1;
-            int yDirection = direction.y >= 0 ? 1 : -1;
-            int zDirection = direction.z >= 0 ? 1 : -1;
-            BoundsOctreeNode<T> oldRoot = rootNode;
-            float half = rootNode.BaseLength / 2;
-            float newLength = rootNode.BaseLength * 2;
-            Vector3 newCenter = rootNode.Center + new Vector3(xDirection * half, yDirection * half, zDirection * half);
+		/// <summary>
+		/// Grow the octree to fit in all objects.
+		/// </summary>
+		/// <param name="direction">Direction to grow.</param>
+		private void Grow(Vector3 direction)
+		{
+			var xDirection = direction.x >= 0 ? 1 : -1;
+			var yDirection = direction.y >= 0 ? 1 : -1;
+			var zDirection = direction.z >= 0 ? 1 : -1;
+			BoundsOctreeNode<T> oldRoot = rootNode;
+			var half = rootNode.BaseLength / 2;
+			var newLength = rootNode.BaseLength * 2;
+			var newCenter = rootNode.Center + new Vector3(xDirection * half, yDirection * half, zDirection * half);
 
-            // Create a new, bigger octree root node
-            rootNode = new BoundsOctreeNode<T>(newLength, minSize, looseness, newCenter);
+			// Create a new, bigger octree root node
+			rootNode = new BoundsOctreeNode<T>(newLength, minSize, looseness, newCenter);
 
-            if (oldRoot.HasAnyObjects())
-            {
-                // Create 7 new octree children to go with the old root as children of the new root
-                int rootPos = rootNode.BestFitChild(oldRoot.Center);
-                BoundsOctreeNode<T>[] children = new BoundsOctreeNode<T>[8];
-                for (int i = 0; i < 8; i++)
-                {
-                    if (i == rootPos)
-                    {
-                        children[i] = oldRoot;
-                    }
-                    else
-                    {
-                        xDirection = i % 2 == 0 ? -1 : 1;
-                        yDirection = i > 3 ? -1 : 1;
-                        zDirection = (i < 2 || (i > 3 && i < 6)) ? -1 : 1;
-                        children[i] = new BoundsOctreeNode<T>(oldRoot.BaseLength, minSize, looseness,
-                                                              newCenter + new Vector3(
-                                                                  xDirection * half, yDirection * half,
-                                                                  zDirection * half));
-                    }
-                }
+			if (oldRoot.HasAnyObjects())
+			{
+				// Create 7 new octree children to go with the old root as children of the new root
+				var rootPos = rootNode.BestFitChild(oldRoot.Center);
+				var children = new BoundsOctreeNode<T>[8];
+				for (var i = 0; i < 8; i++)
+				{
+					if (i == rootPos)
+					{
+						children[i] = oldRoot;
+					}
+					else
+					{
+						xDirection = i % 2 == 0 ? -1 : 1;
+						yDirection = i > 3 ? -1 : 1;
+						zDirection = i < 2 || i > 3 && i < 6 ? -1 : 1;
+						children[i] = new BoundsOctreeNode<T>(oldRoot.BaseLength, minSize, looseness,
+							newCenter + new Vector3(
+								xDirection * half, yDirection * half,
+								zDirection * half));
+					}
+				}
 
-                // Attach the new children to the new root node
-                rootNode.SetChildren(children);
-            }
-        }
+				// Attach the new children to the new root node
+				rootNode.SetChildren(children);
+			}
+		}
 
-        /// <summary>
-        /// Shrink the octree if possible, else leave it the same.
-        /// </summary>
-        void Shrink()
-        {
-            rootNode = rootNode.ShrinkIfPossible(initialSize);
-        }
-    }
+		/// <summary>
+		/// Shrink the octree if possible, else leave it the same.
+		/// </summary>
+		private void Shrink()
+		{
+			rootNode = rootNode.ShrinkIfPossible(initialSize);
+		}
+	}
 }

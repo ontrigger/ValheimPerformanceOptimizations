@@ -4,8 +4,8 @@ namespace ValheimPerformanceOptimizations.Storage
 {
 	public static class SetPool<T>
 	{
-		private static readonly ObjectPool<HashSet<T>> Pool = new (onReturn: Clear);
-		
+		private static readonly ObjectPool<HashSet<T>> Pool = new(onReturn: Clear);
+
 		public static HashSet<T> Get()
 		{
 			return Pool.Get();
