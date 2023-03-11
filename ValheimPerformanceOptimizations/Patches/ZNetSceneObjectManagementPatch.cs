@@ -229,6 +229,22 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 		}
+		
+		[HarmonyPrefix, HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjects))] 
+		private static bool ZNetScene_CreateObjects_Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
+		{
+			int maxCreatedPerFrame = 10;
+			if (__instance.InLoadingScreen())
+			{
+				maxCreatedPerFrame = 100;
+			}
+			
+			int created = 0;
+			__instance.CreateObjectsSorted(currentNearObjects, maxCreatedPerFrame, ref created);
+			__instance.CreateDistantObjects(currentDistantObjects, maxCreatedPerFrame, ref created);
+
+			return false;
+		}
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjectsSorted))] [HarmonyPrefix]
 		private static bool CreateObjectsSorted(
