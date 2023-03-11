@@ -8,8 +8,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
     /// </summary>
     public class VPOZoneTracker : MonoBehaviour
     {
-        private static readonly Dictionary<Vector2i, CachedZoneComponents> ZoneComponentsByLocation =
-            new Dictionary<Vector2i, CachedZoneComponents>();
+        private static readonly Dictionary<Vector2i, CachedZoneComponents> ZoneComponentsByLocation = new();
 
         public Vector2i zonePosition;
 
@@ -20,7 +19,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
             var cachedData = new CachedZoneComponents
             {
                 Heightmap = GetComponentInChildren<Heightmap>(),
-                WaterVolume = GetComponentInChildren<WaterVolume>()
+                WaterVolume = GetComponentInChildren<WaterVolume>(),
             };
 
             // temp workaround for EpicLoot spawning zones in Client mode
@@ -42,7 +41,7 @@ namespace ValheimPerformanceOptimizations.Patches.GetWaterLevel
             return ZoneComponentsByLocation.TryGetValue(zonePosition, out components);
         }
 
-        public struct CachedZoneComponents
+        public class CachedZoneComponents
         {
             public Heightmap Heightmap;
             public WaterVolume WaterVolume;

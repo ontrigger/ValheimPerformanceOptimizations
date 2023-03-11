@@ -13,9 +13,9 @@ namespace ValheimPerformanceOptimizations.Patches
 	{
 		private const float LeafParticleCullHeight = 0.79f;
 
-		private static readonly List<string> PrefabsWithLeafParticles = new List<string>
+		private static readonly List<string> PrefabsWithLeafParticles = new()
 		{
-			"Beech1", "Birch1_aut", "Birch2_aut", "Oak1"
+			"Beech1", "Birch1_aut", "Birch2_aut", "Oak1",
 		};
 
 		private static readonly List<string> MaterialsWithDisabledInstancing = new List<string>
@@ -24,30 +24,30 @@ namespace ValheimPerformanceOptimizations.Patches
 			"poisonres_potion", "stamina_potion", "portal_small",
 		}.Select(material => material + " (Instance)").ToList();
 
-		private static readonly List<string> PrefabsWithDisabledInstancing = new List<string>
+		private static readonly List<string> PrefabsWithDisabledInstancing = new()
 		{
 			"piece_cookingstation", "MeadBaseFrostResist", "MeadBaseHealthMedium",
 			"MeadBaseHealthMinor", "MeadBasePoisonResist", "MeadBaseStaminaMedium",
 			"MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium",
-			"MeadStaminaMinor", "portal_wood"
+			"MeadStaminaMinor", "portal_wood",
 		};
 
-		private static readonly List<string> PrefabsWithWastedMaterials = new List<string>
+		private static readonly List<string> PrefabsWithWastedMaterials = new()
 		{
 			"OLD_wood_roof_icorner", "wood_roof_icorner_45", "wood_roof_ocorner", "wood_roof_icorner",
 			"OLD_wood_roof_ocorner", "wood_roof_45", "wood_roof_top_45", "wood_roof_ocorner_45",
-			"wood_roof", "wood_roof_top", "OLD_wood_roof"
+			"wood_roof", "wood_roof_top", "OLD_wood_roof",
 		};
 
 		private static bool _isPatched;
 
 		/// <summary>
-		///     Some trees have leaf particles attached to them.
-		///     These particles get rendered at insane distances
-		///     where they have a screen size of a pixel at 1080p, while also not being instanced.
-		///     This patch inserts a new lod that will cull particles at a reasonable screen height.
-		///     It also makes the particles instanced, but it doesn't seem to instance more than 5
-		///     quads at a time for some reason
+		/// Some trees have leaf particles attached to them.
+		/// These particles get rendered at insane distances
+		/// where they have a screen size of a pixel at 1080p, while also not being instanced.
+		/// This patch inserts a new lod that will cull particles at a reasonable screen height.
+		/// It also makes the particles instanced, but it doesn't seem to instance more than 5
+		/// quads at a time for some reason
 		/// </summary>
 		private static void PatchPrefabWithLeaves(GameObject prefab)
 		{
@@ -64,13 +64,13 @@ namespace ValheimPerformanceOptimizations.Patches
 				return;
 			}
 
-			var lods = lodGroup.GetLODs();
+			LOD[] lods = lodGroup.GetLODs();
 			var lod0 = lods[0];
 
 			var prevHeight = lod0.screenRelativeTransitionHeight;
 			lod0.screenRelativeTransitionHeight = LeafParticleCullHeight;
 
-			var noParticleRenderers = lod0.renderers
+			Renderer[] noParticleRenderers = lod0.renderers
 				.Where(r => r.name != "leaf_particles")
 				.ToArray();
 
@@ -88,12 +88,17 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static void PatchPrefabWithUninstancedMaterials(GameObject prefab)
 		{
+			if (prefab == null) { return; }
 			foreach (var renderer in prefab.GetComponentsInChildren<Renderer>(true))
 			{
-				var materials = renderer.materials;
+				Material[] materials = renderer.sharedMaterials;
 				foreach (var material in materials)
 				{
-					if (!MaterialsWithDisabledInstancing.Contains(material.name))
+					if (material != null)
+					{
+						material.enableInstancing = true;
+					}
+					/*if (!MaterialsWithDisabledInstancing.Contains(material.name))
 					{
 						continue;
 					}
@@ -101,8 +106,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					if (material.enableInstancing)
 					{
 						VPO.Logger.LogInfo($"material {material.name} is already instanced {prefab.name}");
-					}
-					material.enableInstancing = true;
+					}*/
 				}
 			}
 		}
@@ -168,11 +172,16 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			if (_isPatched) return;
 
-			var namedPrefabs = __instance.m_namedPrefabs;
+			Dictionary<int, GameObject> namedPrefabs = __instance.m_namedPrefabs;
 
 			var patched = 0;
 			patched += namedPrefabs.PatchPrefabs(PrefabsWithLeafParticles, PatchPrefabWithLeaves);
-			patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
+			//patched += namedPrefabs.PatchPrefabs(PrefabsWithDisabledInstancing, PatchPrefabWithUninstancedMaterials);
+			foreach (var prefab in namedPrefabs.Values)
+			{
+				PatchPrefabWithUninstancedMaterials(prefab);
+				patched += 1;
+			}
 			if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
 			{
 				var now = DateTime.Now;
@@ -180,8 +189,8 @@ namespace ValheimPerformanceOptimizations.Patches
 				ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
 			}
 
-			//PatchSnowStormParticle();
-			//patched += 1;
+			PatchSnowStormParticle();
+			patched += 1;
 
 			ValheimPerformanceOptimizations.Logger.LogInfo($"Patched {patched} prefabs");
 
