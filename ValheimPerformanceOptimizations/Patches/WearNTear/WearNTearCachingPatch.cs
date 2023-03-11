@@ -41,10 +41,10 @@ namespace ValheimPerformanceOptimizations.Patches
 				ValheimPerformanceOptimizations.Logger.LogWarning(
 					"!!! ValheimRAFT present !!! disabling structural integrity optimizations to maintain compatibility");
 			}
-			// harmony.PatchAll(typeof(WearNTearCachingPatch));
+			harmony.PatchAll(typeof(WearNTearCachingPatch));
 		}
 
-		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))] [HarmonyPostfix]
+		/*[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))] [HarmonyPostfix]
 		private static void Postfix(ZNetScene __instance)
 		{
 			if (_maskToCheck == 0)
@@ -208,9 +208,9 @@ namespace ValheimPerformanceOptimizations.Patches
 			Profiler.BeginSample("Cache remove");
 			WearNTearCache.Remove(__instance);
 			Profiler.EndSample();
-		}
+		}*/
 
-		[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.HaveRoof))] [HarmonyPrefix]
+		/*[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.HaveRoof))] [HarmonyPrefix]
 		private static bool HaveRoof(WearNTear __instance, out bool __result)
 		{
 			__result = false;
@@ -240,7 +240,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			WearNTearCache[__instance] = myCache;
 
 			return false;
-		}
+		}*/
 
 		/// <summary>
 		/// adds an IsWet check before trying to call HaveRoof like this
@@ -285,6 +285,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			return code.AsEnumerable();
 		}
 
+		#if DEBUG
 		[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateSupport))] [HarmonyPrefix]
 		private static bool UpdateSupport(WearNTear __instance)
 		{
@@ -292,86 +293,43 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				__instance.SetupColliders();
 			}
-
-			__instance.GetMaterialProperties(out var maxSupport, out var _, out var horizontalLoss,
-				out var verticalLoss);
+			__instance.GetMaterialProperties(out var maxSupport, out var _, out var horizontalLoss, out var verticalLoss);
 			WearNTear.m_tempSupportPoints.Clear();
 			WearNTear.m_tempSupportPointValues.Clear();
-			var cOM = __instance.GetCOM();
+			Vector3 cOM = __instance.GetCOM();
 			var a = 0f;
-
-			Profiler.BeginSample("HELLO?");
-
-			if (!WearNTearCache.TryGetValue(__instance, out var myCache))
-			{
-				myCache = new CachedWearNTearData();
-			}
-
-			Profiler.EndSample();
-
-			Profiler.BeginSample("yooo");
-
-			var boundCount = 0;
-			var unchangedSupports = 0;
+			Profiler.BeginSample("upd bounds");
 			foreach (var bound in __instance.m_bounds)
 			{
-				Profiler.BeginSample("get support");
-				List<ColliderSupportData> colliderSupports = myCache.GetOrComputeColliderSupportData(
-					bound, collider =>
-						!__instance.m_colliders.Contains(collider)
-						&& collider.attachedRigidbody == null
-						&& !collider.isTrigger
-				);
-				Profiler.EndSample();
-
-				foreach (var colliderSupportData in colliderSupports)
+				var num = Physics.OverlapBoxNonAlloc(bound.m_pos, bound.m_size, WearNTear.m_tempColliders, bound.m_rot,
+					WearNTear.m_rayMask);
+				for (var i = 0; i < num; i++)
 				{
-					var otherWearNTear = colliderSupportData.WearNTear;
-					if (otherWearNTear == null)
+					Collider collider = WearNTear.m_tempColliders[i];
+					if (__instance.m_colliders.Contains(collider) || collider.attachedRigidbody != null || collider.isTrigger)
+					{
+						continue;
+					}
+					var componentInParent = collider.GetComponentInParent<WearNTear>();
+					if (componentInParent == null)
 					{
 						__instance.m_support = maxSupport;
 						__instance.m_nview.GetZDO().Set("support", __instance.m_support);
-
-						myCache.Support = maxSupport;
-						myCache.ColliderSupportsForBound[bound] = colliderSupports;
-						WearNTearCache[__instance] = myCache;
-
 						Profiler.EndSample();
 						return false;
 					}
-
-					if (!otherWearNTear.m_supports) { continue; }
-
-					boundCount += 1;
-
-					Profiler.BeginSample("inner loop");
-
-					Profiler.BeginSample("HOW");
-					var num2 = Vector3.Distance(cOM, otherWearNTear.transform.position) + 0.1f;
-					var support = otherWearNTear.GetSupport();
-					a = Mathf.Max(a, support - horizontalLoss * num2 * support);
-					Profiler.EndSample();
-
-					Profiler.BeginSample("nothing else works");
-					if (colliderSupportData.CheckSupportUnchanged(num2, support))
+					if (!componentInParent.m_supports)
 					{
-						unchangedSupports += 1;
+						continue;
 					}
-
-					colliderSupportData.OtherWntSupport = support;
-					colliderSupportData.DistanceToOtherWnt = num2;
-
+					var num2 = Vector3.Distance(cOM, componentInParent.transform.position) + 0.1f;
+					var support = componentInParent.GetSupport();
+					a = Mathf.Max(a, support - horizontalLoss * num2 * support);
+					Profiler.BeginSample("Find support point");
+					Vector3 vector = __instance.FindSupportPoint(cOM, componentInParent, collider);
 					Profiler.EndSample();
-
-					Profiler.BeginSample("find support");
-					var vector = colliderSupportData.SupportPointCached
-						? colliderSupportData.SupportPoint
-						: __instance.FindSupportPoint(cOM, otherWearNTear, colliderSupportData.Collider);
-
-					colliderSupportData.SupportPoint = vector;
-					Profiler.EndSample();
-
-					Profiler.BeginSample("actually computin it");
+					
+					Profiler.BeginSample("add support points");
 					if (vector.y < cOM.y + 0.05f)
 					{
 						var normalized = (vector - cOM).normalized;
@@ -382,65 +340,44 @@ namespace ValheimPerformanceOptimizations.Patches
 							var b = support - num3 * num2 * support;
 							a = Mathf.Max(a, b);
 						}
-
 						var item = support - verticalLoss * num2 * support;
 						WearNTear.m_tempSupportPoints.Add(vector);
 						WearNTear.m_tempSupportPointValues.Add(item);
 					}
-
-					Profiler.EndSample();
-
 					Profiler.EndSample();
 				}
-
-				myCache.ColliderSupportsForBound[bound] = colliderSupports;
 			}
-
 			Profiler.EndSample();
-
-			if (unchangedSupports >= boundCount)
+			
+			Profiler.BeginSample("upd support");
+			if (WearNTear.m_tempSupportPoints.Count > 0 && WearNTear.m_tempSupportPoints.Count >= 2)
 			{
-				__instance.m_support = myCache.Support;
-				__instance.m_nview.GetZDO().Set("support", __instance.m_support);
-
-				return false;
-			}
-
-			if (WearNTear.m_tempSupportPoints.Count >= 2)
-			{
-				Profiler.BeginSample("super computin");
-				var supportPointCount = WearNTear.m_tempSupportPoints.Count;
-				for (var j = 0; j < supportPointCount; j++)
+				for (var j = 0; j < WearNTear.m_tempSupportPoints.Count; j++)
 				{
-					var mTempSupportPoint = WearNTear.m_tempSupportPoints[j];
-					var from = mTempSupportPoint - cOM;
+					var from = WearNTear.m_tempSupportPoints[j] - cOM;
 					from.y = 0f;
-					for (var k = j + 1; k < supportPointCount; k++)
+					for (var k = 0; k < WearNTear.m_tempSupportPoints.Count; k++)
 					{
-						var to = WearNTear.m_tempSupportPoints[k] - cOM;
-						to.y = 0f;
-
-						if (Vector3.Angle(from, to) >= 100f)
+						if (j != k)
 						{
-							var b2 = (WearNTear.m_tempSupportPointValues[j] +
-								WearNTear.m_tempSupportPointValues[k]) * 0.5f;
-							a = Mathf.Max(a, b2);
+							var to = WearNTear.m_tempSupportPoints[k] - cOM;
+							to.y = 0f;
+							if (Vector3.Angle(from, to) >= 100f)
+							{
+								var b2 = (WearNTear.m_tempSupportPointValues[j] + WearNTear.m_tempSupportPointValues[k]) * 0.5f;
+								a = Mathf.Max(a, b2);
+							}
 						}
 					}
 				}
-
-				Profiler.EndSample();
 			}
-
+			Profiler.EndSample();
 			__instance.m_support = Mathf.Min(a, maxSupport);
 			__instance.m_nview.GetZDO().Set("support", __instance.m_support);
 
-			myCache.Support = Mathf.Min(a, maxSupport);
-
-			WearNTearCache[__instance] = myCache;
-
 			return false;
 		}
+		#endif
 	}
 
 	public class CachedWearNTearData
