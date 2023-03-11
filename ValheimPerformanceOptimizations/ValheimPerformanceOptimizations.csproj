@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"/>
+    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
     <PropertyGroup>
         <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
         <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -57,11 +57,11 @@
             <HintPath Condition="Exists('$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll')">$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll</HintPath>
             <HintPath Condition="Exists('$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll')">$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
         </Reference>
-        <Reference Include="Microsoft.CSharp"/>
-        <Reference Include="System"/>
-        <Reference Include="System.Core"/>
-        <Reference Include="System.Data"/>
-        <Reference Include="System.Xml"/>
+        <Reference Include="Microsoft.CSharp" />
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
+        <Reference Include="System.Data" />
+        <Reference Include="System.Xml" />
         <Reference Include="Unity.Collections">
             <HintPath>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed\Unity.Collections.dll</HintPath>
         </Reference>
@@ -100,45 +100,44 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
-        <Compile Include="Patches\ClutterSystemRenderQueuePatch.cs"/>
-        <Compile Include="Patches\EffectArea\VPOEffectArea.cs"/>
-        <Compile Include="Patches\GetStandingOnShipPatch.cs"/>
-        <Compile Include="Patches\GetWaterLevel\GetWaterLevelPatch.cs"/>
-        <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs"/>
-        <Compile Include="Patches\HeightmapGeneration\HeightmapColorAllocationPatch.cs"/>
-        <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs"/>
-        <Compile Include="Patches\MinimapGenerationPatch.cs"/>
-        <Compile Include="Patches\PrefabOptimization\PrefabMaterialCombiner.cs"/>
-        <Compile Include="Patches\PrefabOptimization\PrefabPatches.cs"/>
-        <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs"/>
-        <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs"/>
-        <Compile Include="Patches\TerrainShadow\TerrainPatches.cs"/>
-        <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs"/>
-        <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs"/>
-        <Compile Include="Patches\ThreadedWorldLoadingPatch.cs"/>
-        <Compile Include="Patches\Water\VPOWaterVolumeManager.cs"/>
-        <Compile Include="Patches\Water\WaterVolumeVisibilityPatch.cs"/>
-        <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs"/>
-        <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs"/>
-        <Compile Include="Patches\ZNetViewPrefabNamePatch.cs"/>
-        <Compile Include="Utils\AssetBundleHelper.cs"/>
-        <Compile Include="Utils\Extensions\BoundsX.cs"/>
-        <Compile Include="Utils\Extensions\CollectionX.cs"/>
-        <Compile Include="Utils\Extensions\ListX.cs"/>
-        <Compile Include="Utils\Extensions\NumberX.cs"/>
-        <Compile Include="Utils\ModCompatibility.cs"/>
-        <Compile Include="Utils\Storage\BoundsOctree.cs"/>
-        <Compile Include="Utils\Storage\BoundsOctreeNode.cs"/>
-        <Compile Include="Utils\Storage\ObjectPool.cs"/>
-        <Compile Include="Utils\Storage\SetPool.cs"/>
-        <Compile Include="ValheimPerformanceOptimizations.cs"/>
-        <Compile Include="Properties\AssemblyInfo.cs"/>
+        <Compile Include="Patches\ClutterSystemRenderQueuePatch.cs" />
+        <Compile Include="Patches\EffectArea\VPOEffectArea.cs" />
+        <Compile Include="Patches\GetStandingOnShipPatch.cs" />
+        <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs" />
+        <Compile Include="Patches\HeightmapGeneration\HeightmapColorAllocationPatch.cs" />
+        <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs" />
+        <Compile Include="Patches\MinimapGenerationPatch.cs" />
+        <Compile Include="Patches\PrefabOptimization\PrefabMaterialCombiner.cs" />
+        <Compile Include="Patches\PrefabOptimization\PrefabPatches.cs" />
+        <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs" />
+        <Compile Include="Patches\SmokeRendering\VPOSmokeRenderer.cs" />
+        <Compile Include="Patches\TerrainShadow\TerrainPatches.cs" />
+        <Compile Include="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
+        <Compile Include="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
+        <Compile Include="Patches\ThreadedWorldLoadingPatch.cs" />
+        <Compile Include="Patches\Water\VPOWaterVolumeManager.cs" />
+        <Compile Include="Patches\Water\WaterVolumeVisibilityPatch.cs" />
+        <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
+        <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs" />
+        <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
+        <Compile Include="Utils\AssetBundleHelper.cs" />
+        <Compile Include="Utils\Extensions\BoundsX.cs" />
+        <Compile Include="Utils\Extensions\CollectionX.cs" />
+        <Compile Include="Utils\Extensions\ListX.cs" />
+        <Compile Include="Utils\Extensions\NumberX.cs" />
+        <Compile Include="Utils\ModCompatibility.cs" />
+        <Compile Include="Utils\Storage\BoundsOctree.cs" />
+        <Compile Include="Utils\Storage\BoundsOctreeNode.cs" />
+        <Compile Include="Utils\Storage\ObjectPool.cs" />
+        <Compile Include="Utils\Storage\SetPool.cs" />
+        <Compile Include="ValheimPerformanceOptimizations.cs" />
+        <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
     <ItemGroup>
-        <EmbeddedResource Include="AssetBundles\smoke_instanced_shader"/>
+        <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
     </ItemGroup>
-    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
-    <Import Project="../Environment.props"/>
+    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+    <Import Project="../Environment.props" />
     <PropertyGroup>
         <PostBuildEvent>
             if $(ConfigurationName) == Release (
