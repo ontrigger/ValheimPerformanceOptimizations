@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
+
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	/// <summary>
@@ -23,7 +24,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		private static NativeArray<Color32> _heightmapColors;
 		private static NativeArray<Color32> _distantHeightmapColors;
 
-		private static readonly Queue<Mesh> RegenerateTangentQueue = new Queue<Mesh>();
+		private static readonly Queue<Mesh> RegenerateTangentQueue = new();
 
 		private static int _lastHeightmapWidth = -1;
 		private static int _lastDistantHeightmapWidth = -1;
@@ -112,7 +113,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildRenderMesh)), HarmonyPrefix]
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.RebuildRenderMesh))] [HarmonyPrefix]
 		public static bool RebuildRenderMeshPostfix(Heightmap __instance)
 		{
 			var newMesh = false;
@@ -149,9 +150,10 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			else
 			{
 				ReallocateArrays(__instance);
-				
+
 				var num = width + 1;
-				var vector = __instance.transform.position + new Vector3(width * scale * -0.5f, 0f, width * scale * -0.5f);
+				var vector = __instance.transform.position
+					+ new Vector3(width * scale * -0.5f, 0f, width * scale * -0.5f);
 				for (var idx = 0; idx < num * num; idx++)
 				{
 					var w1 = width - 1;
@@ -183,13 +185,13 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				{
 					Profiler.BeginSample("set stale stuffs");
 					__instance.m_renderMesh.SetUVs(0, isDistant ? _distantHeightmapUVs : _heightmapUVs);
-					__instance.m_renderMesh.SetIndices(Heightmap.m_tempIndices, MeshTopology.Triangles, 0, true);
+					__instance.m_renderMesh.SetIndices(Heightmap.m_tempIndices, MeshTopology.Triangles, 0);
 					Profiler.EndSample();
 				}
 
 				Profiler.BeginSample("recalc");
 				__instance.m_renderMesh.RecalculateNormals();
-				
+
 				RegenerateTangentQueue.Enqueue(__instance.m_renderMesh);
 
 				var mesh = RegenerateTangentQueue.Dequeue();
@@ -256,7 +258,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		{
 			[ReadOnly] public int Width;
 
-			[ReadOnly, DeallocateOnJobCompletion] 
+			[ReadOnly] [DeallocateOnJobCompletion]
 			public NativeArray<Heightmap.Biome> CornerBiomes;
 
 			[WriteOnly] public NativeArray<Color32> Colors;
@@ -302,7 +304,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 					Heightmap.Biome.AshLands => new Color32(byte.MaxValue, 0, 0, byte.MaxValue),
 					Heightmap.Biome.DeepNorth => new Color32(0, byte.MaxValue, 0, 0),
 					Heightmap.Biome.Mistlands => new Color32(0, 0, byte.MaxValue, byte.MaxValue),
-					_ => new Color32(0, 0, 0, 0)
+					_ => new Color32(0, 0, 0, 0),
 				};
 			}
 		}

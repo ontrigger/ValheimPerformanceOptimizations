@@ -9,8 +9,8 @@ namespace ValheimPerformanceOptimizations.Patches
 {
 	public class VPOWaterVolumeManager : MonoBehaviour
 	{
-		public static VPOWaterVolumeManager Instance 
-		{ 
+		public static VPOWaterVolumeManager Instance
+		{
 			get
 			{
 				if (!_instance)
@@ -20,7 +20,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				}
 
 				return _instance;
-			} 
+			}
 		}
 
 		private readonly List<WaterVolume> volumes = new();
@@ -37,13 +37,13 @@ namespace ValheimPerformanceOptimizations.Patches
 		private NativeArray<float> windBlends;
 
 		private NativeArray<float> results;
-		
+
 		private static VPOWaterVolumeManager _instance;
 
 		private struct WaveRequestData
 		{
 			public Vector3 Position;
-			
+
 			public float Depth;
 			public float HeightOffset;
 
@@ -54,11 +54,11 @@ namespace ValheimPerformanceOptimizations.Patches
 			public Vector4 Wind2;
 			public float WindBlend;
 		}
-		
+
 		private void Update()
 		{
 			if (ZNetScene.instance == null) { return; }
-			
+
 			waveLevelRequests.Clear();
 			foreach (var waterVolume in volumes)
 			{
@@ -69,13 +69,14 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					EnvMan.instance.GetWindData(out wind, out wind2, out alpha);
 				}
-				
+
 				var heightOffset = waterVolume.transform.position.y + waterVolume.m_surfaceOffset;
 				foreach (var waterInteractable in waterVolume.m_inWater)
 				{
 					var xForm = waterInteractable.GetTransform();
-					if (!xForm) { continue; };
-					
+					if (!xForm) { continue; }
+					;
+
 					var position = xForm.position;
 
 					var downwardsOffset = 0f;
@@ -86,21 +87,16 @@ namespace ValheimPerformanceOptimizations.Patches
 
 					var request = new WaveRequestData
 					{
-						WaterInteractable = waterInteractable,
-						WaterVolume = waterVolume,
-						Depth = waterVolume.Depth(position),
-						HeightOffset = heightOffset - downwardsOffset,
-						Position = position,
-						Wind = wind,
-						Wind2 = wind2,
-						WindBlend = alpha,
+						WaterInteractable = waterInteractable, WaterVolume = waterVolume,
+						Depth = waterVolume.Depth(position), HeightOffset = heightOffset - downwardsOffset,
+						Position = position, Wind = wind, Wind2 = wind2, WindBlend = alpha,
 					};
 					waveLevelRequests.Add(request);
 				}
 
 				waterVolume.m_inWater.RemoveAll(interactable => interactable.GetTransform() == null);
 			}
-			
+
 			Profiler.BeginSample("alloc and set");
 			transformPositions = new NativeArray<Vector3>(waveLevelRequests.Count, Allocator.TempJob);
 			heightOffsets = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
@@ -109,11 +105,11 @@ namespace ValheimPerformanceOptimizations.Patches
 			winds2 = new NativeArray<Vector4>(waveLevelRequests.Count, Allocator.TempJob);
 			windBlends = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
 			results = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
-			
+
 			for (var i = 0; i < waveLevelRequests.Count; i++)
 			{
 				var waveLevelRequest = waveLevelRequests[i];
-				
+
 				transformPositions[i] = waveLevelRequest.Position;
 				heightOffsets[i] = waveLevelRequest.HeightOffset;
 				depths[i] = waveLevelRequest.Depth;
@@ -121,16 +117,11 @@ namespace ValheimPerformanceOptimizations.Patches
 				winds2[i] = waveLevelRequest.Wind2;
 				windBlends[i] = waveLevelRequest.WindBlend;
 			}
-			
+
 			var bakeJob = new CalculateWavesJob
 			{
-				TransformPositions = transformPositions,
-				HeightOffsets = heightOffsets,
-				Depths = depths,
-				Wind = winds,
-				Wind2 = winds2,
-				WindAlpha = windBlends,
-				Time = ZNet.instance.GetWrappedDayTimeSeconds(),
+				TransformPositions = transformPositions, HeightOffsets = heightOffsets, Depths = depths, Wind = winds,
+				Wind2 = winds2, WindAlpha = windBlends, Time = ZNet.instance.GetWrappedDayTimeSeconds(),
 				Results = results,
 			};
 			Profiler.EndSample();
@@ -144,15 +135,15 @@ namespace ValheimPerformanceOptimizations.Patches
 		private void LateUpdate()
 		{
 			if (!ZNetScene.instance) { return; }
-			
+
 			handle.Complete();
-			
+
 			Profiler.BeginSample("set stuff");
 			for (var i = 0; i < waveLevelRequests.Count; i++)
 			{
 				var volume = waveLevelRequests[i].WaterVolume;
 				var interactable = waveLevelRequests[i].WaterInteractable;
-				
+
 				var liquidLevel = results[i];
 
 				if (volume != null && interactable != null && interactable.GetTransform() != null)
@@ -171,26 +162,26 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			volumes.Add(volume);
 		}
-		
+
 		public void RemoveVolume(WaterVolume volume)
 		{
 			volumes.Remove(volume);
 		}
 	}
-	
+
 	internal struct CalculateWavesJob : IJobFor
 	{
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector3> TransformPositions;
-		
+
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> Depths;
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> HeightOffsets;
-		
+
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector4> Wind;
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector4> Wind2;
 		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> WindAlpha;
 
 		public float Time;
-		
+
 		[WriteOnly]
 		public NativeArray<float> Results;
 
@@ -198,13 +189,13 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			var worldPos = TransformPositions[index];
 			var depth = Depths[index];
-			
+
 			var a = CalcWave(worldPos, depth, Wind[index], Time, 1f);
 			var b = CalcWave(worldPos, depth, Wind2[index], Time, 1f);
-			
+
 			Results[index] = HeightOffsets[index] + Mathf.Lerp(a, b, WindAlpha[index]);
 		}
-		
+
 		private float CalcWave(Vector3 worldPos, float depth, Vector4 wind, float _WaterTime, float waveFactor)
 		{
 			var vector = new Vector3(wind.x, wind.y, wind.z);
@@ -220,18 +211,23 @@ namespace ValheimPerformanceOptimizations.Patches
 			var num8 = CreateWave(worldPos, time, 41.1223f, 1.2f, 0.6f * waveFactor, new Vector2(0.223f, 0.74f), 0.8f);
 			var num9 = CreateWave(worldPos, time, 51.5123f, 1.3f, 0.4f * waveFactor, new Vector2(0.923f, -0.24f), 0.9f);
 			var num10 = CreateWave(worldPos, time, 54.2f, 1.3f, 0.3f * waveFactor, new Vector2(-0.323f, 0.44f), 0.9f);
-			var num11 = CreateWave(worldPos, time, 56.123f, 1.5f, 0.2f * waveFactor, new Vector2(0.5312f, -0.812f), 0.9f);
+			var num11 = CreateWave(worldPos, time, 56.123f, 1.5f, 0.2f * waveFactor, new Vector2(0.5312f, -0.812f),
+				0.9f);
 			return (num2 + num3 + num4 + num5 + num6 + num7 + num8 + num9 + num10 + num11) * num;
 		}
-		
-		private float CreateWave(Vector3 worldPos, float time, float waveSpeed, float waveLength, float waveHeight, Vector2 dir2d, float sharpness)
+
+		private float CreateWave(
+			Vector3 worldPos, float time, float waveSpeed, float waveLength, float waveHeight, Vector2 dir2d,
+			float sharpness)
 		{
 			var normalized = new Vector3(dir2d.x, 0f, dir2d.y).normalized;
 			var vector = Vector3.Cross(normalized, Vector3.up);
 			var vector2 = -(worldPos.z * normalized + worldPos.x * vector);
-			return (TrochSin(time * waveSpeed + vector2.z * waveLength, sharpness) * TrochSin(time * waveSpeed * 0.123f + vector2.x * 0.13123f * waveLength, sharpness) - 0.2f) * waveHeight;
+			return (TrochSin(time * waveSpeed + vector2.z * waveLength, sharpness)
+				* TrochSin(time * waveSpeed * 0.123f + vector2.x * 0.13123f * waveLength, sharpness) - 0.2f)
+				* waveHeight;
 		}
-		
+
 		private float TrochSin(float x, float k)
 		{
 			return Mathf.Sin(x - Mathf.Cos(x) * k) * 0.5f + 0.5f;
@@ -241,19 +237,19 @@ namespace ValheimPerformanceOptimizations.Patches
 	[HarmonyPatch]
 	public static class WaterVolumeManagerPatch
 	{
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.Awake)), HarmonyPostfix]
+		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.Awake))] [HarmonyPostfix]
 		private static void Awake_Postfix(WaterVolume __instance)
 		{
 			VPOWaterVolumeManager.Instance.AddVolume(__instance);
 		}
-		
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.OnDestroy)), HarmonyPostfix]
+
+		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.OnDestroy))] [HarmonyPostfix]
 		private static void OnDestroy_Postfix(WaterVolume __instance)
 		{
 			VPOWaterVolumeManager.Instance.RemoveVolume(__instance);
 		}
-		
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters)), HarmonyPrefix]
+
+		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))] [HarmonyPrefix]
 		private static bool UpdateFloaters_Prefix(WaterVolume __instance)
 		{
 			return false;

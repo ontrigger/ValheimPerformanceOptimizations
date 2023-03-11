@@ -13,16 +13,16 @@ namespace ValheimPerformanceOptimizations.Patches
 	{
 		private static VPOTerrainCollisionBaker _instance;
 
-		private readonly List<BakeData> bakeRequests = new List<BakeData>();
+		private readonly List<BakeData> bakeRequests = new();
 
 		private JobHandle pendingBake;
-		private List<BakeData> pendingHeightmaps = new List<BakeData>();
-		
+		private readonly List<BakeData> pendingHeightmaps = new();
+
 		private class BakeData
 		{
-			public Action<Heightmap> Callback;
-			public Heightmap Heightmap;
-			
+			public readonly Action<Heightmap> Callback;
+			public readonly Heightmap Heightmap;
+
 			public BakeData(Heightmap heightmap, Action<Heightmap> callback)
 			{
 				Heightmap = heightmap;
@@ -63,7 +63,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		private void Update()
 		{
 			pendingBake.Complete();
-			
+
 			pendingHeightmaps.ForEach(data => data.Callback(data.Heightmap));
 
 			pendingHeightmaps.Clear();

@@ -1,13 +1,13 @@
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
 using ValheimPerformanceOptimizations.Patches.SmokeRendering;
+
 namespace ValheimPerformanceOptimizations.Patches
 {
 	public class VPOSmokeRenderer : MonoBehaviour
 	{
 		public static VPOSmokeRenderer Instance { get; private set; }
-		
+
 		private const int MaxSmokeInstances = 101;
 
 		private static readonly int SmokeColor = Shader.PropertyToID("_Color");
@@ -39,11 +39,14 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				return;
 			}
-			
+
 			var i = 0;
 			foreach (var smoke in Smoke.m_smoke)
 			{
-				if (smoke == null) continue;
+				if (smoke == null)
+				{
+					continue;
+				}
 
 				if (smoke.m_time > smoke.m_ttl && smoke.m_fadeTimer < 0f)
 				{
@@ -73,7 +76,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
 			Smoke.m_smoke.RemoveAll(smoke => smoke == null);
 
-			if (Smoke.m_smoke.Count < 1) return;
+			if (Smoke.m_smoke.Count < 1)
+			{
+				return;
+			}
 
 			_materialProperties.SetVectorArray(SmokeColor, SmokeColors);
 
@@ -86,7 +92,10 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		public void SetupRenderingData(GameObject smokePrefab)
 		{
-			if (setupDone) return;
+			if (setupDone)
+			{
+				return;
+			}
 
 			var meshRenderer = smokePrefab.GetComponent<MeshRenderer>();
 			var meshFilter = smokePrefab.GetComponent<MeshFilter>();
@@ -110,7 +119,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			material.DisableKeyword("GEOM_TYPE_FROND");
 			material.DisableKeyword("_EMISSION");
 			material.DisableKeyword("GEOM_TYPE_MESH");
-			
+
 			material.EnableKeyword("GEOM_TYPE_LEAF");
 
 			smokeMaterial = material;

@@ -20,16 +20,15 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static readonly List<string> MaterialsWithDisabledInstancing = new List<string>
 		{
-			"Grill_mat", "meadbase", "poison",
-			"poisonres_potion", "stamina_potion", "portal_small",
+			"Grill_mat", "meadbase", "poison", "poisonres_potion",
+			"stamina_potion", "portal_small",
 		}.Select(material => material + " (Instance)").ToList();
 
 		private static readonly List<string> PrefabsWithDisabledInstancing = new()
 		{
-			"piece_cookingstation", "MeadBaseFrostResist", "MeadBaseHealthMedium",
-			"MeadBaseHealthMinor", "MeadBasePoisonResist", "MeadBaseStaminaMedium",
-			"MeadBaseStaminaMinor", "MeadBaseTasty", "MeadPoisonResist", "MeadStaminaMedium",
-			"MeadStaminaMinor", "portal_wood",
+			"piece_cookingstation", "MeadBaseFrostResist", "MeadBaseHealthMedium", "MeadBaseHealthMinor",
+			"MeadBasePoisonResist", "MeadBaseStaminaMedium", "MeadBaseStaminaMinor", "MeadBaseTasty",
+			"MeadPoisonResist", "MeadStaminaMedium", "MeadStaminaMinor", "portal_wood",
 		};
 
 		private static readonly List<string> PrefabsWithWastedMaterials = new()
@@ -166,11 +165,13 @@ namespace ValheimPerformanceOptimizations.Patches
 			return totalPatched;
 		}
 
-
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
 		private static void Postfix(ZNetScene __instance, Dictionary<int, GameObject> ___m_namedPrefabs)
 		{
-			if (_isPatched) return;
+			if (_isPatched)
+			{
+				return;
+			}
 
 			Dictionary<int, GameObject> namedPrefabs = __instance.m_namedPrefabs;
 
@@ -186,7 +187,8 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				var now = DateTime.Now;
 				patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
-				ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in " + (DateTime.Now - now).TotalMilliseconds + " ms");
+				ValheimPerformanceOptimizations.Logger.LogInfo("Combined prefab mats in "
+					+ (DateTime.Now - now).TotalMilliseconds + " ms");
 			}
 
 			PatchSnowStormParticle();
