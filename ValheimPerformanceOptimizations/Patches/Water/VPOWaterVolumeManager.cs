@@ -29,31 +29,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private JobHandle handle;
 
-		private NativeArray<Vector3> transformPositions;
-		private NativeArray<float> heightOffsets;
-		private NativeArray<float> depths;
-		private NativeArray<Vector4> winds;
-		private NativeArray<Vector4> winds2;
-		private NativeArray<float> windBlends;
+		private NativeArray<WaveRequestData> waveRequests;
 
 		private NativeArray<float> results;
 
 		private static VPOWaterVolumeManager _instance;
-
-		private struct WaveRequestData
-		{
-			public Vector3 Position;
-
-			public float Depth;
-			public float HeightOffset;
-
-			public IWaterInteractable WaterInteractable;
-			public WaterVolume WaterVolume;
-
-			public Vector4 Wind;
-			public Vector4 Wind2;
-			public float WindBlend;
-		}
 
 		private void Update()
 		{
@@ -75,7 +55,6 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					var xForm = waterInteractable.GetTransform();
 					if (!xForm) { continue; }
-					;
 
 					var position = xForm.position;
 
@@ -98,30 +77,18 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 			Profiler.BeginSample("alloc and set");
-			transformPositions = new NativeArray<Vector3>(waveLevelRequests.Count, Allocator.TempJob);
-			heightOffsets = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
-			depths = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
-			winds = new NativeArray<Vector4>(waveLevelRequests.Count, Allocator.TempJob);
-			winds2 = new NativeArray<Vector4>(waveLevelRequests.Count, Allocator.TempJob);
-			windBlends = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
-			results = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
+			waveRequests = new NativeArray<WaveRequestData>(waveLevelRequests.Count, Allocator.TempJob);
 
 			for (var i = 0; i < waveLevelRequests.Count; i++)
 			{
 				var waveLevelRequest = waveLevelRequests[i];
-
-				transformPositions[i] = waveLevelRequest.Position;
-				heightOffsets[i] = waveLevelRequest.HeightOffset;
-				depths[i] = waveLevelRequest.Depth;
-				winds[i] = waveLevelRequest.Wind;
-				winds2[i] = waveLevelRequest.Wind2;
-				windBlends[i] = waveLevelRequest.WindBlend;
+				waveRequests[i] = waveLevelRequest;
 			}
 
 			var bakeJob = new CalculateWavesJob
 			{
-				TransformPositions = transformPositions, HeightOffsets = heightOffsets, Depths = depths, Wind = winds,
-				Wind2 = winds2, WindAlpha = windBlends, Time = ZNet.instance.GetWrappedDayTimeSeconds(),
+				WaveRequests = waveRequests,
+				Time = ZNet.instance.GetWrappedDayTimeSeconds(),
 				Results = results,
 			};
 			Profiler.EndSample();
@@ -171,29 +138,24 @@ namespace ValheimPerformanceOptimizations.Patches
 
 	internal struct CalculateWavesJob : IJobFor
 	{
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector3> TransformPositions;
-
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> Depths;
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> HeightOffsets;
-
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector4> Wind;
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<Vector4> Wind2;
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<float> WindAlpha;
-
-		public float Time;
+		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<WaveRequestData> WaveRequests;
+		
+		[ReadOnly] public float Time;
 
 		[WriteOnly]
 		public NativeArray<float> Results;
 
 		public void Execute(int index)
 		{
-			var worldPos = TransformPositions[index];
-			var depth = Depths[index];
+			var request = WaveRequests[index];
+			
+			var worldPos = request.Position;
+			var depth = request.Depth;
 
-			var a = CalcWave(worldPos, depth, Wind[index], Time, 1f);
-			var b = CalcWave(worldPos, depth, Wind2[index], Time, 1f);
+			var a = CalcWave(worldPos, depth, request.Wind, Time, 1f);
+			var b = CalcWave(worldPos, depth, request.Wind2, Time, 1f);
 
-			Results[index] = HeightOffsets[index] + Mathf.Lerp(a, b, WindAlpha[index]);
+			Results[index] = request.HeightOffset + Mathf.Lerp(a, b, request.WindBlend);
 		}
 
 		private float CalcWave(Vector3 worldPos, float depth, Vector4 wind, float _WaterTime, float waveFactor)
@@ -232,6 +194,21 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			return Mathf.Sin(x - Mathf.Cos(x) * k) * 0.5f + 0.5f;
 		}
+	}
+	
+	internal struct WaveRequestData
+	{
+		public Vector3 Position;
+
+		public float Depth;
+		public float HeightOffset;
+
+		public IWaterInteractable WaterInteractable;
+		public WaterVolume WaterVolume;
+
+		public Vector4 Wind;
+		public Vector4 Wind2;
+		public float WindBlend;
 	}
 
 	[HarmonyPatch]
