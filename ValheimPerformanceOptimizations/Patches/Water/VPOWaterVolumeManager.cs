@@ -78,7 +78,8 @@ namespace ValheimPerformanceOptimizations.Patches
 
 			Profiler.BeginSample("alloc and set");
 			waveRequests = new NativeArray<WaveRequestData>(waveLevelRequests.Count, Allocator.TempJob);
-
+			results = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
+			
 			for (var i = 0; i < waveLevelRequests.Count; i++)
 			{
 				var waveLevelRequest = waveLevelRequests[i];
