@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using HarmonyLib;
 using Unity.Collections;
 using UnityEngine;
@@ -468,30 +467,34 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 		}
 
-		[HarmonyPrefix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		[HarmonyPrefix, HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
 		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
 		{
 			CreateRemoveHack = true;
 			return true;
 		}
 
-		[HarmonyPostfix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		[HarmonyPostfix, HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
 		private static void ZDO_SetSector_Postfix(ZDO __instance, Vector2i sector)
 		{
 			CreateRemoveHack = false;
 		}
-
-		[HarmonyPrefix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
-		private static bool ZDOMan_Load_Prefix(ZDOMan __instance, BinaryReader reader, int version)
+		
+		[HarmonyPrefix, HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))]
+		private static bool ZNetScene_Shutdown_Prefix(ZNetScene __instance)
 		{
-			CreateRemoveHack = true;
+			QueuedNearObjects.Clear();
+			QueuedDistantObjects.Clear();
+			
+			_lastNearZoneSet.Clear();
+			_lastDistantZoneSet.Clear();
+			
+			RemoveQueue.Clear();
+			ExternallySpawnedObjects.Clear();
+			
+			_currentZone = new Vector2i(Int32.MinValue, Int32.MinValue);
+			
 			return true;
-		}
-
-		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
-		private static void ZDOMan_Load_Postfix(ZDOMan __instance, BinaryReader reader, int version)
-		{
-			CreateRemoveHack = false;
 		}
 
 		private static int ReverseZDOCompare(ZDO x, ZDO y)
