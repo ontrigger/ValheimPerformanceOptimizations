@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Tasks;
 using HarmonyLib;
+using ValheimPerformanceOptimizations.Patches;
 
 namespace ValheimPerformanceOptimizations
 {
@@ -14,8 +15,9 @@ namespace ValheimPerformanceOptimizations
 	{
 		private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
 		{
+			ZNetSceneObjectManagementPatch.CreateRemoveHack = true;
 			// only patch the current data version to not risk any world file breaking
-			if (version != 28)
+			if (version != 29)
 			{
 				var message = $"ZDOMan.Load() unsupported data version: {version}. Fallback to original method";
 				ValheimPerformanceOptimizations.Logger.LogInfo(message);
@@ -53,17 +55,8 @@ namespace ValheimPerformanceOptimizations
 			}
 
 			// now load zDO threaded
-			// batch size of 2^12 - 2^16 works good
-			/*const int batch = 32768;
-			Parallel.For(0, Mathf.CeilToInt((float) num2 / batch), i =>
-			{
-				
-			});*/
-
-			ValheimPerformanceOptimizations.Logger.LogDebug("num2" + num2);
 			Parallel.ForEach(Partitioner.Create(0, num2), range =>
 			{
-				ValheimPerformanceOptimizations.Logger.LogDebug($"1{range.Item1} 2{range.Item2}");
 				var zPackage = new ZPackage();
 
 				for (var j = range.Item1; j < range.Item2; j++)
@@ -103,6 +96,8 @@ namespace ValheimPerformanceOptimizations
 			ZLog.Log("Loaded " + __instance.m_deadZDOs.Count + " dead zdos");
 			__instance.RemoveOldGeneratedZDOS();
 			__instance.m_nextUid = num;
+			
+			ZNetSceneObjectManagementPatch.CreateRemoveHack = false;
 
 			return false;
 		}
