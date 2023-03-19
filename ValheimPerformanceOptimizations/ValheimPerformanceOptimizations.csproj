@@ -107,6 +107,7 @@
         <Compile Include="Patches\HeightmapGeneration\HeightmapColorAllocationPatch.cs" />
         <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs" />
         <Compile Include="Patches\MinimapGenerationPatch.cs" />
+        <Compile Include="Patches\ObjectManagement\ZNetSceneObjectManagementPatch.ObjectCollection.cs" />
         <Compile Include="Patches\PrefabOptimization\PrefabMaterialCombiner.cs" />
         <Compile Include="Patches\PrefabOptimization\PrefabPatches.cs" />
         <Compile Include="Patches\SmokeRendering\SmokeRenderingPatch.cs" />
@@ -118,7 +119,7 @@
         <Compile Include="Patches\Water\VPOWaterVolumeManager.cs" />
         <Compile Include="Patches\Water\WaterVolumeVisibilityPatch.cs" />
         <Compile Include="Patches\WearNTear\WearNTearCachingPatch.cs" />
-        <Compile Include="Patches\ZNetSceneObjectManagementPatch.cs" />
+        <Compile Include="Patches\ObjectManagement\ZNetSceneObjectManagementPatch.cs" />
         <Compile Include="Patches\ZNetViewPrefabNamePatch.cs" />
         <Compile Include="Utils\AssetBundleHelper.cs" />
         <Compile Include="Utils\Extensions\BoundsX.cs" />

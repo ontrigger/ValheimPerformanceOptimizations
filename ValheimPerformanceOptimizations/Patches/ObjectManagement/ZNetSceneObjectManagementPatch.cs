@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations.Patches
 	using VPO = ValheimPerformanceOptimizations;
 
 	[HarmonyPatch]
-	public static class ZNetSceneObjectManagementPatch
+	public static partial class ZNetSceneObjectManagementPatch
 	{
 		public static bool CreateRemoveHack;
 
@@ -28,12 +28,14 @@ namespace ValheimPerformanceOptimizations.Patches
 		private static readonly List<ZDO> QueuedDistantObjects = new();
 
 		// dynamic objects that were spawned outside the CreateDestroy loop such as NPCs, vfx/sfx and so on
+		// these objects need to be manually removed
+		// this technically isn't necessary anymore as the CreateDestroy loop now checks if the instance is already spawned
 		private static readonly List<ZNetView> ExternallySpawnedObjects = new();
 
 		private static readonly List<ZDO> RemoveQueue = new();
 
-		private static readonly Predicate<ZDO> GetDistant = zdo => !zdo.m_distant;
-		private static readonly Predicate<ZDO> GetNear = zdo => zdo.m_distant;
+		private static readonly Predicate<ZDO> GetNear = zdo => !zdo.m_distant;
+		private static readonly Predicate<ZDO> GetDistant = zdo => zdo.m_distant;
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))] [HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
@@ -80,12 +82,12 @@ namespace ValheimPerformanceOptimizations.Patches
 
 				foreach (var zone in nearZonesToUnload)
 				{
-					CollectZoneObjects(zone, RemoveQueue, GetDistant);
+					CollectNearZoneObjects(zone, RemoveQueue);
 				}
 
 				foreach (var zone in nearZonesToLoad)
 				{
-					CollectZoneObjects(zone, QueuedNearObjects, GetDistant);
+					CollectNearZoneObjects(zone, QueuedNearObjects);
 				}
 
 				SetPool<Vector2i>.Return(nearZonesToLoad);
@@ -116,12 +118,12 @@ namespace ValheimPerformanceOptimizations.Patches
 				QueuedDistantObjects.RemoveAll(zdo => distantZonesToUnload.Contains(zdo.m_sector));
 				foreach (var zone in distantZonesToUnload)
 				{
-					CollectZoneObjects(zone, RemoveQueue, GetNear);
+					CollectDistantZoneObjects(zone, RemoveQueue);
 				}
 
 				foreach (var zone in distantZonesToLoad)
 				{
-					CollectZoneObjects(zone, QueuedDistantObjects, GetNear);
+					CollectDistantZoneObjects(zone, QueuedDistantObjects);
 				}
 
 				SetPool<Vector2i>.Return(distantZonesToLoad);
@@ -149,86 +151,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			return false;
 		}
 
-		private static void GetActiveZoneSet(
-			Vector2i zone, HashSet<Vector2i> nearSectors, HashSet<Vector2i> distantSectors)
-		{
-			var nearArea = ZoneSystem.instance.m_activeArea;
-
-			nearSectors.Add(zone);
-			distantSectors.Add(zone);
-			for (var i = 1; i <= nearArea; i++)
-			{
-				for (var j = zone.x - i; j <= zone.x + i; j++)
-				{
-					nearSectors.Add(new Vector2i(j, zone.y - i));
-					nearSectors.Add(new Vector2i(j, zone.y + i));
-
-					distantSectors.Add(new Vector2i(j, zone.y - i));
-					distantSectors.Add(new Vector2i(j, zone.y + i));
-				}
-				for (var k = zone.y - i + 1; k <= zone.y + i - 1; k++)
-				{
-					nearSectors.Add(new Vector2i(zone.x - i, k));
-					nearSectors.Add(new Vector2i(zone.x + i, k));
-
-					distantSectors.Add(new Vector2i(zone.x - i, k));
-					distantSectors.Add(new Vector2i(zone.x + i, k));
-				}
-			}
-
-			var distantArea = ZoneSystem.instance.m_activeDistantArea;
-			for (var l = nearArea + 1; l <= nearArea + distantArea; l++)
-			{
-				for (var m = zone.x - l; m <= zone.x + l; m++)
-				{
-					distantSectors.Add(new Vector2i(m, zone.y - l));
-					distantSectors.Add(new Vector2i(m, zone.y + l));
-				}
-
-				for (var n = zone.y - l + 1; n <= zone.y + l - 1; n++)
-				{
-					distantSectors.Add(new Vector2i(zone.x - l, n));
-					distantSectors.Add(new Vector2i(zone.x + l, n));
-				}
-			}
-		}
-
-		private static void CollectZoneObjects(Vector2i sector, ICollection<ZDO> objects, Predicate<ZDO> predicate)
-		{
-			var instance = ZDOMan.instance;
-			var num = instance.SectorToIndex(sector);
-
-			if (num >= 0)
-			{
-				List<ZDO> sectorObjects = instance.m_objectsBySector[num];
-				if (sectorObjects == null) { return; }
-
-				for (var i = 0; i < sectorObjects.Count; i++)
-				{
-					if (predicate(sectorObjects[i]))
-					{
-						objects.Add(sectorObjects[i]);
-					}
-				}
-			}
-			else
-			{
-				if (!instance.m_objectsByOutsideSector.TryGetValue(sector, out List<ZDO> sectorObjects))
-				{
-					return;
-				}
-
-				for (var j = 0; j < sectorObjects.Count; j++)
-				{
-					if (predicate(sectorObjects[j]))
-					{
-						objects.Add(sectorObjects[j]);
-					}
-				}
-			}
-
-		}
-		
 		[HarmonyPrefix, HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjects))] 
 		private static bool ZNetScene_CreateObjects_Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
 		{
@@ -272,7 +194,12 @@ namespace ValheimPerformanceOptimizations.Patches
 			for (var i = QueuedNearObjects.Count - 1; i >= 0; i--)
 			{
 				var zdo = QueuedNearObjects[i];
-
+				if (__instance.m_instances.ContainsKey(zdo))
+				{
+					QueuedNearObjects.RemoveAt(i);
+					continue;
+				}
+				
 				if (__instance.CreateObject(zdo) != null)
 				{
 					QueuedNearObjects.RemoveAt(i);
@@ -303,6 +230,12 @@ namespace ValheimPerformanceOptimizations.Patches
 			for (var i = QueuedDistantObjects.Count - 1; i >= 0; i--)
 			{
 				var zdo = QueuedDistantObjects[i];
+				if (__instance.m_instances.ContainsKey(zdo))
+				{
+					QueuedDistantObjects.RemoveAt(i);
+					continue;
+				}
+				
 				if (__instance.CreateObject(zdo) != null)
 				{
 					QueuedDistantObjects.RemoveAt(i);
@@ -361,16 +294,23 @@ namespace ValheimPerformanceOptimizations.Patches
 					continue;
 				}
 
-				if (netView.m_distant && !_lastDistantZoneSet.Contains(netView.GetZDO().m_sector))
+				var destroyDistant = netView.m_distant && !_lastDistantZoneSet.Contains(netView.GetZDO().m_sector);
+				var destroyNear = !netView.m_distant && !_lastNearZoneSet.Contains(netView.GetZDO().m_sector);
+
+				if (destroyDistant || destroyNear)
 				{
-					VPO.Logger.LogInfo("Removed external distant obj " + netView);
-					ExternallySpawnedObjects.RemoveAtSwapBack(i);
+					VPO.Logger.LogInfo("Removing externally spawned object " + netView);
+					Object.Destroy(netView.gameObject);
+					if (!netView.GetZDO().m_persistent && netView.GetZDO().IsOwner())
+					{
+						ZDOMan.instance.DestroyZDO(netView.GetZDO());
+					}
+					__instance.m_instances.Remove(netView.GetZDO());
+					netView.ResetZDO();
+					
+					ExternallySpawnedObjects.RemoveAtSwapBack(i);   
 				}
-				else if (!netView.m_distant && !_lastNearZoneSet.Contains(netView.GetZDO().m_sector))
-				{
-					VPO.Logger.LogInfo("Removed external near obj " + netView);
-					ExternallySpawnedObjects.RemoveAtSwapBack(i);
-				}
+				
 			}
 			Profiler.EndSample();
 
@@ -438,8 +378,6 @@ namespace ValheimPerformanceOptimizations.Patches
 		{
 			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
 
-			VPO.Logger.LogInfo($"WTF ADDED {ZNetScene.instance.GetPrefab(zdo.GetPrefab())}");
-
 			if (zdo.m_distant)
 			{
 				QueuedDistantObjects.Add(zdo);
@@ -454,8 +392,6 @@ namespace ValheimPerformanceOptimizations.Patches
 		public static void ZDOMan_RemoveFromSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
 			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
-
-			VPO.Logger.LogInfo($"WTF REMOVED {ZNetScene.instance.GetPrefab(zdo.GetPrefab())}");
 
 			if (zdo.m_distant)
 			{
