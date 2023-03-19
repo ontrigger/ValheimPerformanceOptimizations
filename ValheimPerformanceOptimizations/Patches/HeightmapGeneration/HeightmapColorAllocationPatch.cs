@@ -136,6 +136,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			Profiler.BeginSample("generatin shit");
 
+			ReallocateArrays(__instance);
+			
 			if (!isDistant)
 			{
 				var job = new GenerateColorsJob
@@ -149,8 +151,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 			else
 			{
-				ReallocateArrays(__instance);
-
 				var num = width + 1;
 				var vector = __instance.transform.position
 					+ new Vector3(width * scale * -0.5f, 0f, width * scale * -0.5f);
