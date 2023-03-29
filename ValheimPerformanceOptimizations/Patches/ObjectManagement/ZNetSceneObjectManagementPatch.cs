@@ -47,8 +47,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			Profiler.BeginSample("my cool logic");
 			if (refZone != _currentZone)
 			{
-				//VPO.Logger.LogInfo($"Changed zone from {_currentZone} to {refZone}");
-
 				Profiler.BeginSample("get zone set");
 				HashSet<Vector2i> nearZones = SetPool<Vector2i>.Get();
 				HashSet<Vector2i> distantZones = SetPool<Vector2i>.Get();
@@ -151,16 +149,17 @@ namespace ValheimPerformanceOptimizations.Patches
 			return false;
 		}
 
-		[HarmonyPrefix, HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjects))] 
-		private static bool ZNetScene_CreateObjects_Prefix(ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateObjects))]
+		private static bool ZNetScene_CreateObjects_Prefix(
+			ZNetScene __instance, List<ZDO> currentNearObjects, List<ZDO> currentDistantObjects)
 		{
-			int maxCreatedPerFrame = 10;
+			var maxCreatedPerFrame = 10;
 			if (__instance.InLoadingScreen())
 			{
 				maxCreatedPerFrame = 100;
 			}
-			
-			int created = 0;
+
+			var created = 0;
 			__instance.CreateObjectsSorted(currentNearObjects, maxCreatedPerFrame, ref created);
 			__instance.CreateDistantObjects(currentDistantObjects, maxCreatedPerFrame, ref created);
 
@@ -199,7 +198,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					QueuedNearObjects.RemoveAt(i);
 					continue;
 				}
-				
+
 				if (__instance.CreateObject(zdo) != null)
 				{
 					QueuedNearObjects.RemoveAt(i);
@@ -235,7 +234,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					QueuedDistantObjects.RemoveAt(i);
 					continue;
 				}
-				
+
 				if (__instance.CreateObject(zdo) != null)
 				{
 					QueuedDistantObjects.RemoveAt(i);
@@ -307,10 +306,10 @@ namespace ValheimPerformanceOptimizations.Patches
 					}
 					__instance.m_instances.Remove(netView.GetZDO());
 					netView.ResetZDO();
-					
-					ExternallySpawnedObjects.RemoveAtSwapBack(i);   
+
+					ExternallySpawnedObjects.RemoveAtSwapBack(i);
 				}
-				
+
 			}
 			Profiler.EndSample();
 
@@ -325,29 +324,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				ExternallySpawnedObjects.Add(nview);
 			}
-		}
-
-		/*[HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))] [HarmonyPrefix]
-		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
-		{
-			if (!(__instance.m_sector == sector))
-			{
-				__instance.m_zdoMan.RemoveFromSector(__instance, __instance.m_sector);
-				__instance.m_sector = sector;
-				__instance.m_zdoMan.AddToSector(__instance, __instance.m_sector);
-				if (ZNet.instance.IsServer())
-				{
-					__instance.m_zdoMan.ZDOSectorInvalidated(__instance);
-				}
-			}
-
-			return false;
-		}*/
-
-		[HarmonyPostfix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.OnZDODestroyed))]
-		private static void OnZDODestroyed_Postfix(ZNetScene __instance, ZDO zdo)
-		{
-			//VPO.Logger.LogInfo("ZDO DESTROYED " + __instance.m_namedPrefabs[zdo.m_prefab]);
 		}
 
 		[HarmonyPrefix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Destroy))]
@@ -376,7 +352,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.AddToSector))]
 		public static void ZDOMan_AddToSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
-			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
+			if (CreateRemoveHack) { return; }
 
 			if (zdo.m_distant)
 			{
@@ -391,7 +367,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.RemoveFromSector))]
 		public static void ZDOMan_RemoveFromSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
-			if (CreateRemoveHack || zdo.GetPrefab() == 0 || zdo.IsOwner()) { return; }
+			if (CreateRemoveHack) { return; }
 
 			if (zdo.m_distant)
 			{
@@ -403,33 +379,33 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 		}
 
-		[HarmonyPrefix, HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
 		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
 		{
 			CreateRemoveHack = true;
 			return true;
 		}
 
-		[HarmonyPostfix, HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
 		private static void ZDO_SetSector_Postfix(ZDO __instance, Vector2i sector)
 		{
 			CreateRemoveHack = false;
 		}
-		
-		[HarmonyPrefix, HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))]
+
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))]
 		private static bool ZNetScene_Shutdown_Prefix(ZNetScene __instance)
 		{
 			QueuedNearObjects.Clear();
 			QueuedDistantObjects.Clear();
-			
+
 			_lastNearZoneSet.Clear();
 			_lastDistantZoneSet.Clear();
-			
+
 			RemoveQueue.Clear();
 			ExternallySpawnedObjects.Clear();
-			
+
 			_currentZone = new Vector2i(Int32.MinValue, Int32.MinValue);
-			
+
 			return true;
 		}
 
