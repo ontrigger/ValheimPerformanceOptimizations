@@ -1,0 +1,7 @@
+ManifestFileVersion: 0
+CRC: 2650395178
+AssetBundleManifest:
+  AssetBundleInfos:
+    Info_0:
+      Name: smoke_instanced_shader
+      Dependencies: {}

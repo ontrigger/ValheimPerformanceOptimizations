@@ -6,6 +6,8 @@ using UnityEngine;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
+	using VPO = ValheimPerformanceOptimizations;
+
 	/// <summary>
 	/// Heightmap generation is done entirely on one thread - this includes generating vertices,
 	/// baking the collision, creating and setting vertex colors.

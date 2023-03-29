@@ -1,0 +1,164 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: SmokeBlobCustom
+  m_Shader: {fileID: 4800000, guid: 8fe5a58d8f6c8744294c1eae6cba62b6, type: 3}
+  m_ShaderKeywords: GEOM_TYPE_BRANCH_DETAIL GEOM_TYPE_LEAF _ADDSNOW_ON _ALPHABLEND_ON
+    _BILLBOARD_ON _CAMCULL_ON _DISTANCESCALE_ON _EMISSION _FADING_ON
+  m_LightmapFlags: 0
+  m_EnableInstancingVariants: 1
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _AlbedoMap:
+        m_Texture: {fileID: 2800000, guid: 0e28e86cc31127b4a8ec1b01aab61a1b, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMask:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailNormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 0e28e86cc31127b4a8ec1b01aab61a1b, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MetallicGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NoiseTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalTex:
+        m_Texture: {fileID: 2800000, guid: cf42311b6c2cf6e44a2df67426a9990a, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _OcclusionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _ParallaxMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _AddLightsPerPixel: 0
+    - _AddSnow: 1
+    - _AlphaInfluence: 1
+    - _Billboard: 1
+    - _BlendOp: 0
+    - _BumpScale: 0
+    - _CamCull: 1
+    - _CameraFadeDistanceMax: 1
+    - _CameraFadeDistanceMin: 0
+    - _CameraFadingEnabled: 0
+    - _CameraFarFadeDistance: 2
+    - _CameraNearFadeDistance: 1
+    - _CameraYFadeDistance: 0
+    - _ColorMode: 0
+    - _Cull: 2
+    - _Cutoff: 0.5
+    - _DetailNormalMapScale: 1
+    - _DistanceScale: 1
+    - _DistortionBlend: 0
+    - _DistortionEnabled: 0
+    - _DistortionStrength: 17.74
+    - _DistortionStrengthScaled: 1.774
+    - _DstBlend: 10
+    - _EmissionEnabled: 0
+    - _EmissionScale: 1
+    - _EnableAlbedo: 0
+    - _EnableEmission: 1
+    - _EnableFlipbookBlending: 0
+    - _EnableShadows: 0
+    - _FadeDistanceMax: 20
+    - _FadeDistanceMin: 15
+    - _FlipbookMode: 0
+    - _GlossMapScale: 1
+    - _Glossiness: 0
+    - _GlossyReflections: 1
+    - _Height: 15
+    - _HelpFlip: 0
+    - _InvFade: 0.92
+    - _LightNormalFactor: 0.9
+    - _LightingEnabled: 0
+    - _LocalAmbientLighting: 1
+    - _Metallic: 0
+    - _Mode: 2
+    - _MossAlpha: 0
+    - _MossBlend: 0
+    - _MossNormal: 0.5
+    - _MossTransition: 0.1
+    - _NormalHack: 0
+    - _OcclusionStrength: 1
+    - _Parallax: 0.02
+    - _PerPixelAmbientLighting: 1
+    - _PushDistance: 0.5
+    - _RippleDeadzoneMax: 2
+    - _RippleDeadzoneMin: 0.3
+    - _RippleDistance: 0
+    - _RippleFreq: 1
+    - _RippleSpeed: 100
+    - _ShadowDensity: 1
+    - _ShadowExtrude: 1
+    - _ShadowsPerPixel: 0
+    - _Shininess: 1
+    - _SkyMask: 0
+    - _SmoothnessTextureChannel: 0
+    - _SoftParticlesEnabled: 1
+    - _SoftParticlesFarFadeDistance: 1
+    - _SoftParticlesNearFadeDistance: 0
+    - _SpecularHighlights: 1
+    - _SphereNormals: 0.82
+    - _SphereOffset: 0
+    - _SrcBlend: 5
+    - _SwayDistance: 0.5
+    - _SwaySpeed: 15
+    - _Tess: 3
+    - _Translucency: 0.322
+    - _TwoSidedNormals: 0
+    - _UVSec: 0
+    - _ValueNoise: 0.5
+    - _WrappedDiffuse: 1
+    - _ZFadeDistance: 0.55
+    - _ZWrite: 0
+    m_Colors:
+    - _CamFadeDistance: {r: 4, g: 150, b: 25, a: 0}
+    - _CameraFadeParams: {r: 0, g: Infinity, b: 0, a: 0}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _ColorAddSubDiff: {r: -1, g: 0, b: 0, a: 0}
+    - _EmisColor: {r: 0, g: 0, b: 0, a: 0}
+    - _Emission: {r: 0, g: 0, b: 0, a: 0}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
+    - _SoftParticleFadeParams: {r: 0, g: 1, b: 0, a: 0}
+    - _SpecColor: {r: 0.2, g: 0.2, b: 0.2, a: 1}
+    - _TessRange: {r: 25, g: 40, b: 0, a: 0}
+    - _TintColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  m_BuildTextureStacks: []

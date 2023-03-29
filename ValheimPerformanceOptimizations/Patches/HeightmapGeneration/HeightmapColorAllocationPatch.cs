@@ -9,6 +9,8 @@ using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
+	using VPO = ValheimPerformanceOptimizations;
+
 	/// <summary>
 	/// Remove pointless Color[32x32]/ToArray() allocations
 	/// </summary>
