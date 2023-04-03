@@ -1,3 +1,10 @@
-﻿fileFormatVersion: 2
+fileFormatVersion: 2
 guid: 7697786c1472463cbca1ebc02fbec488
-timeCreated: 1679869431
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: occlusion_shaders
+  assetBundleVariant: 

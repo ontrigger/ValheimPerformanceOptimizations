@@ -1,0 +1,21 @@
+ManifestFileVersion: 0
+CRC: 2475405940
+Hashes:
+  AssetFileHash:
+    serializedVersion: 2
+    Hash: bf07bcf3ae889118f348254356e9af4e
+  TypeTreeHash:
+    serializedVersion: 2
+    Hash: 066f1ba519dc75ea9cebcd8dd70b6a2e
+HashAppended: 0
+ClassTypes:
+- Class: 48
+  Script: {instanceID: 0}
+- Class: 72
+  Script: {instanceID: 0}
+SerializeReferenceClassIdentifiers: []
+Assets:
+- Assets/Shaders/DepthOnly.shader
+- Assets/Shaders/DownsampleDepth.shader
+- Assets/Shaders/OcclusionCS.compute
+Dependencies: []

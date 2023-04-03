@@ -6,6 +6,7 @@ struct InstanceData
 {
 	float3 boundsCenter;         // 3
 	float3 boundsExtents;        // 6
+	uint instanceId;
 };
 
 struct Indirect2x2Matrix
@@ -14,10 +15,10 @@ struct Indirect2x2Matrix
 	float4 row1;    // 8
 };
 
-struct SortingData
+struct VisibilityData
 {
-	uint drawCallInstanceIndex; // 1
-	float distanceToCam;         // 2
+	uint isVisible;				 // 1
+	uint instanceId; // 1
 };
 
 #endif

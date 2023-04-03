@@ -11,7 +11,7 @@
 //--------------------------------------------------------------------------------------
 // Constants
 //--------------------------------------------------------------------------------------
-#define THREAD_GROUP_SIZE_X 1
+#define THREAD_GROUP_SIZE_X 32
 #define THREAD_GROUP_SIZE_Y 1
 #define THREAD_GROUP_SIZE_Z 1
 
@@ -42,7 +42,7 @@ cbuffer CB
 //--------------------------------------------------------------------------------------
 
 StructuredBuffer<InstanceData> _InstanceDataBuffer;
-RWStructuredBuffer<uint>       _VisibilityBuffer;
+RWStructuredBuffer<VisibilityData> _VisibilityBuffer;
 
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
@@ -209,7 +209,7 @@ inline void CSMain (
         return;
     }
 
-	if (_ShouldCullInvisible + _VisibilityBuffer[tID] < 1)
+	if (_ShouldCullInvisible + _VisibilityBuffer[tID].isVisible < 1)
 	{
 		return;
 	}
@@ -245,13 +245,10 @@ inline void CSMain (
     	isVisible *= isVisibleInDepthBuffer(clipMin, clipMax);
     }
 
+	VisibilityData visData;
+	visData.instanceId = instance.instanceId;
+	visData.isVisible = isVisible;
+	
     // Output
-    _VisibilityBuffer[tID] = isVisible;
-    //InterlockedAdd(_ArgsBuffer[argsIndex], isVisible);
-
-    //_ShadowIsVisibleBuffer[tID] = isCastingShadow;
-    //InterlockedAdd(_ShadowArgsBuffer[shadowArgsIndex], isCastingShadow);
-
-    //sortingData.distanceToCam = minDistanceToCamera;
-    //_SortingData[tID] = sortingData;
+    _VisibilityBuffer[tID] = visData;
 }

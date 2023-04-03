@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -9,6 +10,7 @@ using UnityEngine.Rendering;
 public class OcclusionRenderer : MonoBehaviour
 {
 	public static OcclusionRenderer Instance { get; private set; }
+	
 	public ComputeShader occlusionCS;
 	public DownSampleDepth depthDownSampler;
 	public Shader depthShader;
@@ -19,15 +21,15 @@ public class OcclusionRenderer : MonoBehaviour
 	private ComputeBuffer instanceDataBuffer;
 	private ComputeBuffer visibilityBuffer;
 
-	private uint[] visibleInstances;
+	private NativeArray<GPUVisibilityData> visibleInstances;
 
 	private int occlusionKernelId;
 
 	private RenderTexture depthTexture;
 	private RenderTexture hiZDepthTexture;
 
-	private readonly SparseDictionary<IndirectInstanceData> instanceData
-		= new SparseDictionary<IndirectInstanceData>(MAX_INSTANCES, MAX_INSTANCES);
+	private readonly SparseDictionary<GPUInstanceData> instanceData
+		= new SparseDictionary<GPUInstanceData>(MAX_INSTANCES, MAX_INSTANCES);
 
 	private readonly SparseDictionary<RendererTracker> trackedInstances
 		= new SparseDictionary<RendererTracker>(MAX_INSTANCES, MAX_INSTANCES);
@@ -37,7 +39,7 @@ public class OcclusionRenderer : MonoBehaviour
 
 	private bool instanceDataDirty;
 
-	public static Stack<int> FreeIDs = new Stack<int>();
+	public static readonly Stack<int> FreeIDs = new Stack<int>();
 
 	private static readonly int MAX_INSTANCES = (int)Mathf.Pow(2, 20);
 
@@ -50,18 +52,21 @@ public class OcclusionRenderer : MonoBehaviour
 	private static readonly int ShouldOcclusionCullId = Shader.PropertyToID("_ShouldOcclusionCull");
 	private static readonly int ShouldCullInvisibleId = Shader.PropertyToID("_ShouldCullInvisible");
 
+	private static readonly int SizeOfVisibilityData = Marshal.SizeOf(typeof(GPUVisibilityData));
+
 	[StructLayout(LayoutKind.Sequential)]
-	public struct IndirectInstanceData
+	public struct GPUInstanceData
 	{
 		public Vector3 boundsCenter;  // 3
 		public Vector3 boundsExtents; // 6
+		public uint instanceId;		  // 1
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	public struct Indirect2x2Matrix
+	public struct GPUVisibilityData
 	{
-		public Vector4 row0; // 4
-		public Vector4 row1; // 8
+		public uint isVisible;  // 1
+		public uint instanceId; // 1
 	}
 
 	private void Awake()
@@ -81,15 +86,18 @@ public class OcclusionRenderer : MonoBehaviour
 			meshRenderer.gameObject.AddComponent<RendererTracker>();
 		}
 
-		visibleInstances = new uint[instanceData.Count];
+		visibleInstances = new NativeArray<GPUVisibilityData>(MAX_INSTANCES, Allocator.Persistent);
 		
-		var instanceDataSize = Marshal.SizeOf(typeof(IndirectInstanceData));
+		var instanceDataSize = Marshal.SizeOf(typeof(GPUInstanceData));
 		instanceDataBuffer = new ComputeBuffer(MAX_INSTANCES, instanceDataSize, ComputeBufferType.Default);
-		visibilityBuffer = new ComputeBuffer(MAX_INSTANCES, sizeof(uint), ComputeBufferType.Default);
+		visibilityBuffer = new ComputeBuffer(MAX_INSTANCES, SizeOfVisibilityData, ComputeBufferType.Default);
 
 		occlusionKernelId = occlusionCS.FindKernel("CSMain");
 
 		instanceDataBuffer.SetData(instanceData.Values);
+		
+		// all 0s
+		visibilityBuffer.SetData(visibleInstances);
 
 		occlusionCS.SetBuffer(occlusionKernelId, Shader.PropertyToID("_InstanceDataBuffer"), instanceDataBuffer);
 		occlusionCS.SetBuffer(occlusionKernelId, Shader.PropertyToID("_VisibilityBuffer"), visibilityBuffer);
@@ -100,12 +108,14 @@ public class OcclusionRenderer : MonoBehaviour
 	public int AddInstance(RendererTracker tracker)
 	{
 		var rendererBounds = tracker.Renderer.bounds;
-		var indirectInstanceData = new IndirectInstanceData
+		
+		var instanceId = GetFreeID();
+		var indirectInstanceData = new GPUInstanceData
 		{
 			boundsCenter = rendererBounds.center, boundsExtents = rendererBounds.extents,
+			instanceId = (uint)instanceId,
 		};
 
-		var instanceId = GetFreeID();
 		var dirtyIndex = instanceData.Add(instanceId, indirectInstanceData);
 		trackedInstances.Add(instanceId, tracker);
 
@@ -130,6 +140,8 @@ public class OcclusionRenderer : MonoBehaviour
 	{
 		visibilityBuffer?.Release();
 		instanceDataBuffer?.Release();
+
+		visibleInstances.Dispose();
 	}
 
 	private void LateUpdate()
@@ -166,30 +178,27 @@ public class OcclusionRenderer : MonoBehaviour
 		var v = cam.worldToCameraMatrix;
 		var p = cam.projectionMatrix;
 		var mvp = p * v;
+		
+		var instanceCount = 200000; //instanceData.Count;
 
 		// Common setup
 		occlusionCS.SetMatrix(MvpMatrixId, mvp);
 		occlusionCS.SetVector(CamPositionId, camPosition);
 		occlusionCS.SetVectorArray(CullingPlanesId, encodedPlanes);
-		occlusionCS.SetInt(CountId, instanceData.Count);
+		occlusionCS.SetInt(CountId, instanceCount);
 
-		var dispatchSize = Mathf.Max(1, Mathf.NextPowerOfTwo(instanceData.Count));
+		var dispatchSize = Mathf.Max(1, Mathf.NextPowerOfTwo(instanceCount) / 32);
 
+		var asyncCallback = CreateInstanceVisibleCallback(instanceCount);
 		Profiler.BeginSample("Pass 1");
 		{
 			occlusionCS.SetInt(ShouldOcclusionCullId, 0);
 			occlusionCS.SetInt(ShouldCullInvisibleId, 0);
 
 			occlusionCS.Dispatch(occlusionKernelId, dispatchSize, 1, 1);
-			// force a pipeline stall
-			visibilityBuffer.GetData(visibleInstances);
 
-			for (var i = 0; i < trackedInstances.Count; i++)
-			{
-				var isVisible = visibleInstances[i];
-				trackedInstances.Values[i].Renderer.shadowCastingMode
-					= isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
-			}
+			AsyncGPUReadback.Request(visibilityBuffer, instanceCount * SizeOfVisibilityData, 0, asyncCallback);
+			
 		}
 		Profiler.EndSample();
 
@@ -219,15 +228,7 @@ public class OcclusionRenderer : MonoBehaviour
 			occlusionCS.SetInt(ShouldCullInvisibleId, 1);
 
 			occlusionCS.Dispatch(occlusionKernelId, dispatchSize, 1, 1);
-			// force a pipeline stall
-			visibilityBuffer.GetData(visibleInstances);
-
-			for (var i = 0; i < trackedInstances.Count; i++)
-			{
-				var isVisible = visibleInstances[i];
-				trackedInstances.Values[i].Renderer.shadowCastingMode
-					= isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
-			}
+			AsyncGPUReadback.Request(visibilityBuffer, instanceCount * SizeOfVisibilityData, 0, asyncCallback);
 		}
 		Profiler.EndSample();
 	}
@@ -235,6 +236,36 @@ public class OcclusionRenderer : MonoBehaviour
 	private void RenderInstances()
 	{
 
+	}
+
+	private Action<AsyncGPUReadbackRequest> CreateInstanceVisibleCallback(int instanceCount)
+	{
+		return (req) => OnVisibleInstanceAsyncReadback(req, instanceCount);
+	}
+	
+	private void OnVisibleInstanceAsyncReadback(AsyncGPUReadbackRequest req, int instanceCount)
+	{
+		var visible = req.GetData<GPUVisibilityData>();
+		
+		Profiler.BeginSample("xdd");
+		for (var i = 0; i < instanceCount; i++)
+		{
+			Profiler.BeginSample("get from nativearray");
+			var visibilityData = visible[i];
+			Profiler.EndSample();
+
+			Profiler.BeginSample("getvalue");
+			var found = trackedInstances.TryGetValue((int)visibilityData.instanceId, out var tracker);
+			Profiler.EndSample();
+			if (found)
+			{
+				Profiler.BeginSample("set value");
+				tracker.Renderer.shadowCastingMode
+					= visibilityData.isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
+				Profiler.EndSample();
+			}
+		}
+		Profiler.EndSample();
 	}
 
 	private void RecreateTextures(Camera cam)

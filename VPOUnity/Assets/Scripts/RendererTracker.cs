@@ -1,7 +1,6 @@
-﻿using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class RendererTracker : MonoBehaviour, IHasID
+public class RendererTracker : MonoBehaviour
 {
 	public int ID { get; set; }
 	public MeshRenderer Renderer { get; private set; }
@@ -21,16 +20,4 @@ public class RendererTracker : MonoBehaviour, IHasID
 		OcclusionRenderer.Instance.RemoveInstance(this);
 		ID = -1;
 	}
-}
-
-public struct RendererTrackerID
-{
-	public int ID { get; }
-
-	private RendererTrackerID(int id)
-	{
-		ID = id;
-	}
-	
-	public static Stack<RendererTrackerID> FreeIDs = new Stack<RendererTrackerID>();
 }

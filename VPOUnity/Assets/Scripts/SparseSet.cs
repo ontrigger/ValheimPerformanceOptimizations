@@ -7,16 +7,18 @@ public class SparseDictionary<T> : IEnumerable<T>
 {
 	public int Count { get; private set; }
 
-	public T[] Values { get; }
-	public int[] Keys { get; }
+	public T[] Values => values;
+	public int[] Keys => keys;
 
 	private readonly int[] sparse;
+	private readonly int[] keys;
+	private readonly T[] values;
 
 	public SparseDictionary(int maxVal, int capacity)
 	{
 		sparse = Enumerable.Repeat(-1, maxVal + 1).ToArray();
-		Keys = Enumerable.Repeat(-1, capacity).ToArray();
-		Values = Enumerable.Repeat<T>(default, capacity).ToArray();
+		keys = Enumerable.Repeat(-1, capacity).ToArray();
+		values = Enumerable.Repeat<T>(default, capacity).ToArray();
 	}
 
 	IEnumerator IEnumerable.GetEnumerator()
@@ -73,6 +75,18 @@ public class SparseDictionary<T> : IEnumerable<T>
 		Count -= 1;
 
 		return index;
+	}
+
+	public bool TryGetValue(int valueId, out T value)
+	{
+		var index = sparse[valueId];
+		if (index != -1 && keys[index] == valueId)
+		{
+			value = values[index];
+			return true;
+		}
+		value = default;
+		return false;
 	}
 
 	public bool Contains(int valueId)

@@ -1,3 +1,9 @@
-﻿fileFormatVersion: 2
+fileFormatVersion: 2
 guid: ac4820c7e8884a8b91b01ec9c7d527bf
-timeCreated: 1679869358
+ComputeShaderImporter:
+  externalObjects: {}
+  currentAPIMask: 2097156
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: occlusion_shaders
+  assetBundleVariant: 
