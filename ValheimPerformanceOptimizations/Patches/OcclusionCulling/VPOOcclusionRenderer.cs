@@ -34,12 +34,14 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 		private int dirtyIndexStart;
 
 		private bool instanceDataDirty;
+		
+		private readonly int[] lastVisibilityState = new int[MAX_INSTANCES];
 
 		private static ComputeShader _occlusionCs;
 		private static Shader _depthShader;
 		private static Material _downsampleMaterial;
 
-		private static readonly Stack<int> FreeIDs = new();
+		private readonly Stack<int> freeIDs = new(MAX_INSTANCES);
 
 		private static readonly int MAX_INSTANCES = (int)Mathf.Pow(2, 20);
 
@@ -128,9 +130,7 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 		private static bool IsValidMaterial(Material mat)
 		{
-			return mat.GetTag("RenderType", false, string.Empty) != "Transparent"
-				&& mat.shader.name != "Custom/Heightmap"
-				&& !mat.IsKeywordEnabled("_ALPHAPREMULTIPLY_ON") && !mat.IsKeywordEnabled("_ALPHABLEND_ON");
+			return true;
 		}
 
 		private void OnEnable()
@@ -143,13 +143,24 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 			occlusionKernelId = _occlusionCs.FindKernel("CSMain");
 
+			Profiler.BeginSample("set instance data");
 			instanceDataBuffer.SetData(instanceData.Values);
+			Profiler.EndSample();
 
+			Profiler.BeginSample("set vis data");
 			// all 0s
 			visibilityBuffer.SetData(visibleInstances);
+			Profiler.EndSample();
 
 			_occlusionCs.SetBuffer(occlusionKernelId, Shader.PropertyToID("_InstanceDataBuffer"), instanceDataBuffer);
 			_occlusionCs.SetBuffer(occlusionKernelId, Shader.PropertyToID("_VisibilityBuffer"), visibilityBuffer);
+			
+			for (var i = 0; i < instanceData.Count; i++)
+			{
+				var shadowCastingMode = trackedInstances.Values[i].renderer.shadowCastingMode;
+
+				lastVisibilityState[i] = shadowCastingMode == ShadowCastingMode.On ? 1 : 0;
+			}
 		}
 
 		public int AddInstance(VPORendererTracker tracker)
@@ -168,19 +179,32 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 			dirtyIndexStart = Math.Min(dirtyIndexStart, dirtyIndex);
 			instanceDataDirty = true;
+			
+			lastVisibilityState[dirtyIndex] = tracker.renderer.shadowCastingMode == ShadowCastingMode.On ? 1 : 0;
 
 			return instanceId;
 		}
 
 		public void RemoveInstance(VPORendererTracker tracker)
 		{
+			Profiler.BeginSample("remove from tracked");
+			var count = instanceData.Count;
 			var dirtyIndex = instanceData.Remove(tracker.ID);
 			trackedInstances.Remove(tracker.ID);
+			Profiler.EndSample();
 
 			dirtyIndexStart = Math.Min(dirtyIndexStart, dirtyIndex);
 			instanceDataDirty = true;
+			
+			Profiler.BeginSample("swap lastvisivle");
+			var lastVisible = lastVisibilityState[count - 1];
+			lastVisibilityState[dirtyIndex] = lastVisible;
+			lastVisibilityState[count - 1] = 0;
+			Profiler.EndSample();
 
-			FreeIDs.Push(tracker.ID);
+			Profiler.BeginSample("freeids push");
+			freeIDs.Push(tracker.ID);
+			Profiler.EndSample();
 		}
 
 		private void OnDisable()
@@ -265,6 +289,7 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 				pp.enabled = false;
 			}
 			
+			Shader.EnableKeyword("INSTANCING_ON");
 			cam.renderingPath = RenderingPath.Forward;
 			cam.targetTexture = depthTexture;
 			cam.RenderWithShader(_depthShader, "RenderType");
@@ -314,19 +339,27 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 			Profiler.BeginSample("xdd");
 			for (var i = 0; i < instanceCount; i++)
 			{
-				Profiler.BeginSample("get at index");
+				Profiler.BeginSample("get from nativearray");
 				var visibilityData = visible[i];
+				var isVisible = visibilityData.isVisible;
 				Profiler.EndSample();
-				
-				Profiler.BeginSample("get value");
+
+				// setting shadowcasting mode is insanely slow so I packed a "wasVisible" bit at index 1
+				// so we can skip this entire operation
+				if (isVisible == lastVisibilityState[i])
+				{
+					continue;
+				}
+
+				Profiler.BeginSample("getvalue");
 				var found = trackedInstances.TryGetValue((int)visibilityData.instanceId, out var tracker);
 				Profiler.EndSample();
-				
 				if (found)
 				{
 					Profiler.BeginSample("set value");
-					tracker.renderer.shadowCastingMode = 
-						visibilityData.isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
+					tracker.renderer.shadowCastingMode
+						= visibilityData.isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
+					lastVisibilityState[i] = (int)isVisible;
 					Profiler.EndSample();
 				}
 			}
@@ -374,9 +407,9 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 		private int GetFreeID()
 		{
-			if (FreeIDs.Count > 0)
+			if (freeIDs.Count > 0)
 			{
-				return FreeIDs.Pop();
+				return freeIDs.Pop();
 			}
 
 			var instanceId = nextSerialId;

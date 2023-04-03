@@ -209,7 +209,8 @@ inline void CSMain (
         return;
     }
 
-	if (_ShouldCullInvisible + _VisibilityBuffer[tID].isVisible < 1)
+    uint wasVisible = _VisibilityBuffer[tID].isVisible;
+	if (_ShouldCullInvisible + wasVisible < 1)
 	{
 		return;
 	}
@@ -247,7 +248,7 @@ inline void CSMain (
 
 	VisibilityData visData;
 	visData.instanceId = instance.instanceId;
-	visData.isVisible = isVisible;
+	visData.isVisible = isVisible; // | (wasVisible << 1);
 	
     // Output
     _VisibilityBuffer[tID] = visData;

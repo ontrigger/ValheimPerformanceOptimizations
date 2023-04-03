@@ -39,6 +39,8 @@ public class OcclusionRenderer : MonoBehaviour
 
 	private bool instanceDataDirty;
 
+	private readonly int[] lastVisibilityState = new int[MAX_INSTANCES];
+
 	public static readonly Stack<int> FreeIDs = new Stack<int>();
 
 	private static readonly int MAX_INSTANCES = (int)Mathf.Pow(2, 20);
@@ -85,7 +87,10 @@ public class OcclusionRenderer : MonoBehaviour
 		{
 			meshRenderer.gameObject.AddComponent<RendererTracker>();
 		}
+	}
 
+	private void OnEnable()
+	{
 		visibleInstances = new NativeArray<GPUVisibilityData>(MAX_INSTANCES, Allocator.Persistent);
 		
 		var instanceDataSize = Marshal.SizeOf(typeof(GPUInstanceData));
@@ -102,7 +107,12 @@ public class OcclusionRenderer : MonoBehaviour
 		occlusionCS.SetBuffer(occlusionKernelId, Shader.PropertyToID("_InstanceDataBuffer"), instanceDataBuffer);
 		occlusionCS.SetBuffer(occlusionKernelId, Shader.PropertyToID("_VisibilityBuffer"), visibilityBuffer);
 
-		Debug.Log(SystemInfo.usesReversedZBuffer);
+		for (var i = 0; i < instanceData.Count; i++)
+		{
+			var shadowCastingMode = trackedInstances.Values[i].Renderer.shadowCastingMode;
+
+			lastVisibilityState[i] = shadowCastingMode == ShadowCastingMode.On ? 1 : 0;
+		}
 	}
 
 	public int AddInstance(RendererTracker tracker)
@@ -121,17 +131,24 @@ public class OcclusionRenderer : MonoBehaviour
 
 		dirtyIndexStart = Math.Min(dirtyIndexStart, dirtyIndex);
 		instanceDataDirty = true;
+
+		lastVisibilityState[dirtyIndex] = tracker.Renderer.shadowCastingMode == ShadowCastingMode.On ? 1 : 0;
 		
 		return instanceId;
 	}
 
 	public void RemoveInstance(RendererTracker tracker)
 	{
+		var count = instanceData.Count;
 		var dirtyIndex = instanceData.Remove(tracker.ID);
 		trackedInstances.Remove(tracker.ID);
 
 		dirtyIndexStart = Math.Min(dirtyIndexStart, dirtyIndex);
 		instanceDataDirty = true;
+		
+		var lastVisible = lastVisibilityState[count - 1];
+		lastVisibilityState[dirtyIndex] = lastVisible;
+		lastVisibilityState[count - 1] = 0;
 
 		FreeIDs.Push(tracker.ID);
 	}
@@ -179,7 +196,7 @@ public class OcclusionRenderer : MonoBehaviour
 		var p = cam.projectionMatrix;
 		var mvp = p * v;
 		
-		var instanceCount = 200000; //instanceData.Count;
+		var instanceCount = instanceData.Count;
 
 		// Common setup
 		occlusionCS.SetMatrix(MvpMatrixId, mvp);
@@ -252,6 +269,17 @@ public class OcclusionRenderer : MonoBehaviour
 		{
 			Profiler.BeginSample("get from nativearray");
 			var visibilityData = visible[i];
+			var isVisible = visibilityData.isVisible;
+			
+			// setting shadowcasting mode is insanely slow so I packed a "wasVisible" bit at index 1
+			// so we can skip this entire operation
+			if (isVisible == lastVisibilityState[i])
+			{
+				continue;
+			}
+
+			lastVisibilityState[i] = (int)isVisible;
+			
 			Profiler.EndSample();
 
 			Profiler.BeginSample("getvalue");
@@ -262,6 +290,7 @@ public class OcclusionRenderer : MonoBehaviour
 				Profiler.BeginSample("set value");
 				tracker.Renderer.shadowCastingMode
 					= visibilityData.isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
+				Debug.Log("WHAT " + tracker.Renderer.shadowCastingMode);
 				Profiler.EndSample();
 			}
 		}
