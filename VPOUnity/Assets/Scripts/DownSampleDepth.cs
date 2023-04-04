@@ -21,12 +21,14 @@ public class DownSampleDepth : MonoBehaviour
 	{
 		Assert.IsTrue(dst.width == dst.height, "dst.width != dst.height");
 
+		var lastActive = RenderTexture.active;
+		
 		var size = dst.width;
 		var mipCount = (int)Mathf.Floor(Mathf.Log(size, 2f));
-		var tempMips = new RenderTexture[mipCount];
 		
 		Graphics.Blit(src, dst);
 
+		RenderTexture lastRt = null;
 		for (var i = 0; i < mipCount; ++i)
 		{
 			size >>= 1;
@@ -35,26 +37,26 @@ public class DownSampleDepth : MonoBehaviour
 			var tempRT = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.RHalf, RenderTextureReadWrite.Linear);
 			tempRT.filterMode = FilterMode.Point;
 
-			tempMips[i] = tempRT;
-
-			if (i == 0)
+			if (lastRt == null)
 			{
-				Graphics.Blit(dst, tempMips[0], material);
+				material.SetTexture("_MainTex", lastRt);
+				Graphics.Blit(dst, tempRT, material, 0);
 			}
 			else
 			{
-				Graphics.Blit(tempMips[i - 1], tempMips[i], material);
+				material.SetTexture("_MainTex", lastRt);
+				Graphics.Blit(lastRt, tempRT, material, 0);
+				RenderTexture.ReleaseTemporary(lastRt);
 			}
+
+			lastRt = tempRT;
 
 			// no way to write straight to mips so we copy instead
-			Graphics.CopyTexture(tempMips[i], 0, 0, dst, 0, i + 1);
-
-			if (i >= 1)
-			{
-				RenderTexture.ReleaseTemporary(tempMips[i - 1]);
-			}
+			Graphics.CopyTexture(tempRT, 0, 0, dst, 0, i + 1);
 		}
+		
+		RenderTexture.ReleaseTemporary(lastRt);
 
-		RenderTexture.ReleaseTemporary(tempMips[mipCount - 1]);
+		RenderTexture.active = lastActive;
 	}
 }

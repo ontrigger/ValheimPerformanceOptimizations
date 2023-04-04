@@ -187,24 +187,18 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 		public void RemoveInstance(VPORendererTracker tracker)
 		{
-			Profiler.BeginSample("remove from tracked");
 			var count = instanceData.Count;
 			var dirtyIndex = instanceData.Remove(tracker.ID);
 			trackedInstances.Remove(tracker.ID);
-			Profiler.EndSample();
 
 			dirtyIndexStart = Math.Min(dirtyIndexStart, dirtyIndex);
 			instanceDataDirty = true;
 			
-			Profiler.BeginSample("swap lastvisivle");
 			var lastVisible = lastVisibilityState[count - 1];
 			lastVisibilityState[dirtyIndex] = lastVisible;
 			lastVisibilityState[count - 1] = 0;
-			Profiler.EndSample();
 
-			Profiler.BeginSample("freeids push");
 			freeIDs.Push(tracker.ID);
-			Profiler.EndSample();
 		}
 
 		private void OnDisable()
@@ -292,8 +286,10 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 			Shader.EnableKeyword("INSTANCING_ON");
 			cam.renderingPath = RenderingPath.Forward;
 			cam.targetTexture = depthTexture;
+			cam.forceIntoRenderTexture = true;
 			cam.RenderWithShader(_depthShader, "RenderType");
 			cam.targetTexture = null;
+			cam.forceIntoRenderTexture = false;
 			cam.renderingPath = RenderingPath.DeferredShading;
 			if (pp != null)
 			{

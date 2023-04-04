@@ -8,9 +8,13 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 		private RenderTexture[] tempMips;
 		private int lastMipCount;
 		
+		private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
+
 		public void DownsampleDepth(RenderTexture src, RenderTexture dst)
 		{
 			Assert.IsTrue(dst.width == dst.height, "dst.width != dst.height");
+
+			var lastActive = RenderTexture.active;
 
 			var size = dst.width;
 			var mipCount = (int)Mathf.Floor(Mathf.Log(size, 2f));
@@ -34,11 +38,13 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 				if (i == 0)
 				{
-					Graphics.Blit(dst, tempMips[0], _downsampleMaterial);
+					_downsampleMaterial.SetTexture(MainTexId, tempMips[0]);
+					Graphics.Blit(dst, tempMips[0], _downsampleMaterial, 0);
 				}
 				else
 				{
-					Graphics.Blit(tempMips[i - 1], tempMips[i], _downsampleMaterial);
+					_downsampleMaterial.SetTexture(MainTexId, tempMips[i - 1]);
+					Graphics.Blit(tempMips[i - 1], tempMips[i], _downsampleMaterial, 0);
 				}
 
 				// no way to write straight to mips so we copy instead
@@ -51,6 +57,8 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 			}
 
 			RenderTexture.ReleaseTemporary(tempMips[mipCount - 1]);
+
+			RenderTexture.active = lastActive;
 		}
 	}
 }

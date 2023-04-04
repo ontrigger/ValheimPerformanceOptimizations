@@ -230,13 +230,16 @@ public class OcclusionRenderer : MonoBehaviour
 		Profiler.BeginSample("Draw Pass 1 results");
 		cam.renderingPath = RenderingPath.Forward;
 		cam.targetTexture = depthTexture;
+		cam.forceIntoRenderTexture = true;
 		cam.RenderWithShader(depthShader, "RenderType");
+		depthDownSampler.DownSample(depthTexture, hiZDepthTexture);
+
+		cam.forceIntoRenderTexture = false;
 		cam.targetTexture = null;
 		cam.renderingPath = RenderingPath.DeferredShading;
 		Profiler.EndSample();
 
 		Profiler.BeginSample("Downsample");
-		depthDownSampler.DownSample(depthTexture, hiZDepthTexture);
 		Profiler.EndSample();
 
 		Profiler.BeginSample("Pass 2");
@@ -290,7 +293,6 @@ public class OcclusionRenderer : MonoBehaviour
 				Profiler.BeginSample("set value");
 				tracker.Renderer.shadowCastingMode
 					= visibilityData.isVisible == 0 ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
-				Debug.Log("WHAT " + tracker.Renderer.shadowCastingMode);
 				Profiler.EndSample();
 			}
 		}

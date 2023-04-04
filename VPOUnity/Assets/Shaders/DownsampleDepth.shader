@@ -36,12 +36,18 @@
                 return output;
             }
 
-            float4 frag(varyings input) : SV_Target
+            #if UNITY_REVERSED_Z    // DX
+            # define MIN_DEPTH(l, r) min(l, r)
+            #else                   // opengl
+            # define MIN_DEPTH(l, r) max(l, r)
+            #endif
+
+            float frag(varyings input) : SV_Target
             {
                 float4 r = _MainTex.GatherRed(sampler_MainTex, input.uv);
-                float minimum = max(max(max(r.x, r.y), r.z), r.w);
+                float minimum = MIN_DEPTH(MIN_DEPTH(MIN_DEPTH(r.x, r.y), r.z), r.w);
                 
-                return float4(minimum, 0, 0, 1.0);
+                return minimum;
             }
             
             ENDCG

@@ -68,6 +68,27 @@ inline float GatherMaxDepth4PointInDepthBuffer(float2 minXY, float2 maxXY, uint 
 	return MIN_DEPTH(MIN_DEPTH(depth.x, depth.y), MIN_DEPTH(depth.z, depth.w));
 }
 
+inline float GatherMaxDepthInDepthBuffer(float2 minXY, float2 maxXY, uint mip) 
+{
+	#if UNITY_REVERSED_Z
+	float maxDepth = -1.0f;
+	#else
+	float maxDepth = 1.0f;
+	#endif
+    
+	for(int x = minXY.x; x <= maxXY.x; ++x)
+	{
+		for(int y = minXY.y; y <= maxXY.y; ++y)
+		{
+			int2 xy = int2(x, y);
+			float depth = _HiZMap.SampleLevel(sampler_HiZMap, xy, mip).r;
+			depth = Linear01Depth(depth);
+			maxDepth = MIN_DEPTH(maxDepth, depth);
+		}  
+	}
+	return maxDepth;
+}
+
 inline uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
 {
     float boundsSize = distance(maxPos, minPos);
@@ -87,8 +108,8 @@ inline uint isVisibleInDepthBuffer(float3 clipMin, float3 clipMax)
     // Change it to 0 - 1 range 
 	float2 minXY = float2(clipMin.x, clipMin.y) * 0.5f + 0.5f;
 	float2 maxXY = float2(clipMax.x, clipMax.y) * 0.5f + 0.5f;
-	/*minXY = clamp(minXY, 0, 1);
-	maxXY = clamp(maxXY, 0, 1);*/
+	minXY = clamp(minXY, 0, 1);
+	maxXY = clamp(maxXY, 0, 1);
     
 	// Calculate hi-Z buffer mip
 	int2 size = (maxXY - minXY) * _HiZTextureSize.xy;
