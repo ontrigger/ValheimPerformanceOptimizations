@@ -115,7 +115,7 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 			foreach (var prefab in ZNetScene.instance.m_namedPrefabs.Values)
 			{
 				prefab
-					.GetComponentsInChildren<MeshRenderer>(true)
+					.GetComponentsInChildren<Renderer>(true)
 					.Where(renderer => renderer.sharedMaterials
 						.Where(mat => mat != null)
 						.All(IsValidMaterial)
@@ -234,8 +234,10 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 
 			RecreateTextures(cam);
 
+			var lastRt = RenderTexture.active;
 			Graphics.SetRenderTarget(hiZDepthTexture);
 			GL.Clear(true, true, Color.clear);
+			Graphics.SetRenderTarget(lastRt);
 
 			var camPosition = cam.transform.position;
 			Plane[] planes = GeometryUtility.CalculateFrustumPlanes(cam);
@@ -284,6 +286,7 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 			}
 			
 			Shader.EnableKeyword("INSTANCING_ON");
+			Shader.EnableKeyword("UNITY_INSTANCING_ENABLED");
 			cam.renderingPath = RenderingPath.Forward;
 			cam.targetTexture = depthTexture;
 			cam.forceIntoRenderTexture = true;
@@ -310,6 +313,8 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 				AsyncGPUReadback.Request(visibilityBuffer, instanceData.Count * SizeOfVisibilityData, 0, asyncCallback);
 			}
 			Profiler.EndSample();
+
+			cam.clearFlags = CameraClearFlags.Color;
 		}
 
 		private void RenderInstances()

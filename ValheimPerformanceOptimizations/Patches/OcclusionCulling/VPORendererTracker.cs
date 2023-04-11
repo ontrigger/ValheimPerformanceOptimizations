@@ -6,7 +6,7 @@ namespace ValheimPerformanceOptimizations.Patches.OcclusionCulling
 	{
 		public int ID { get; set; }
 		
-		public MeshRenderer renderer;
+		public Renderer renderer;
 
 		private void OnEnable()
 		{

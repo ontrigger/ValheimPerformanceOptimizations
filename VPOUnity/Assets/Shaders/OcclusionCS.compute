@@ -8,6 +8,7 @@
 
 #pragma kernel CSMain
 #pragma enable_d3d11_debug_symbols
+#pragma multi_compile _ RECORD_DRAWS
 //--------------------------------------------------------------------------------------
 // Constants
 //--------------------------------------------------------------------------------------
@@ -43,6 +44,10 @@ cbuffer CB
 
 StructuredBuffer<InstanceData> _InstanceDataBuffer;
 RWStructuredBuffer<VisibilityData> _VisibilityBuffer;
+
+#if RECORD_DRAWS
+RWStructuredBuffer<uint> _ArgsBuffer;
+#endif
 
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
@@ -273,4 +278,8 @@ inline void CSMain (
 	
     // Output
     _VisibilityBuffer[tID] = visData;
+
+    #if RECORD_DRAWS
+		_ArgsBuffer[tID]
+    #endif
 }
