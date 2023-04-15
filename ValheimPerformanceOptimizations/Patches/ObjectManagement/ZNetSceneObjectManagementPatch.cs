@@ -322,6 +322,8 @@ namespace ValheimPerformanceOptimizations.Patches
 			// instance spawned outside main loop
 			if (!CreateRemoveHack)
 			{
+				VPO.Logger.LogInfo($"Spawned {__instance}");
+
 				ExternallySpawnedObjects.Add(nview);
 			}
 		}
@@ -353,13 +355,19 @@ namespace ValheimPerformanceOptimizations.Patches
 		public static void ZDOMan_AddToSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
 			if (CreateRemoveHack) { return; }
-
+			if (ZNetScene.instance.OutsideActiveArea(zdo.m_position)) { return; }
+			
 			if (zdo.m_distant)
 			{
 				QueuedDistantObjects.Add(zdo);
 			}
 			else
 			{
+				var obj = ZNetScene.instance.GetPrefab(zdo.GetPrefab());
+				if (obj != null && obj.name.ToLower().StartsWith("player"))
+				{
+					VPO.Logger.LogInfo($"Added player zdo obj {obj}");
+				}
 				QueuedNearObjects.Add(zdo);
 			}
 		}
@@ -368,6 +376,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		public static void ZDOMan_RemoveFromSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
 			if (CreateRemoveHack) { return; }
+			if (ZNetScene.instance.OutsideActiveArea(zdo.m_position)) { return; }
 
 			if (zdo.m_distant)
 			{
@@ -375,6 +384,11 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 			else
 			{
+				var obj = ZNetScene.instance.GetPrefab(zdo.GetPrefab());
+				if (obj != null && obj.name.ToLower().StartsWith("player"))
+				{
+					VPO.Logger.LogInfo($"Removeed player zdo obj {obj}");
+				}
 				QueuedNearObjects.RemoveSwapBack(zdo);
 			}
 		}
@@ -382,6 +396,13 @@ namespace ValheimPerformanceOptimizations.Patches
 		[HarmonyPrefix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
 		private static bool ZDO_SetSector_Prefix(ZDO __instance, Vector2i sector)
 		{
+			// spawn the zdo if it walked into the render distance (only happens with players and loot I think)
+			if (!ZNetScene.instance.OutsideActiveArea(__instance.m_position) 
+			    && !ZNetScene.instance.FindInstance(__instance))
+			{
+				ZDOMan_AddToSector_Postfix(ZDOMan.instance, __instance, sector);
+			}
+			
 			CreateRemoveHack = true;
 			return true;
 		}
