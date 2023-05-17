@@ -11,6 +11,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		new private void Awake()
 		{
+			if (!string.IsNullOrEmpty(m_statusEffect))
+			{
+				m_statusEffectHash = m_statusEffect.GetStableHashCode();
+			}
+			
 			if (m_characterMask == 0)
 			{
 				m_characterMask = LayerMask.GetMask("character_trigger");
@@ -34,7 +39,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
 				if (!string.IsNullOrEmpty(m_statusEffect))
 				{
-					character.GetSEMan().AddStatusEffect(m_statusEffect, true);
+					character.GetSEMan().AddStatusEffect(m_statusEffectHash, true);
 				}
 
 				if ((m_type & Type.Heat) != 0)
