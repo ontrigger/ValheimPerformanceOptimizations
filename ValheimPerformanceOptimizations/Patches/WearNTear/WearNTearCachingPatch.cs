@@ -42,49 +42,6 @@ namespace ValheimPerformanceOptimizations.Patches
 			harmony.PatchAll(typeof(WearNTearCachingPatch));
 		}
 
-		/// <summary>
-		/// adds an IsWet check before trying to call HaveRoof like this
-		/// bool flag = true;
-		/// if (EnvMan.instance.IsWet())
-		/// {
-		/// flag = HaveRoof();
-		/// }
-		/// </summary>
-		[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateWear))] [HarmonyTranspiler]
-		private static IEnumerable<CodeInstruction> WearNTear_UpdateWear_Transpiler(
-			IEnumerable<CodeInstruction> instructions, ILGenerator generator)
-		{
-			var code = new List<CodeInstruction>(instructions);
-
-			var getInstanceLabel = code.FindIndex(c => c.Is(OpCodes.Call, GetEnvManInstanceMethod));
-			var getInstanceJumpLabel = generator.DefineLabel();
-			code[getInstanceLabel].labels.Add(getInstanceJumpLabel);
-
-			var haveRoofCallIndex = code.FindIndex(c => c.Is(OpCodes.Call, HaveRoofMethod));
-			code.RemoveRange(haveRoofCallIndex - 1, 2);
-
-			code.Insert(haveRoofCallIndex - 1, new CodeInstruction(OpCodes.Ldc_I4_1));
-
-			code.Insert(haveRoofCallIndex + 1, new CodeInstruction(OpCodes.Call, GetEnvManInstanceMethod));
-			code.Insert(haveRoofCallIndex + 2, new CodeInstruction(OpCodes.Callvirt, IsWetMethod));
-
-			var isWetLocal = generator.DeclareLocal(typeof(bool));
-			code.InsertRange(haveRoofCallIndex + 3,
-				new[]
-				{
-					new CodeInstruction(OpCodes.Stloc_S, isWetLocal.LocalIndex),
-					new CodeInstruction(OpCodes.Ldloc_S, isWetLocal.LocalIndex),
-					new CodeInstruction(OpCodes.Brfalse_S, getInstanceJumpLabel),
-					new CodeInstruction(OpCodes.Nop),
-					new CodeInstruction(OpCodes.Ldarg_0),
-					new CodeInstruction(OpCodes.Call, HaveRoofMethod),
-					new CodeInstruction(OpCodes.Stloc_1),
-					new CodeInstruction(OpCodes.Nop),
-				});
-
-			return code.AsEnumerable();
-		}
-
 		[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.SetupColliders))] [HarmonyPostfix]
 		private static void WearNTear_SetupColliders_Postfix(WearNTear __instance)
 		{

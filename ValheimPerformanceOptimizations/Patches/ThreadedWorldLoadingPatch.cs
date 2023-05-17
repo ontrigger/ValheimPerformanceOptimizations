@@ -12,7 +12,7 @@ namespace ValheimPerformanceOptimizations
 	/// </summary>
 	public static class ThreadedWorldLoadingPatch
 	{
-		private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
+		/*private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
 		{
 			ZNetSceneObjectManagementPatch.CreateRemoveHack = true;
 			// only patch the current data version to not risk any world file breaking
@@ -31,7 +31,7 @@ namespace ValheimPerformanceOptimizations
 			__instance.ResetSectorArray();
 			ZLog.Log("Loading " + num2 + " zdos , my id " + __instance.m_myid + " data version:" + version);
 
-			/* --- begin changes --- */
+			/* --- begin changes --- #1#
 
 			var packages = new Tuple<ZDO, byte[]>[num2];
 
@@ -76,7 +76,7 @@ namespace ValheimPerformanceOptimizations
 				__instance.AddToSector(zDO, zDO.GetSector());
 			}
 
-			/* --- change end --- */
+			/* --- change end --- #1#
 
 			__instance.m_deadZDOs.Clear();
 			var num3 = reader.ReadInt32();
@@ -99,6 +99,6 @@ namespace ValheimPerformanceOptimizations
 			ZNetSceneObjectManagementPatch.CreateRemoveHack = false;
 
 			return false;
-		}
+		}*/
 	}
 }
