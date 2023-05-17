@@ -35,7 +35,7 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static VPOWaterVolumeManager _instance;
 
-		private void Update()
+		/*private void Update()
 		{
 			if (ZNetScene.instance == null) { return; }
 
@@ -124,7 +124,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				results.Dispose();
 			}
-		}
+		}*/
 
 		public void AddVolume(WaterVolume volume)
 		{
@@ -230,7 +230,14 @@ namespace ValheimPerformanceOptimizations.Patches
 		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))] [HarmonyPrefix]
 		private static bool UpdateFloaters_Prefix(WaterVolume __instance)
 		{
-			return false;
+			Profiler.BeginSample("Update floaters");
+			return true;
+		}
+		
+		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))] [HarmonyPostfix]
+		private static void UpdateFloaters_Postfix(WaterVolume __instance)
+		{
+			Profiler.EndSample();
 		}
 	}
 }
