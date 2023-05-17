@@ -16,13 +16,13 @@ namespace ValheimPerformanceOptimizations.Patches
 	{
 		public static bool CreateRemoveHack;
 
-		private static Vector2i _currentZone = new(Int32.MinValue, Int32.MinValue);
+		private static Vector2s _currentZone = new(Int32.MinValue, Int32.MinValue);
 
-		private static HashSet<Vector2i> _lastNearZoneSet = new();
-		private static HashSet<Vector2i> _lastDistantZoneSet = new();
+		private static HashSet<Vector2s> _lastNearZoneSet = new();
+		private static HashSet<Vector2s> _lastDistantZoneSet = new();
 
-		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedNearObjectsByZone = new();
-		private static readonly Dictionary<Vector2i, List<ZDO>> QueuedDistantObjectsByZone = new();
+		private static readonly Dictionary<Vector2s, List<ZDO>> QueuedNearObjectsByZone = new();
+		private static readonly Dictionary<Vector2s, List<ZDO>> QueuedDistantObjectsByZone = new();
 
 		private static readonly List<ZDO> QueuedNearObjects = new();
 		private static readonly List<ZDO> QueuedDistantObjects = new();
@@ -34,13 +34,14 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static readonly List<ZDO> RemoveQueue = new();
 
-		private static readonly Predicate<ZDO> GetNear = zdo => !zdo.m_distant;
-		private static readonly Predicate<ZDO> GetDistant = zdo => zdo.m_distant;
+		private static readonly Predicate<ZDO> GetNear = zdo => !zdo.Distant;
+		private static readonly Predicate<ZDO> GetDistant = zdo => zdo.Distant;
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))] [HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
 		{
-			var refZone = ZoneSystem.instance.GetZone(ZNet.instance.GetReferencePosition());
+			var refZoneInt = ZoneSystem.instance.GetZone(ZNet.instance.GetReferencePosition());
+			var refZone = refZoneInt.ClampToShort();
 			__instance.m_tempCurrentObjects.Clear();
 			__instance.m_tempCurrentDistantObjects.Clear();
 
@@ -48,15 +49,15 @@ namespace ValheimPerformanceOptimizations.Patches
 			if (refZone != _currentZone)
 			{
 				Profiler.BeginSample("get zone set");
-				HashSet<Vector2i> nearZones = SetPool<Vector2i>.Get();
-				HashSet<Vector2i> distantZones = SetPool<Vector2i>.Get();
+				HashSet<Vector2s> nearZones = SetPool<Vector2s>.Get();
+				HashSet<Vector2s> distantZones = SetPool<Vector2s>.Get();
 
 				GetActiveZoneSet(refZone, nearZones, distantZones);
 				Profiler.EndSample();
 
 				Profiler.BeginSample("near");
 
-				HashSet<Vector2i> nearZonesToLoad = SetPool<Vector2i>.Get();
+				HashSet<Vector2s> nearZonesToLoad = SetPool<Vector2s>.Get();
 				foreach (var zone in nearZones)
 				{
 					if (!_lastNearZoneSet.Contains(zone))
@@ -65,7 +66,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					}
 				}
 
-				HashSet<Vector2i> nearZonesToUnload = SetPool<Vector2i>.Get();
+				HashSet<Vector2s> nearZonesToUnload = SetPool<Vector2s>.Get();
 				foreach (var zone in _lastNearZoneSet)
 				{
 					if (!nearZones.Contains(zone))
@@ -88,14 +89,14 @@ namespace ValheimPerformanceOptimizations.Patches
 					CollectNearZoneObjects(zone, QueuedNearObjects);
 				}
 
-				SetPool<Vector2i>.Return(nearZonesToLoad);
-				SetPool<Vector2i>.Return(nearZonesToUnload);
+				SetPool<Vector2s>.Return(nearZonesToLoad);
+				SetPool<Vector2s>.Return(nearZonesToUnload);
 
 				Profiler.EndSample();
 
 				Profiler.BeginSample("far");
 
-				HashSet<Vector2i> distantZonesToLoad = SetPool<Vector2i>.Get();
+				HashSet<Vector2s> distantZonesToLoad = SetPool<Vector2s>.Get();
 				foreach (var zone in distantZones)
 				{
 					if (!_lastDistantZoneSet.Contains(zone))
@@ -104,7 +105,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					}
 				}
 
-				HashSet<Vector2i> distantZonesToUnload = SetPool<Vector2i>.Get();
+				HashSet<Vector2s> distantZonesToUnload = SetPool<Vector2s>.Get();
 				foreach (var zone in _lastDistantZoneSet)
 				{
 					if (!distantZones.Contains(zone))
@@ -124,11 +125,11 @@ namespace ValheimPerformanceOptimizations.Patches
 					CollectDistantZoneObjects(zone, QueuedDistantObjects);
 				}
 
-				SetPool<Vector2i>.Return(distantZonesToLoad);
-				SetPool<Vector2i>.Return(distantZonesToUnload);
+				SetPool<Vector2s>.Return(distantZonesToLoad);
+				SetPool<Vector2s>.Return(distantZonesToUnload);
 
-				SetPool<Vector2i>.Return(_lastNearZoneSet);
-				SetPool<Vector2i>.Return(_lastDistantZoneSet);
+				SetPool<Vector2s>.Return(_lastNearZoneSet);
+				SetPool<Vector2s>.Return(_lastDistantZoneSet);
 
 				_lastNearZoneSet = nearZones;
 				_lastDistantZoneSet = distantZones;
@@ -207,7 +208,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				}
 				else if (ZNet.instance.IsServer())
 				{
-					zdo.SetOwner(ZDOMan.instance.GetMyID());
+					zdo.SetOwner(ZDOMan.GetSessionID());
 					var uid = zdo.m_uid;
 					ZLog.Log("Destroyed invalid predab ZDO:" + uid);
 					ZDOMan.instance.DestroyZDO(zdo);
@@ -243,7 +244,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				}
 				else if (ZNet.instance.IsServer())
 				{
-					zdo.SetOwner(ZDOMan.instance.GetMyID());
+					zdo.SetOwner(ZDOMan.GetSessionID());
 					var uid = zdo.m_uid;
 					ZLog.Log("Destroyed invalid predab ZDO:" + uid + "  prefab hash:" + zdo.GetPrefab());
 					ZDOMan.instance.DestroyZDO(zdo);
@@ -272,7 +273,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				}
 				zNetView.ResetZDO();
 				Object.Destroy(zNetView.gameObject);
-				if (!zdo.m_persistent && zdo.IsOwner())
+				if (!zdo.Persistent && zdo.IsOwner())
 				{
 					ZDOMan.instance.DestroyZDO(zdo);
 				}
@@ -300,7 +301,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					VPO.Logger.LogInfo("Removing externally spawned object " + netView);
 					Object.Destroy(netView.gameObject);
-					if (!netView.GetZDO().m_persistent && netView.GetZDO().IsOwner())
+					if (!netView.GetZDO().Persistent && netView.GetZDO().IsOwner())
 					{
 						ZDOMan.instance.DestroyZDO(netView.GetZDO());
 					}
@@ -357,7 +358,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			if (CreateRemoveHack) { return; }
 			if (ZNetScene.instance.OutsideActiveArea(zdo.m_position)) { return; }
 			
-			if (zdo.m_distant)
+			if (zdo.Distant)
 			{
 				QueuedDistantObjects.Add(zdo);
 			}
@@ -378,7 +379,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			if (CreateRemoveHack) { return; }
 			if (ZNetScene.instance.OutsideActiveArea(zdo.m_position)) { return; }
 
-			if (zdo.m_distant)
+			if (zdo.Distant)
 			{
 				QueuedDistantObjects.RemoveSwapBack(zdo);
 			}
@@ -425,19 +426,19 @@ namespace ValheimPerformanceOptimizations.Patches
 			RemoveQueue.Clear();
 			ExternallySpawnedObjects.Clear();
 
-			_currentZone = new Vector2i(Int32.MinValue, Int32.MinValue);
+			_currentZone = new Vector2s(short.MinValue, short.MinValue);
 
 			return true;
 		}
 
 		private static int ReverseZDOCompare(ZDO x, ZDO y)
 		{
-			if (x.m_type == y.m_type)
+			if (x.Type == y.Type)
 			{
 				return y.m_tempSortValue.CompareTo(x.m_tempSortValue);
 			}
 
-			if (x.m_type < y.m_type)
+			if (x.Type < y.Type)
 			{
 				return -1;
 			}
