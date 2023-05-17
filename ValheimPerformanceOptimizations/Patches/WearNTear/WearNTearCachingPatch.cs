@@ -18,15 +18,6 @@ namespace ValheimPerformanceOptimizations.Patches
 		private static readonly Dictionary<string, Bounds> MaxBoundsForPrefab = new();
 		private static readonly Dictionary<Collider, WearNTear> KnownWntByCollider = new();
 
-		private static readonly MethodInfo HaveRoofMethod
-			= AccessTools.DeclaredMethod(typeof(WearNTear), nameof(WearNTear.HaveRoof));
-
-		private static readonly MethodInfo GetEnvManInstanceMethod
-			= AccessTools.DeclaredMethod(typeof(EnvMan), "get_instance");
-
-		private static readonly MethodInfo IsWetMethod
-			= AccessTools.DeclaredMethod(typeof(EnvMan), nameof(EnvMan.IsWet));
-
 		static WearNTearCachingPatch()
 		{
 			ValheimPerformanceOptimizations.OnInitialized += Initialize;
@@ -71,8 +62,8 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 			__instance.GetMaterialProperties(out var maxSupport, out var _, out var horizontalLoss,
 				out var verticalLoss);
-			WearNTear.m_tempSupportPoints.Clear();
-			WearNTear.m_tempSupportPointValues.Clear();
+			WearNTear.s_tempSupportPoints.Clear();
+			WearNTear.s_tempSupportPointValues.Clear();
 			var cOM = __instance.GetCOM();
 			var a = 0f;
 			Profiler.BeginSample("upd bounds");
@@ -80,11 +71,11 @@ namespace ValheimPerformanceOptimizations.Patches
 			HashSet<Collider> encounteredColliders = SetPool<Collider>.Get();
 			foreach (var bound in __instance.m_bounds)
 			{
-				var num = Physics.OverlapBoxNonAlloc(bound.m_pos, bound.m_size, WearNTear.m_tempColliders, bound.m_rot,
-					WearNTear.m_rayMask, QueryTriggerInteraction.Ignore);
+				var num = Physics.OverlapBoxNonAlloc(bound.m_pos, bound.m_size, WearNTear.s_tempColliders, bound.m_rot,
+					WearNTear.s_rayMask, QueryTriggerInteraction.Ignore);
 				for (var i = 0; i < num; i++)
 				{
-					var collider = WearNTear.m_tempColliders[i];
+					var collider = WearNTear.s_tempColliders[i];
 					if (__instance.m_colliders.Contains(collider) || collider.attachedRigidbody != null
 					    || !encounteredColliders.Add(collider))
 					{
@@ -102,7 +93,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					if (otherWnt == null)
 					{
 						__instance.m_support = maxSupport;
-						__instance.m_nview.GetZDO().Set("support", __instance.m_support);
+						__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
 						Profiler.EndSample();
 						return false;
 					}
@@ -116,7 +107,7 @@ namespace ValheimPerformanceOptimizations.Patches
 					var support = otherWnt.GetSupport();
 					a = Mathf.Max(a, support - horizontalLoss * num2 * support);
 					Profiler.BeginSample("why");
-					var vector = __instance.FindSupportPoint(cOM, otherWnt, collider);
+					var vector = WearNTear.FindSupportPoint(cOM, otherWnt, collider);
 					Profiler.EndSample();
 					Profiler.EndSample();
 
@@ -132,8 +123,8 @@ namespace ValheimPerformanceOptimizations.Patches
 							a = Mathf.Max(a, b);
 						}
 						var item = support - verticalLoss * num2 * support;
-						WearNTear.m_tempSupportPoints.Add(vector);
-						WearNTear.m_tempSupportPointValues.Add(item);
+						WearNTear.s_tempSupportPoints.Add(vector);
+						WearNTear.s_tempSupportPointValues.Add(item);
 					}
 					Profiler.EndSample();
 				}
@@ -142,23 +133,23 @@ namespace ValheimPerformanceOptimizations.Patches
 			Profiler.EndSample();
 
 			Profiler.BeginSample("upd support");
-			if (WearNTear.m_tempSupportPoints.Count >= 2)
+			if (WearNTear.s_tempSupportPoints.Count >= 2)
 			{
 				Profiler.BeginSample("super computin");
-				for (var j = 0; j < WearNTear.m_tempSupportPoints.Count; j++)
+				for (var j = 0; j < WearNTear.s_tempSupportPoints.Count - 1; j++)
 				{
-					var from = WearNTear.m_tempSupportPoints[j] - cOM;
+					var from = WearNTear.s_tempSupportPoints[j] - cOM;
 					from.y = 0f;
-					for (var k = j + 1; k < WearNTear.m_tempSupportPoints.Count; k++)
+					for (var k = j + 1; k < WearNTear.s_tempSupportPoints.Count; k++)
 					{
-						var to = WearNTear.m_tempSupportPoints[k] - cOM;
+						var num5 = (WearNTear.s_tempSupportPointValues[j] + WearNTear.s_tempSupportPointValues[k]) * 0.5f;
+						if (num5 <= a) { continue; }
+						
+						var to = WearNTear.s_tempSupportPoints[k] - cOM;
 						to.y = 0f;
-
 						if (Vector3.Angle(from, to) >= 100f)
 						{
-							var b2 = (WearNTear.m_tempSupportPointValues[j] +
-								WearNTear.m_tempSupportPointValues[k]) * 0.5f;
-							a = Mathf.Max(a, b2);
+							a = num5;
 						}
 					}
 				}
@@ -167,7 +158,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 			Profiler.EndSample();
 			__instance.m_support = Mathf.Min(a, maxSupport);
-			__instance.m_nview.GetZDO().Set("support", __instance.m_support);
+			__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
 
 			return false;
 		}
