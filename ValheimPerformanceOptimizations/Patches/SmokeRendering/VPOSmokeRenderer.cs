@@ -41,7 +41,7 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 
 			var i = 0;
-			foreach (var smoke in Smoke.m_smoke)
+			foreach (var smoke in Smoke.s_smoke)
 			{
 				if (smoke == null)
 				{
@@ -74,9 +74,9 @@ namespace ValheimPerformanceOptimizations.Patches
 				i += 1;
 			}
 
-			Smoke.m_smoke.RemoveAll(smoke => smoke == null);
+			Smoke.s_smoke.RemoveAll(smoke => smoke == null);
 
-			if (Smoke.m_smoke.Count < 1)
+			if (Smoke.s_smoke.Count < 1)
 			{
 				return;
 			}

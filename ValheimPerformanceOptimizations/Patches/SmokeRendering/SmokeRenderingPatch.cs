@@ -45,7 +45,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 		{
 			__instance.m_body = __instance.GetComponent<Rigidbody>();
 
-			Smoke.m_smoke.Add(__instance);
+			Smoke.s_smoke.Add(__instance);
 			__instance.m_added = true;
 			__instance.m_mr = __instance.GetComponent<MeshRenderer>();
 			__instance.m_vel += Quaternion.Euler(0f, Random.Range(0, 360), 0f) * Vector3.forward *
@@ -71,7 +71,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 		[HarmonyPatch(typeof(Smoke), nameof(Smoke.OnDestroy))] [HarmonyPrefix]
 		private static bool Smoke_OnDestroy_Prefix(Smoke __instance)
 		{
-			Smoke.m_smoke.Remove(__instance);
+			Smoke.s_smoke.Remove(__instance);
 
 			if (__instance.m_added)
 			{
@@ -100,7 +100,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 		[HarmonyPatch(typeof(Smoke), nameof(Smoke.FadeOldest))] [HarmonyPrefix]
 		private static bool FadeOldest(Smoke __instance)
 		{
-			if (Smoke.m_smoke.Count == 0)
+			if (Smoke.s_smoke.Count == 0)
 			{
 				return false;
 			}
@@ -108,7 +108,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 			var i = 0;
 			do
 			{
-				var smoke = Smoke.m_smoke[i];
+				var smoke = Smoke.s_smoke[i];
 				if (smoke.m_added && smoke.m_fadeTimer < 0)
 				{
 					smoke.StartFadeOut();
@@ -116,15 +116,15 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 				}
 
 				i += 1;
-			} while (i < Smoke.m_smoke.Count);
+			} while (i < Smoke.s_smoke.Count);
 
 			return false;
 		}
 
-		[HarmonyPatch(typeof(Smoke), nameof(Smoke.Update))] [HarmonyPrefix]
-		private static bool Smoke_Update_Prefix(Smoke __instance)
+		[HarmonyPatch(typeof(Smoke), nameof(Smoke.CustomUpdate))] [HarmonyPrefix]
+		private static bool Smoke_Update_Prefix(Smoke __instance, float deltaTime)
 		{
-			__instance.m_time += Time.deltaTime;
+			__instance.m_time += deltaTime;
 
 			var num = 1f - Mathf.Clamp01(__instance.m_time / __instance.m_ttl);
 			__instance.m_body.mass = num * num;
@@ -132,7 +132,7 @@ namespace ValheimPerformanceOptimizations.Patches.SmokeRendering
 			var vel = __instance.m_vel;
 			vel.y *= num;
 			var vector = vel - velocity;
-			__instance.m_body.AddForce(vector * __instance.m_force * Time.deltaTime, ForceMode.VelocityChange);
+			__instance.m_body.AddForce(vector * __instance.m_force * deltaTime, ForceMode.VelocityChange);
 
 			return false;
 		}
