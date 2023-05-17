@@ -10,7 +10,6 @@ namespace ValheimPerformanceOptimizations
 	/// <summary>
 	/// Loading big worlds is slow and can partially be called threaded to speed it up.
 	/// </summary>
-	[HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
 	public static class ThreadedWorldLoadingPatch
 	{
 		private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
