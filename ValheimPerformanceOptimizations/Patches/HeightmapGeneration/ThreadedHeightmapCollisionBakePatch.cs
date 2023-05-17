@@ -91,7 +91,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			var num = width + 1;
 			var maxHeight = -999999f;
 			var minHeight = 999999f;
-			Heightmap.m_tempVertises.Clear();
+			Heightmap.s_tempVertices.Clear();
 
 			for (var idx = 0; idx < num * num; idx++)
 			{
@@ -99,7 +99,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				var j = idx % num;
 
 				var vtx = __instance.CalcVertex(j, i);
-				Heightmap.m_tempVertises.Add(vtx);
+				Heightmap.s_tempVertices.Add(vtx);
 				if (vtx.y > maxHeight)
 				{
 					maxHeight = vtx.y;
@@ -110,11 +110,11 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				}
 			}
 
-			mesh.SetVertices(Heightmap.m_tempVertises);
+			mesh.SetVertices(Heightmap.s_tempVertices);
 			var prevIndexCount = (num - 1) * (num - 1) * 6;
 			if (mesh.GetIndexCount(0) != prevIndexCount)
 			{
-				Heightmap.m_tempIndices.Clear();
+				Heightmap.s_tempIndices.Clear();
 				for (var k = 0; k < num - 1; k++)
 				{
 					for (var l = 0; l < num - 1; l++)
@@ -123,15 +123,15 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 						var item3 = k * num + l + 1;
 						var item4 = (k + 1) * num + l + 1;
 						var item5 = (k + 1) * num + l;
-						Heightmap.m_tempIndices.Add(item2);
-						Heightmap.m_tempIndices.Add(item5);
-						Heightmap.m_tempIndices.Add(item3);
-						Heightmap.m_tempIndices.Add(item3);
-						Heightmap.m_tempIndices.Add(item5);
-						Heightmap.m_tempIndices.Add(item4);
+						Heightmap.s_tempIndices.Add(item2);
+						Heightmap.s_tempIndices.Add(item5);
+						Heightmap.s_tempIndices.Add(item3);
+						Heightmap.s_tempIndices.Add(item3);
+						Heightmap.s_tempIndices.Add(item5);
+						Heightmap.s_tempIndices.Add(item4);
 					}
 				}
-				mesh.SetIndices(Heightmap.m_tempIndices, MeshTopology.Triangles, 0);
+				mesh.SetIndices(Heightmap.s_tempIndices, MeshTopology.Triangles, 0);
 			}
 
 			var deferBake = VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance, OnBakeDone);
@@ -241,7 +241,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			var any = false;
 			var ready = true;
 
-			foreach (var heightmap in Heightmap.m_heightmaps)
+			foreach (var heightmap in Heightmap.s_heightmaps)
 			{
 				if (heightmap.IsPointInside(pos))
 				{
