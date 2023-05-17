@@ -13,11 +13,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 	/// Remove pointless Color[32x32]/ToArray() allocations
 	/// </summary>
 	[HarmonyPatch]
-	public class HeightmapColorAllocationPatch
+	public class HeightmapColorGenerationPatch
 	{
-		private static Color32[] _clearColors;
-		private static Color32[] _distantClearColors;
-
 		private static List<Vector2> _heightmapUVs;
 		private static List<Vector2> _distantHeightmapUVs;
 
@@ -41,11 +38,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			if (__instance.IsDistantLod)
 			{
-				if (_distantClearColors == null || _lastDistantHeightmapWidth != width)
-				{
-					_distantClearColors = new Color32[width * width];
-				}
-
 				if (_distantHeightmapUVs == null || _lastDistantHeightmapWidth != width)
 				{
 					var num = width + 1;
@@ -77,11 +69,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			}
 			else
 			{
-				if (_clearColors == null || _lastHeightmapWidth != width)
-				{
-					_clearColors = new Color32[width * width];
-				}
-
 				if (_heightmapUVs == null || _lastHeightmapWidth != width)
 				{
 					var num = width + 1;
@@ -126,8 +113,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			var worldGen = WorldGenerator.instance;
 
-			Heightmap.m_tempVertises.Clear();
-			Heightmap.m_tempIndices.Clear();
+			Heightmap.s_tempVertices.Clear();
+			Heightmap.s_tempIndices.Clear();
 
 			var width = __instance.m_width;
 			var scale = __instance.m_scale;
@@ -170,14 +157,14 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			Profiler.EndSample();
 
 			Profiler.BeginSample("get stuff from col");
-			__instance.m_collisionMesh.GetVertices(Heightmap.m_tempVertises);
-			__instance.m_collisionMesh.GetIndices(Heightmap.m_tempIndices, 0);
+			__instance.m_collisionMesh.GetVertices(Heightmap.s_tempVertices);
+			__instance.m_collisionMesh.GetIndices(Heightmap.s_tempIndices, 0);
 			Profiler.EndSample();
 
 			Profiler.BeginSample("settin shit");
 			{
 				Profiler.BeginSample("actual set");
-				__instance.m_renderMesh.SetVertices(Heightmap.m_tempVertises);
+				__instance.m_renderMesh.SetVertices(Heightmap.s_tempVertices);
 				__instance.m_renderMesh.SetColors(isDistant ? _distantHeightmapColors : _heightmapColors);
 				Profiler.EndSample();
 
@@ -185,7 +172,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				{
 					Profiler.BeginSample("set stale stuffs");
 					__instance.m_renderMesh.SetUVs(0, isDistant ? _distantHeightmapUVs : _heightmapUVs);
-					__instance.m_renderMesh.SetIndices(Heightmap.m_tempIndices, MeshTopology.Triangles, 0);
+					__instance.m_renderMesh.SetIndices(Heightmap.s_tempIndices, MeshTopology.Triangles, 0);
 					Profiler.EndSample();
 				}
 
@@ -211,48 +198,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			return false;
 		}
-
-		/*[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Generate)), HarmonyPrefix]
-		public static bool Prefix(Heightmap __instance)
-		{
-			Profiler.BeginSample("heightmap init");
-			__instance.Initialize();
-			Profiler.EndSample();
-			var num = __instance.m_width + 1;
-			var num2 = num * num;
-			var position = __instance.transform.position;
-			if (__instance.m_buildData == null ||
-				__instance.m_buildData.m_baseHeights.Count != num2 ||
-				__instance.m_buildData.m_center != position ||
-				__instance.m_buildData.m_scale != __instance.m_scale ||
-				__instance.m_buildData.m_worldGen != WorldGenerator.instance)
-			{
-				Profiler.BeginSample("heightmap sync wait");
-				__instance.m_buildData = HeightmapBuilder.instance.RequestTerrainSync(
-					position, __instance.m_width, __instance.m_scale, __instance.m_isDistantLod,
-					WorldGenerator.instance);
-				__instance.m_cornerBiomes = __instance.m_buildData.m_cornerBiomes;
-				Profiler.EndSample();
-			}
-
-			Profiler.BeginSample("copy");
-			for (var i = 0; i < num2; i++)
-			{
-				__instance.m_heights[i] = __instance.m_buildData.m_baseHeights[i];
-			}
-			Profiler.EndSample();
-
-			Profiler.BeginSample("setpixels");
-			// the only change
-			__instance.m_paintMask.SetPixels32(__instance.m_isDistantLod ? _distantClearColors : _clearColors);
-			Profiler.EndSample();
-
-			Profiler.BeginSample("heightmap modifiers");
-			__instance.ApplyModifiers();
-			Profiler.EndSample();
-
-			return false;
-		}*/
 
 		private struct GenerateColorsJob : IJobParallelFor
 		{

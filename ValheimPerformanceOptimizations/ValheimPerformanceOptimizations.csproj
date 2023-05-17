@@ -104,7 +104,7 @@
         <Compile Include="Patches\EffectArea\VPOEffectArea.cs" />
         <Compile Include="Patches\GetStandingOnShipPatch.cs" />
         <Compile Include="Patches\GetWaterLevel\VPOZoneTracker.cs" />
-        <Compile Include="Patches\HeightmapGeneration\HeightmapColorAllocationPatch.cs" />
+        <Compile Include="Patches\HeightmapGeneration\HeightmapColorGenerationPatch.cs" />
         <Compile Include="Patches\MaxPhysicsTimeStepPatch.cs" />
         <Compile Include="Patches\MinimapGenerationPatch.cs" />
         <Compile Include="Patches\ObjectManagement\ZNetSceneObjectManagementPatch.ObjectCollection.cs" />
