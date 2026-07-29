@@ -53,27 +53,11 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			HeightmapFinished[__instance] = false;
 		}
 
-		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnEnable))] [HarmonyPostfix]
-		private static void OnEnablePatch(Heightmap __instance)
-		{
-			if (!__instance.m_isDistantLod || !Application.isPlaying || __instance.m_distantLodEditorHax)
-			{
-				var deferBake = VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance, OnBakeDone);
-
-				// insta finish if we can't bake
-				if (!deferBake)
-				{
-					HeightmapFinished[__instance] = true;
-				}
-			}
-		}
-
 		private static void OnBakeDone(Heightmap heightmap)
 		{
 			if (heightmap == null) { return; }
 
 			heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
-			heightmap.m_dirty = true;
 			HeightmapFinished[heightmap] = true;
 		}
 
@@ -138,6 +122,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			if (__instance.m_collider && !deferBake)
 			{
 				__instance.m_collider.sharedMesh = mesh;
+				HeightmapFinished[__instance] = true;
 			}
 
 			var num5 = width * __instance.m_scale * 0.5f;
@@ -155,16 +140,15 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.OnDestroy))] [HarmonyPostfix]
 		private static void OnDestroyPatch(Heightmap __instance)
 		{
+			HeightmapFinished.Remove(__instance);
+
 			if (!ZoneSystem.instance)
 			{
 				return;
 			}
 
-			var zonePos = ZoneSystem.instance.GetZone(__instance.transform.position);
-			if (SpawnedZones.ContainsKey(zonePos))
-			{
-				SpawnedZones.Remove(zonePos);
-			}
+			var zonePos = ZoneSystem.GetZone(__instance.transform.position);
+			SpawnedZones.Remove(zonePos);
 		}
 
 		// spawn the heightmap GameObject but not call any placement until the heightmap has a collision mesh
@@ -172,13 +156,15 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		private static bool SpawnZone(
 			ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
 		{
-			var zonePos = __instance.GetZonePos(zoneID);
+			var zonePos = ZoneSystem.GetZonePos(zoneID);
 
 			var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
 			if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
 				    componentInChildren.m_scale,
 				    componentInChildren.m_isDistantLod,
-				    WorldGenerator.instance))
+				    WorldGenerator.instance) || __instance.m_locationInstances.TryGetValue(zoneID, out var location) &&
+			    !location.m_placed &&
+			    !__instance.PokeCanSpawnLocation(location.m_location, true))
 			{
 				root = null;
 				__result = false;
@@ -280,11 +266,11 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		{
 			[ReadOnly] public int Width;
 			[ReadOnly] public float Scale;
-			
+
 			[ReadOnly] public NativeArray<float> Heights;
 
 			[WriteOnly] public NativeArray<Vector3> Verts;
-			
+
 			[WriteOnly] public NativeArray<float> Mins;
 			[WriteOnly] public NativeArray<float> Maxs;
 
@@ -293,14 +279,14 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				var w1 = Width + 1;
 				var maxHeight = -999999f;
 				var minHeight = 999999f;
-				
+
 				var end = startIndex + count;
 				var batchIndex = (end - 1) / w1;
 				for (var index = startIndex; index < end; index++)
 				{
 					var i = (int)math.floor((float)index / w1);
 					var j = index % w1;
-				
+
 					var vtx = CalcVertex(j, i, w1);
 					if (vtx.y > maxHeight)
 					{
@@ -317,10 +303,10 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				Mins[batchIndex] = minHeight;
 				Maxs[batchIndex] = maxHeight;
 			}
-			
+
 			private Vector3 CalcVertex(int x, int y, int w1)
 			{
-				return new Vector3(Width * Scale * -0.5f, 0f, Width * Scale * -0.5f) 
+				return new Vector3(Width * Scale * -0.5f, 0f, Width * Scale * -0.5f)
 					+ new Vector3(y: Heights[y * w1 + x], x: x * Scale, z: y * Scale);
 			}
 		}*/

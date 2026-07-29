@@ -71,14 +71,15 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private void LateUpdate()
 		{
+			if (bakeRequests.Count == 0)
+			{
+				return;
+			}
+
 			var meshIds = new NativeArray<int>(bakeRequests.Count, Allocator.TempJob);
 			for (var i = 0; i < bakeRequests.Count; i++)
 			{
-				var data = bakeRequests[i];
-				if (data.Heightmap == null) { continue; }
-
-				var meshId = data.Heightmap.m_collisionMesh.GetInstanceID();
-				meshIds[i] = meshId;
+				meshIds[i] = bakeRequests[i].Heightmap.m_collisionMesh.GetInstanceID();
 			}
 
 			var bakeJob = new BakeCollisionJob { MeshIds = meshIds };

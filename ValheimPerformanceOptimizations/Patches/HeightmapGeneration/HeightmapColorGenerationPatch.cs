@@ -124,7 +124,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			Profiler.BeginSample("generatin shit");
 
 			ReallocateArrays(__instance);
-			
+
 			if (!isDistant)
 			{
 				var job = new GenerateColorsJob
@@ -143,10 +143,10 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 					+ new Vector3(width * scale * -0.5f, 0f, width * scale * -0.5f);
 				for (var idx = 0; idx < num * num; idx++)
 				{
-					var w1 = width - 1;
-					var i = math.floor(idx / (float)w1);
+					var i = idx / num;
+					var j = idx % num;
 
-					var wx = vector.x + idx % w1 * scale;
+					var wx = vector.x + j * scale;
 					var wy = vector.z + i * scale;
 					var biome = worldGen.GetBiome(wx, wy);
 
@@ -181,22 +181,52 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 				RegenerateTangentQueue.Enqueue(__instance.m_renderMesh);
 
-				var mesh = RegenerateTangentQueue.Dequeue();
-				while (mesh == null && RegenerateTangentQueue.Count > 0)
-				{
-					mesh = RegenerateTangentQueue.Dequeue();
-				}
-
-				if (mesh != null)
-				{
-					mesh.RecalculateTangents(~MeshUpdateFlags.Default);
-				}
+				__instance.m_renderMesh.RecalculateBounds();
+				__instance.m_meshFilter.mesh = __instance.m_renderMesh;
 
 				Profiler.EndSample();
 			}
 			Profiler.EndSample();
 
 			return false;
+		}
+
+		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.CustomLateUpdate))] 
+		[HarmonyPostfix]
+		private static void CustomLateUpdatePostfix()
+		{
+			if (RegenerateTangentQueue.Count == 0) { return; }
+
+			var mesh = RegenerateTangentQueue.Dequeue();
+			while (mesh == null && RegenerateTangentQueue.Count > 0)
+			{
+				mesh = RegenerateTangentQueue.Dequeue();
+			}
+
+			if (mesh != null)
+			{
+				mesh.RecalculateTangents(~MeshUpdateFlags.Default);
+			}
+		}
+
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))] [HarmonyPostfix]
+		private static void ZNetSceneShutdownPostfix()
+		{
+			if (_heightmapColors.IsCreated)
+			{
+				_heightmapColors.Dispose();
+			}
+
+			if (_distantHeightmapColors.IsCreated)
+			{
+				_distantHeightmapColors.Dispose();
+			}
+
+			_heightmapUVs = null;
+			_distantHeightmapUVs = null;
+			_lastHeightmapWidth = -1;
+			_lastDistantHeightmapWidth = -1;
+			RegenerateTangentQueue.Clear();
 		}
 
 		private struct GenerateColorsJob : IJobParallelFor
