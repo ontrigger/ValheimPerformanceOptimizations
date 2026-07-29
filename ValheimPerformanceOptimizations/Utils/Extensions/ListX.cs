@@ -4,10 +4,23 @@ namespace ValheimPerformanceOptimizations.Extensions
 {
 	public static class ListX
 	{
-		public static void RemoveBySwap<T>(this List<T> list, int index)
+		public static void RemoveAtSwapBack<T>(this List<T> list, int index)
 		{
-			list[index] = list[list.Count - 1];
-			list.RemoveAt(list.Count - 1);
+			var lastIndex = list.Count - 1;
+			list[index] = list[lastIndex];
+			list.RemoveAt(lastIndex);
+		}
+
+		public static bool RemoveSwapBack<T>(this List<T> list, T item)
+		{
+			var index = list.IndexOf(item);
+			if (index < 0)
+			{
+				return false;
+			}
+
+			list.RemoveAtSwapBack(index);
+			return true;
 		}
 	}
 }

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using HarmonyLib;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Profiling;
+using ValheimPerformanceOptimizations.Extensions;
 using ValheimPerformanceOptimizations.Storage;
 using Object = UnityEngine.Object;
 
@@ -40,7 +40,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))] [HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
 		{
-			var refZoneInt = ZoneSystem.instance.GetZone(ZNet.instance.GetReferencePosition());
+			var refZoneInt = ZoneSystem.GetZone(ZNet.instance.GetReferencePosition());
 			var refZone = refZoneInt.ClampToShort();
 			__instance.m_tempCurrentObjects.Clear();
 			__instance.m_tempCurrentDistantObjects.Clear();

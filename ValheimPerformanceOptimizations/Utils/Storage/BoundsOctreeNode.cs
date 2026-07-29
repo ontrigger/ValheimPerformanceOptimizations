@@ -121,7 +121,7 @@ namespace ValheimPerformanceOptimizations
 			{
 				if (comparator.Equals(objects[i].Obj, obj))
 				{
-					objects.RemoveBySwap(i);
+					objects.RemoveAtSwapBack(i);
 					removed = true;
 					break;
 				}
@@ -736,7 +736,7 @@ namespace ValheimPerformanceOptimizations
 				var octreeObject = objects[i];
 				if (comparator.Equals(octreeObject.Obj, obj))
 				{
-					objects.RemoveBySwap(i);
+					objects.RemoveAtSwapBack(i);
 					removed = true;
 
 					break;

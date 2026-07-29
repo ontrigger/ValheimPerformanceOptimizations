@@ -100,28 +100,5 @@ namespace ValheimPerformanceOptimizations.Patches
 				Physics.BakeMesh(MeshIds[index], false);
 			}
 		}
-
-		private struct BakeRequest
-		{
-			private readonly Heightmap owner;
-			private JobHandle jobHandle;
-
-			public BakeRequest(Heightmap owner, JobHandle jobHandle)
-			{
-				this.owner = owner;
-				this.jobHandle = jobHandle;
-			}
-
-			public void Complete()
-			{
-				jobHandle.Complete();
-
-				if (owner == null) { return; }
-
-				owner.m_collider.sharedMesh = owner.m_collisionMesh;
-				owner.m_dirty = true;
-				ThreadedHeightmapCollisionBakePatch.HeightmapFinished[owner] = true;
-			}
-		}
 	}
 }

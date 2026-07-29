@@ -36,7 +36,7 @@
         <Reference Include="assembly_guiutils" Publicize="true">
             <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\assembly_guiutils.dll</HintPath>
         </Reference>
-        <Reference Include="assembly_utils, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null" Publicize="true">
+        <Reference Include="assembly_utils" Publicize="true">
             <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\assembly_utils.dll</HintPath>
         </Reference>
         <Reference Include="assembly_valheim" Publicize="true">
