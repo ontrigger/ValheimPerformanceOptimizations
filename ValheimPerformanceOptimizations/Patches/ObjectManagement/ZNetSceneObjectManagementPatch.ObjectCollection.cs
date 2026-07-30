@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ValheimPerformanceOptimizations.Patches
+namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 {
 	public static partial class ZNetSceneObjectManagementPatch
 	{
@@ -48,7 +48,8 @@ namespace ValheimPerformanceOptimizations.Patches
 			}
 		}
 
-		private static void CollectDistantZoneObjects(Vector2s sectorShort, ICollection<ZDO> objects)
+		private static void CollectDistantZoneObjects(
+			Vector2s sectorShort, List<ZDO> objects, Dictionary<ZDO, int> objectIndices)
 		{
 			var sector = new Vector2i(sectorShort.x, sectorShort.y);
 			var instance = ZDOMan.instance;
@@ -63,7 +64,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					if (sectorObjects[i].Distant)
 					{
-						objects.Add(sectorObjects[i]);
+						AddUnique(objects, objectIndices, sectorObjects[i]);
 					}
 				}
 			}
@@ -78,14 +79,15 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					if (sectorObjects[j].Distant)
 					{
-						objects.Add(sectorObjects[j]);
+						AddUnique(objects, objectIndices, sectorObjects[j]);
 					}
 				}
 			}
 
 		}
 		
-		private static void CollectNearZoneObjects(Vector2s sectorShort, ICollection<ZDO> objects)
+		private static void CollectNearZoneObjects(
+			Vector2s sectorShort, List<ZDO> objects, Dictionary<ZDO, int> objectIndices)
 		{
 			var sector = new Vector2i(sectorShort.x, sectorShort.y);
 			var instance = ZDOMan.instance;
@@ -100,7 +102,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					if (!sectorObjects[i].Distant)
 					{
-						objects.Add(sectorObjects[i]);
+						AddUnique(objects, objectIndices, sectorObjects[i]);
 					}
 				}
 			}
@@ -115,7 +117,7 @@ namespace ValheimPerformanceOptimizations.Patches
 				{
 					if (!sectorObjects[j].Distant)
 					{
-						objects.Add(sectorObjects[j]);
+						AddUnique(objects, objectIndices, sectorObjects[j]);
 					}
 				}
 			}
