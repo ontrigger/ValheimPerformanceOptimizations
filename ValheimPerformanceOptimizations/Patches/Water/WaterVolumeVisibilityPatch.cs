@@ -9,7 +9,7 @@ namespace ValheimPerformanceOptimizations.Patches
 	/// The water planes are being rendered even when they are fully below the terrain
 	/// This patch makes water render only if the lowest point of its terrain intersects with the water level
 	/// </summary>
-	[HarmonyPatch]
+	// [HarmonyPatch]
 	public static class WaterVolumeVisibilityPatch
 	{
 		private static readonly ConditionalWeakTable<Heightmap, Action<Bounds>> HeightmapChangedCallbacks = new();

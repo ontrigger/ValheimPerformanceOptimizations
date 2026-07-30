@@ -8,7 +8,7 @@ using VPO = ValheimPerformanceOptimizations.ValheimPerformanceOptimizations;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-	[HarmonyPatch]
+	//[HarmonyPatch]
 	public static class PrefabPatches
 	{
 		private const float LeafParticleCullHeight = 0.79f;

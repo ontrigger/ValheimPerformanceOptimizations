@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
-	[HarmonyPatch]
+	//[HarmonyPatch]
 	public class ClutterSystemRenderQueuePatch
 	{
 		[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.Awake))]

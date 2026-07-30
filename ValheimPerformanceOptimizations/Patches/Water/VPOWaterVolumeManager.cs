@@ -212,7 +212,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		public float WindBlend;
 	}
 
-	[HarmonyPatch]
+	// [HarmonyPatch]
 	public static class WaterVolumeManagerPatch
 	{
 		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.Awake))] [HarmonyPostfix]

@@ -14,7 +14,6 @@ namespace ValheimPerformanceOptimizations
 	{
 		/*private static bool Prefix(ZDOMan __instance, BinaryReader reader, int version)
 		{
-			ZNetSceneObjectManagementPatch.CreateRemoveHack = true;
 			// only patch the current data version to not risk any world file breaking
 			if (version != 29)
 			{
@@ -95,8 +94,6 @@ namespace ValheimPerformanceOptimizations
 			ZLog.Log("Loaded " + __instance.m_deadZDOs.Count + " dead zdos");
 			__instance.RemoveOldGeneratedZDOS();
 			__instance.m_nextUid = num;
-			
-			ZNetSceneObjectManagementPatch.CreateRemoveHack = false;
 
 			return false;
 		}*/
