@@ -62,13 +62,10 @@
     <ItemGroup>
         <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
     </ItemGroup>
-    <PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
         <PostBuildEvent>
-            if $(ConfigurationName) == Release (
-            powershell Compress-Archive -Path '$(ProjectDir)Package\*' -DestinationPath '$(SolutionDir)PublishOutput\$(ProjectName).zip' -Force)
-            if $(ConfigurationName) == Debug del "$(TargetPath).mdb"
-            if $(ConfigurationName) == Debug $(SolutionDir)pdb2mdb.exe "$(TargetPath).dll"
-            xcopy "$(TargetDir)" "$(VALHEIM_INSTALL)\Bepinex\plugins\$(ProjectName)\" /q /s /y /i
+            powershell Compress-Archive -Path '$(ProjectDir)Package\*' -DestinationPath '$(SolutionDir)PublishOutput\$(MSBuildProjectName).zip' -Force
+            xcopy "$(TargetDir)" "$(VALHEIM_INSTALL)\BepInEx\plugins\$(MSBuildProjectName)\" /q /s /y /i
         </PostBuildEvent>
     </PropertyGroup>
 </Project>
