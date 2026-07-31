@@ -48,80 +48,51 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			}
 		}
 
-		private static void CollectDistantZoneObjects(
-			Vector2s sectorShort, List<ZDO> objects, Dictionary<ZDO, int> objectIndices)
+		private static List<ZDO> GetSectorObjects(Vector2s sectorShort)
 		{
 			var sector = new Vector2i(sectorShort.x, sectorShort.y);
 			var instance = ZDOMan.instance;
-			var num = instance.SectorToIndex(sector);
-
-			if (num >= 0)
+			var sectorIndex = instance.SectorToIndex(sector);
+			if (sectorIndex >= 0)
 			{
-				List<ZDO> sectorObjects = instance.m_objectsBySector[num];
-				if (sectorObjects == null) { return; }
-
-				for (var i = 0; i < sectorObjects.Count; i++)
-				{
-					if (sectorObjects[i].Distant)
-					{
-						AddUnique(objects, objectIndices, sectorObjects[i]);
-					}
-				}
-			}
-			else
-			{
-				if (!instance.m_objectsByOutsideSector.TryGetValue(sector, out List<ZDO> sectorObjects))
-				{
-					return;
-				}
-
-				for (var j = 0; j < sectorObjects.Count; j++)
-				{
-					if (sectorObjects[j].Distant)
-					{
-						AddUnique(objects, objectIndices, sectorObjects[j]);
-					}
-				}
+				return instance.m_objectsBySector[sectorIndex];
 			}
 
+			instance.m_objectsByOutsideSector.TryGetValue(sector, out var sectorObjects);
+			return sectorObjects;
 		}
-		
-		private static void CollectNearZoneObjects(
-			Vector2s sectorShort, List<ZDO> objects, Dictionary<ZDO, int> objectIndices)
+
+		private static void CollectZoneObjects(
+			Vector2s sectorShort, List<ZDO> objects, Dictionary<ZDO, int> objectIndices, bool distant)
 		{
-			var sector = new Vector2i(sectorShort.x, sectorShort.y);
-			var instance = ZDOMan.instance;
-			var num = instance.SectorToIndex(sector);
+			var sectorObjects = GetSectorObjects(sectorShort);
+			if (sectorObjects == null) { return; }
 
-			if (num >= 0)
+			for (var i = 0; i < sectorObjects.Count; i++)
 			{
-				List<ZDO> sectorObjects = instance.m_objectsBySector[num];
-				if (sectorObjects == null) { return; }
-
-				for (var i = 0; i < sectorObjects.Count; i++)
+				var zdo = sectorObjects[i];
+				if (zdo.Distant == distant)
 				{
-					if (!sectorObjects[i].Distant)
-					{
-						AddUnique(objects, objectIndices, sectorObjects[i]);
-					}
+					AddUnique(objects, objectIndices, zdo);
 				}
 			}
-			else
-			{
-				if (!instance.m_objectsByOutsideSector.TryGetValue(sector, out List<ZDO> sectorObjects))
-				{
-					return;
-				}
+		}
 
-				for (var j = 0; j < sectorObjects.Count; j++)
+		private static void UnloadZoneObjects(
+			Vector2s sectorShort, List<ZDO> creationQueue, Dictionary<ZDO, int> creationIndices, bool distant)
+		{
+			var sectorObjects = GetSectorObjects(sectorShort);
+			if (sectorObjects == null) { return; }
+
+			for (var i = 0; i < sectorObjects.Count; i++)
+			{
+				var zdo = sectorObjects[i];
+				RemoveQueuedObject(creationQueue, creationIndices, zdo);
+				if (zdo.Distant == distant)
 				{
-					if (!sectorObjects[j].Distant)
-					{
-						AddUnique(objects, objectIndices, sectorObjects[j]);
-					}
+					AddUnique(RemoveQueue, RemoveQueueIndices, zdo);
 				}
 			}
-
 		}
 	}
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
@@ -11,6 +12,10 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 	public static partial class ZNetSceneObjectManagementPatch
 	{
 		private static Vector2s _currentZone = new(short.MinValue, short.MinValue);
+		private const float NearQueueResortDistance = 8f;
+		private const float NearQueueResortDistanceSqr = NearQueueResortDistance * NearQueueResortDistance;
+		private static Vector3 _lastNearQueueSortPosition;
+		private static bool _nearQueueSortDirty = true;
 
 		private static HashSet<Vector2s> _lastNearZoneSet = new();
 		private static HashSet<Vector2s> _lastDistantZoneSet = new();
@@ -19,9 +24,12 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 		private static readonly List<ZDO> QueuedDistantObjects = new();
 		private static readonly Dictionary<ZDO, int> QueuedNearObjectIndices = new();
 		private static readonly Dictionary<ZDO, int> QueuedDistantObjectIndices = new();
+		private static readonly HashSet<ZDO> PendingRpcZdoQueue = new();
+		private static bool _processingRpcZdoData;
 
 		private static readonly List<ZDO> RemoveQueue = new();
 		private static readonly Dictionary<ZDO, int> RemoveQueueIndices = new();
+		private static readonly Comparison<ZDO> ReverseZDOComparer = ReverseZDOCompare;
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))] [HarmonyPrefix]
 		public static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
@@ -42,84 +50,49 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 				Profiler.EndSample();
 
 				Profiler.BeginSample("near");
-
-				HashSet<Vector2s> nearZonesToLoad = SetPool<Vector2s>.Get();
+				var nearChanged = false;
 				foreach (var zone in nearZones)
 				{
-					if (!_lastNearZoneSet.Contains(zone))
-					{
-						nearZonesToLoad.Add(zone);
-					}
+					if (_lastNearZoneSet.Contains(zone)) { continue; }
+
+					CollectZoneObjects(zone, QueuedNearObjects, QueuedNearObjectIndices, false);
+					nearChanged = true;
 				}
 
-				HashSet<Vector2s> nearZonesToUnload = SetPool<Vector2s>.Get();
 				foreach (var zone in _lastNearZoneSet)
 				{
-					if (!nearZones.Contains(zone))
-					{
-						nearZonesToUnload.Add(zone);
-					}
+					if (nearZones.Contains(zone)) { continue; }
+
+					UnloadZoneObjects(zone, QueuedNearObjects, QueuedNearObjectIndices, false);
+					nearChanged = true;
 				}
 
-				Profiler.BeginSample("remove all");
-				RemoveQueuedObjectsInZones(QueuedNearObjects, QueuedNearObjectIndices, nearZonesToUnload);
-				Profiler.EndSample();
-
-				foreach (var zone in nearZonesToUnload)
+				if (nearChanged)
 				{
-					CollectNearZoneObjects(zone, RemoveQueue, RemoveQueueIndices);
+					_nearQueueSortDirty = true;
 				}
-
-				foreach (var zone in nearZonesToLoad)
-				{
-					CollectNearZoneObjects(zone, QueuedNearObjects, QueuedNearObjectIndices);
-				}
-
-				SetPool<Vector2s>.Return(nearZonesToLoad);
-				SetPool<Vector2s>.Return(nearZonesToUnload);
-
 				Profiler.EndSample();
 
 				Profiler.BeginSample("far");
-
-				HashSet<Vector2s> distantZonesToLoad = SetPool<Vector2s>.Get();
 				foreach (var zone in distantZones)
 				{
-					if (!_lastDistantZoneSet.Contains(zone))
-					{
-						distantZonesToLoad.Add(zone);
-					}
+					if (_lastDistantZoneSet.Contains(zone)) { continue; }
+
+					CollectZoneObjects(zone, QueuedDistantObjects, QueuedDistantObjectIndices, true);
 				}
 
-				HashSet<Vector2s> distantZonesToUnload = SetPool<Vector2s>.Get();
 				foreach (var zone in _lastDistantZoneSet)
 				{
-					if (!distantZones.Contains(zone))
-					{
-						distantZonesToUnload.Add(zone);
-					}
-				}
+					if (distantZones.Contains(zone)) { continue; }
 
-				RemoveQueuedObjectsInZones(QueuedDistantObjects, QueuedDistantObjectIndices, distantZonesToUnload);
-				foreach (var zone in distantZonesToUnload)
-				{
-					ZNetSceneObjectManagementPatch.CollectDistantZoneObjects(zone, RemoveQueue, RemoveQueueIndices);
+					UnloadZoneObjects(zone, QueuedDistantObjects, QueuedDistantObjectIndices, true);
 				}
-
-				foreach (var zone in distantZonesToLoad)
-				{
-					ZNetSceneObjectManagementPatch.CollectDistantZoneObjects(zone, QueuedDistantObjects, QueuedDistantObjectIndices);
-				}
-
-				SetPool<Vector2s>.Return(distantZonesToLoad);
-				SetPool<Vector2s>.Return(distantZonesToUnload);
 
 				SetPool<Vector2s>.Return(_lastNearZoneSet);
 				SetPool<Vector2s>.Return(_lastDistantZoneSet);
 
 				_lastNearZoneSet = nearZones;
 				_lastDistantZoneSet = distantZones;
-
 				Profiler.EndSample();
 			}
 
@@ -165,15 +138,27 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			var refPos = ZNet.instance.GetReferencePosition();
 
 			var num = Mathf.Max(QueuedNearObjects.Count / 100, maxCreatedPerFrame);
-			Profiler.BeginSample("sortin");
-			foreach (var currentNearObject in QueuedNearObjects)
+			if (_nearQueueSortDirty
+			    || Utils.DistanceSqr(_lastNearQueueSortPosition, refPos) >= NearQueueResortDistanceSqr)
 			{
-				currentNearObject.m_tempSortValue = Utils.DistanceSqr(refPos, currentNearObject.GetPosition());
-			}
+				Profiler.BeginSample("sortin");
+				for (var i = 0; i < QueuedNearObjects.Count; i++)
+				{
+					var queuedNearObject = QueuedNearObjects[i];
+					queuedNearObject.m_tempSortValue =
+						Utils.DistanceSqr(refPos, queuedNearObject.GetPosition());
+				}
 
-			QueuedNearObjects.Sort(ReverseZDOCompare);
-			RebuildQueueIndices(QueuedNearObjects, QueuedNearObjectIndices);
-			Profiler.EndSample();
+				QueuedNearObjects.Sort(ReverseZDOComparer);
+				QueuedNearObjectIndices.Clear();
+				for (var i = 0; i < QueuedNearObjects.Count; i++)
+				{
+					QueuedNearObjectIndices.Add(QueuedNearObjects[i], i);
+				}
+				_lastNearQueueSortPosition = refPos;
+				_nearQueueSortDirty = false;
+				Profiler.EndSample();
+			}
 
 			Profiler.BeginSample("spawnin 1");
 			for (var i = QueuedNearObjects.Count - 1; i >= 0; i--)
@@ -183,7 +168,7 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 				    || __instance.m_instances.ContainsKey(zdo)
 				    || !IsInActiveRange(zdo.Distant, zdo.m_sector))
 				{
-					RemoveQueuedAt(QueuedNearObjects, QueuedNearObjectIndices, i);
+					RemoveQueuedAtPreservingOrder(QueuedNearObjects, QueuedNearObjectIndices, i);
 					continue;
 				}
 
@@ -194,7 +179,7 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 
 				if (__instance.CreateObject(zdo) != null)
 				{
-					RemoveQueuedObject(QueuedNearObjects, QueuedNearObjectIndices, zdo);
+					RemoveQueuedAtPreservingOrder(QueuedNearObjects, QueuedNearObjectIndices, i);
 					created++;
 					if (created > num) { break; }
 				}
@@ -232,7 +217,7 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 
 				if (__instance.CreateObject(zdo) != null)
 				{
-					RemoveQueuedObject(QueuedDistantObjects, QueuedDistantObjectIndices, zdo);
+					RemoveQueuedAt(QueuedDistantObjects, QueuedDistantObjectIndices, i);
 					created++;
 					if (created > maxCreatedPerFrame) { break; }
 				}
@@ -283,10 +268,38 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			return false;
 		}
 
+		[HarmonyPrefix] [HarmonyPatch(typeof(ZDOMan), "RPC_ZDOData")]
+		private static void ZDOMan_RPC_ZDOData_Prefix()
+		{
+			_processingRpcZdoData = true;
+			PendingRpcZdoQueue.Clear();
+		}
+
+		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), "RPC_ZDOData")]
+		private static void ZDOMan_RPC_ZDOData_Postfix()
+		{
+			_processingRpcZdoData = false;
+			foreach (var zdo in PendingRpcZdoQueue)
+			{
+				if (!ZNetScene.instance.HaveInstance(zdo)
+				    && IsInActiveRange(zdo.Distant, zdo.m_sector))
+				{
+					EnqueueForCreation(zdo);
+				}
+			}
+			PendingRpcZdoQueue.Clear();
+		}
+
 		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.AddToSector))]
 		public static void ZDOMan_AddToSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
 			if (ZNetScene.instance.HaveInstance(zdo)) { return; }
+
+			if (_processingRpcZdoData)
+			{
+				PendingRpcZdoQueue.Add(zdo);
+				return;
+			}
 
 			var sectorShort = sector.ClampToShort();
 			if (zdo.Distant)
@@ -305,7 +318,14 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 		[HarmonyPostfix] [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.RemoveFromSector))]
 		public static void ZDOMan_RemoveFromSector_Postfix(ZDOMan __instance, ZDO zdo, Vector2i sector)
 		{
-			RemoveFromCreationQueue(zdo);
+			if (zdo.Distant)
+			{
+				RemoveQueuedObject(QueuedDistantObjects, QueuedDistantObjectIndices, zdo);
+				return;
+			}
+
+			RemoveQueuedObject(QueuedNearObjects, QueuedNearObjectIndices, zdo);
+			_nearQueueSortDirty = true;
 		}
 
 		[HarmonyPrefix] [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetSector))]
@@ -330,6 +350,8 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			QueuedDistantObjects.Clear();
 			QueuedNearObjectIndices.Clear();
 			QueuedDistantObjectIndices.Clear();
+			PendingRpcZdoQueue.Clear();
+			_processingRpcZdoData = false;
 
 			_lastNearZoneSet.Clear();
 			_lastDistantZoneSet.Clear();
@@ -338,6 +360,7 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			RemoveQueueIndices.Clear();
 
 			_currentZone = new Vector2s(short.MinValue, short.MinValue);
+			_nearQueueSortDirty = true;
 
 			return true;
 		}
@@ -372,17 +395,7 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			}
 
 			AddUnique(QueuedNearObjects, QueuedNearObjectIndices, zdo);
-		}
-
-		private static void RemoveFromCreationQueue(ZDO zdo)
-		{
-			if (zdo.Distant)
-			{
-				RemoveQueuedObject(QueuedDistantObjects, QueuedDistantObjectIndices, zdo);
-				return;
-			}
-
-			RemoveQueuedObject(QueuedNearObjects, QueuedNearObjectIndices, zdo);
+			_nearQueueSortDirty = true;
 		}
 
 		private static void AddUnique(List<ZDO> queue, Dictionary<ZDO, int> queueIndices, ZDO zdo)
@@ -391,18 +404,6 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			{
 				queueIndices.Add(zdo, queue.Count);
 				queue.Add(zdo);
-			}
-		}
-
-		private static void RemoveQueuedObjectsInZones(
-			List<ZDO> queue, Dictionary<ZDO, int> queueIndices, HashSet<Vector2s> zones)
-		{
-			for (var i = queue.Count - 1; i >= 0; i--)
-			{
-				var zdo = queue[i];
-				if (!zones.Contains(zdo.m_sector)) { continue; }
-
-				RemoveQueuedAt(queue, queueIndices, i);
 			}
 		}
 
@@ -430,12 +431,14 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 			queue.RemoveAt(lastIndex);
 		}
 
-		private static void RebuildQueueIndices(List<ZDO> queue, Dictionary<ZDO, int> queueIndices)
+		private static void RemoveQueuedAtPreservingOrder(
+			List<ZDO> queue, Dictionary<ZDO, int> queueIndices, int index)
 		{
-			queueIndices.Clear();
-			for (var i = 0; i < queue.Count; i++)
+			queueIndices.Remove(queue[index]);
+			queue.RemoveAt(index);
+			for (var i = index; i < queue.Count; i++)
 			{
-				queueIndices.Add(queue[i], i);
+				queueIndices[queue[i]] = i;
 			}
 		}
 	}
