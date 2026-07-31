@@ -4,6 +4,9 @@ using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches;
 
+/// <summary>
+/// renders reflection probes one face at a time
+/// </summary>
 [HarmonyPatch]
 public class VPOReflectionRenderer : ReflectionUpdate
 {
@@ -22,7 +25,9 @@ public class VPOReflectionRenderer : ReflectionUpdate
 
 	private LayerMask characterMask;
 	private LayerMask effectMask;
+	private LayerMask itemMask;
 	private LayerMask pieceMask;
+	private LayerMask transparentFXMask;
 	
 	private static readonly float[] LayerCullDistances = new float[32];
 
@@ -69,7 +74,9 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		
 		characterMask = LayerMask.NameToLayer("character");
 		effectMask = LayerMask.NameToLayer("effect");
+		itemMask = LayerMask.NameToLayer("item");
 		pieceMask = LayerMask.NameToLayer("piece");
+		transparentFXMask = LayerMask.NameToLayer("TransparentFX");
 
 		m_instance = this;
 		m_current = m_probe1;
@@ -180,7 +187,7 @@ public class VPOReflectionRenderer : ReflectionUpdate
 			QualitySettings.maximumLODLevel = 1; // 2 removes most objects unfortunately
 
 			cam.farClipPlane = farClip;
-			var excludeMask = (1 << characterMask) | (1 << effectMask);
+			var excludeMask = (1 << characterMask) | (1 << effectMask) | (1 << itemMask) | (1 << transparentFXMask);
 			cam.cullingMask = m_probe1.cullingMask & ~excludeMask;
 			/*for (var i = 0; i < 32; i++)
 			{
