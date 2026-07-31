@@ -3,7 +3,7 @@ using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
-using UnityEngine.Profiling;
+using VPOBurst;
 
 namespace ValheimPerformanceOptimizations.Patches
 {
@@ -15,229 +15,193 @@ namespace ValheimPerformanceOptimizations.Patches
 			{
 				if (!_instance)
 				{
-					var bakeGameObject = new GameObject("VPOWaterVolumeManager");
-					_instance = bakeGameObject.AddComponent<VPOWaterVolumeManager>();
+					var go = new GameObject(nameof(VPOWaterVolumeManager));
+					DontDestroyOnLoad(go);
+					_instance = go.AddComponent<VPOWaterVolumeManager>();
 				}
 
 				return _instance;
 			}
 		}
 
-		private readonly List<WaterVolume> volumes = new();
-
-		private readonly List<WaveRequestData> waveLevelRequests = new();
-
-		private JobHandle handle;
-
-		private NativeArray<WaveRequestData> waveRequests;
-
-		private NativeArray<float> results;
-
 		private static VPOWaterVolumeManager _instance;
 
-		/*private void Update()
-		{
-			if (ZNetScene.instance == null) { return; }
+		private readonly List<FloaterTarget> _floaterTargets = new();
+		private readonly List<WaveRequestData> _pendingRequests = new();
+		private readonly List<int> _removeIndices = new();
 
-			waveLevelRequests.Clear();
-			foreach (var waterVolume in volumes)
+		private NativeArray<WaveRequestData> _waveRequests;
+		private NativeArray<float> _results;
+		private JobHandle _handle;
+		private bool _jobScheduled;
+
+		public void TryScheduleFloaterUpdates()
+		{
+			if (_jobScheduled) { return; }
+
+			_floaterTargets.Clear();
+			_pendingRequests.Clear();
+
+			var wind1 = WaterVolume.s_globalWind1;
+			var wind2 = WaterVolume.s_globalWind2;
+			var windAlpha = WaterVolume.s_globalWindAlpha;
+			var waterTime = WaterVolume.s_wrappedDayTimeSeconds;
+
+			foreach (var waterVolume in WaterVolume.Instances)
 			{
-				var wind = new Vector4(1f, 0f, 0f, 0f);
-				var wind2 = new Vector4(1f, 0f, 0f, 0f);
-				var alpha = 0f;
-				if (waterVolume.m_useGlobalWind)
-				{
-					EnvMan.instance.GetWindData(out wind, out wind2, out alpha);
-				}
+				var inWater = waterVolume.m_inWater;
+				var count = inWater.Count;
+				if (count == 0) { continue; }
+
+				_removeIndices.Clear();
 
 				var heightOffset = waterVolume.transform.position.y + waterVolume.m_surfaceOffset;
-				foreach (var waterInteractable in waterVolume.m_inWater)
+				var useGlobalWind = waterVolume.m_useGlobalWind;
+				var forceDepth = waterVolume.m_forceDepth;
+
+				for (var i = 0; i < count; i++)
 				{
-					var xForm = waterInteractable.GetTransform();
-					if (!xForm) { continue; }
+					var waterInteractable = inWater[i];
+					if (waterInteractable == null)
+					{
+						_removeIndices.Add(i);
+						continue;
+					}
 
-					var position = xForm.position;
+					var xform = waterInteractable.GetTransform();
+					if (!xform)
+					{
+						_removeIndices.Add(i);
+						continue;
+					}
 
+					var position = xform.position;
 					var downwardsOffset = 0f;
-					if (Utils.LengthXZ(position) > 10500f && waterVolume.m_forceDepth < 0f)
+					if (forceDepth < 0f && Utils.LengthXZ(position) > 10500f)
 					{
 						downwardsOffset = 100f;
 					}
 
-					var request = new WaveRequestData
+					_floaterTargets.Add(new FloaterTarget
 					{
-						WaterInteractable = waterInteractable, WaterVolume = waterVolume,
-						Depth = waterVolume.Depth(position), HeightOffset = heightOffset - downwardsOffset,
-						Position = position, Wind = wind, Wind2 = wind2, WindBlend = alpha,
-					};
-					waveLevelRequests.Add(request);
+						Volume = waterVolume,
+						Interactable = waterInteractable,
+					});
+
+					_pendingRequests.Add(new WaveRequestData
+					{
+						Position = position,
+						Depth = waterVolume.Depth(position),
+						HeightOffset = heightOffset - downwardsOffset,
+						Wind = wind1,
+						Wind2 = wind2,
+						WindBlend = windAlpha,
+						UseGlobalWind = useGlobalWind,
+					});
 				}
 
-				waterVolume.m_inWater.RemoveAll(interactable => interactable.GetTransform() == null);
+				for (var r = _removeIndices.Count - 1; r >= 0; r--)
+				{
+					inWater.RemoveAt(_removeIndices[r]);
+				}
 			}
 
-			Profiler.BeginSample("alloc and set");
-			waveRequests = new NativeArray<WaveRequestData>(waveLevelRequests.Count, Allocator.TempJob);
-			results = new NativeArray<float>(waveLevelRequests.Count, Allocator.TempJob);
-			
-			for (var i = 0; i < waveLevelRequests.Count; i++)
+			_jobScheduled = true;
+
+			var requestCount = _pendingRequests.Count;
+			if (requestCount == 0) { return; }
+
+			_waveRequests = new NativeArray<WaveRequestData>(requestCount, Allocator.TempJob);
+			_results = new NativeArray<float>(requestCount, Allocator.TempJob);
+
+			for (var i = 0; i < requestCount; i++)
 			{
-				var waveLevelRequest = waveLevelRequests[i];
-				waveRequests[i] = waveLevelRequest;
+				_waveRequests[i] = _pendingRequests[i];
 			}
 
-			var bakeJob = new CalculateWavesJob
+			var job = new CalculateWavesJob
 			{
-				WaveRequests = waveRequests,
-				Time = ZNet.instance.GetWrappedDayTimeSeconds(),
-				Results = results,
+				WaveRequests = _waveRequests,
+				Time = waterTime,
+				Results = _results,
 			};
-			Profiler.EndSample();
 
-			Profiler.BeginSample("schedule");
-			handle = bakeJob.Schedule(waveLevelRequests.Count, default);
+			_handle = job.Schedule(requestCount, 16);
 			JobHandle.ScheduleBatchedJobs();
-			Profiler.EndSample();
 		}
 
 		private void LateUpdate()
 		{
-			if (!ZNetScene.instance) { return; }
+			if (!_jobScheduled) { return; }
 
-			handle.Complete();
+			_handle.Complete();
 
-			Profiler.BeginSample("set stuff");
-			for (var i = 0; i < waveLevelRequests.Count; i++)
+			var count = _floaterTargets.Count;
+			for (var i = 0; i < count; i++)
 			{
-				var volume = waveLevelRequests[i].WaterVolume;
-				var interactable = waveLevelRequests[i].WaterInteractable;
-
-				var liquidLevel = results[i];
+				var target = _floaterTargets[i];
+				var volume = target.Volume;
+				var interactable = target.Interactable;
 
 				if (volume != null && interactable != null && interactable.GetTransform() != null)
 				{
-					interactable.SetLiquidLevel(liquidLevel, LiquidType.Water, volume);
+					interactable.SetLiquidLevel(_results[i], LiquidType.Water, volume);
 				}
 			}
 
-			if (results.IsCreated)
+			if (_waveRequests.IsCreated)
 			{
-				results.Dispose();
+				_waveRequests.Dispose();
 			}
-		}*/
 
-		public void AddVolume(WaterVolume volume)
-		{
-			volumes.Add(volume);
+			if (_results.IsCreated)
+			{
+				_results.Dispose();
+			}
+
+			_floaterTargets.Clear();
+			_jobScheduled = false;
 		}
 
-		public void RemoveVolume(WaterVolume volume)
+		private void OnDestroy()
 		{
-			volumes.Remove(volume);
-		}
-	}
+			if (_jobScheduled)
+			{
+				_handle.Complete();
+			}
 
-	internal struct CalculateWavesJob : IJobFor
-	{
-		[ReadOnly] [DeallocateOnJobCompletion] public NativeArray<WaveRequestData> WaveRequests;
-		
-		[ReadOnly] public float Time;
+			if (_waveRequests.IsCreated)
+			{
+				_waveRequests.Dispose();
+			}
 
-		[WriteOnly]
-		public NativeArray<float> Results;
+			if (_results.IsCreated)
+			{
+				_results.Dispose();
+			}
 
-		public void Execute(int index)
-		{
-			var request = WaveRequests[index];
-			
-			var worldPos = request.Position;
-			var depth = request.Depth;
-
-			var a = CalcWave(worldPos, depth, request.Wind, Time, 1f);
-			var b = CalcWave(worldPos, depth, request.Wind2, Time, 1f);
-
-			Results[index] = request.HeightOffset + Mathf.Lerp(a, b, request.WindBlend);
+			if (_instance == this)
+			{
+				_instance = null;
+			}
 		}
 
-		private float CalcWave(Vector3 worldPos, float depth, Vector4 wind, float _WaterTime, float waveFactor)
+		private struct FloaterTarget
 		{
-			var vector = new Vector3(wind.x, wind.y, wind.z);
-			var w = wind.w;
-			var num = Mathf.Lerp(0f, w, depth);
-			var time = _WaterTime / 20f;
-			var num2 = CreateWave(worldPos, time, 10f, 0.04f, 8f, new Vector2(vector.x, vector.z), 0.5f);
-			var num3 = CreateWave(worldPos, time, 14.123f, 0.08f, 6f, new Vector2(1.0312f, 0.312f), 0.5f);
-			var num4 = CreateWave(worldPos, time, 22.312f, 0.1f, 4f, new Vector2(-0.123f, 1.12f), 0.5f);
-			var num5 = CreateWave(worldPos, time, 31.42f, 0.2f, 2f, new Vector2(0.423f, 0.124f), 0.5f);
-			var num6 = CreateWave(worldPos, time, 35.42f, 0.4f, 1f, new Vector2(0.123f, -0.64f), 0.5f);
-			var num7 = CreateWave(worldPos, time, 38.1223f, 1f, 0.8f, new Vector2(-0.523f, -0.64f), 0.7f);
-			var num8 = CreateWave(worldPos, time, 41.1223f, 1.2f, 0.6f * waveFactor, new Vector2(0.223f, 0.74f), 0.8f);
-			var num9 = CreateWave(worldPos, time, 51.5123f, 1.3f, 0.4f * waveFactor, new Vector2(0.923f, -0.24f), 0.9f);
-			var num10 = CreateWave(worldPos, time, 54.2f, 1.3f, 0.3f * waveFactor, new Vector2(-0.323f, 0.44f), 0.9f);
-			var num11 = CreateWave(worldPos, time, 56.123f, 1.5f, 0.2f * waveFactor, new Vector2(0.5312f, -0.812f),
-				0.9f);
-			return (num2 + num3 + num4 + num5 + num6 + num7 + num8 + num9 + num10 + num11) * num;
-		}
-
-		private float CreateWave(
-			Vector3 worldPos, float time, float waveSpeed, float waveLength, float waveHeight, Vector2 dir2d,
-			float sharpness)
-		{
-			var normalized = new Vector3(dir2d.x, 0f, dir2d.y).normalized;
-			var vector = Vector3.Cross(normalized, Vector3.up);
-			var vector2 = -(worldPos.z * normalized + worldPos.x * vector);
-			return (TrochSin(time * waveSpeed + vector2.z * waveLength, sharpness)
-				* TrochSin(time * waveSpeed * 0.123f + vector2.x * 0.13123f * waveLength, sharpness) - 0.2f)
-				* waveHeight;
-		}
-
-		private float TrochSin(float x, float k)
-		{
-			return Mathf.Sin(x - Mathf.Cos(x) * k) * 0.5f + 0.5f;
+			public WaterVolume Volume;
+			public IWaterInteractable Interactable;
 		}
 	}
-	
-	internal struct WaveRequestData
-	{
-		public Vector3 Position;
 
-		public float Depth;
-		public float HeightOffset;
-
-		public IWaterInteractable WaterInteractable;
-		public WaterVolume WaterVolume;
-
-		public Vector4 Wind;
-		public Vector4 Wind2;
-		public float WindBlend;
-	}
-
-	// [HarmonyPatch]
+	[HarmonyPatch]
 	public static class WaterVolumeManagerPatch
 	{
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.Awake))] [HarmonyPostfix]
-		private static void Awake_Postfix(WaterVolume __instance)
+		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))]
+		[HarmonyPrefix]
+		private static bool UpdateFloaters_Prefix()
 		{
-			VPOWaterVolumeManager.Instance.AddVolume(__instance);
-		}
-
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.OnDestroy))] [HarmonyPostfix]
-		private static void OnDestroy_Postfix(WaterVolume __instance)
-		{
-			VPOWaterVolumeManager.Instance.RemoveVolume(__instance);
-		}
-
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))] [HarmonyPrefix]
-		private static bool UpdateFloaters_Prefix(WaterVolume __instance)
-		{
-			Profiler.BeginSample("Update floaters");
-			return true;
-		}
-		
-		[HarmonyPatch(typeof(WaterVolume), nameof(WaterVolume.UpdateFloaters))] [HarmonyPostfix]
-		private static void UpdateFloaters_Postfix(WaterVolume __instance)
-		{
-			Profiler.EndSample();
+			VPOWaterVolumeManager.Instance.TryScheduleFloaterUpdates();
+			return false;
 		}
 	}
 }

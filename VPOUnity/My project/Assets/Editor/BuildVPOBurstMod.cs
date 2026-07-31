@@ -16,7 +16,6 @@ public static class BuildVPOBurstMod
 	public static void BuildGame()
 	{
 		var projectFolder = Path.Combine(Application.dataPath, "..");
-		var buildFolder = Path.Combine(projectFolder, "PluginTemp");
 		var defaultOutput = Path.GetFullPath(Path.Combine(projectFolder, "..", "..", "ValheimPerformanceOptimizations", "BurstOutput"));
 
 		var path = EditorUtility.SaveFolderPanel("Choose Final Mod Location", defaultOutput, "");
@@ -24,6 +23,24 @@ public static class BuildVPOBurstMod
 		{
 			return;
 		}
+
+		BuildTo(path);
+	}
+
+	/// <summary>
+	/// .\unity.exe -batchmode -quit -projectPath "..." -executeMethod BuildVPOBurstMod.BuildGameBatch
+	/// </summary>
+	public static void BuildGameBatch()
+	{
+		var projectFolder = Path.Combine(Application.dataPath, "..");
+		var defaultOutput = Path.GetFullPath(Path.Combine(projectFolder, "..", "..", "ValheimPerformanceOptimizations", "BurstOutput"));
+		BuildTo(defaultOutput);
+	}
+
+	private static void BuildTo(string path)
+	{
+		var projectFolder = Path.Combine(Application.dataPath, "..");
+		var buildFolder = Path.Combine(projectFolder, "PluginTemp");
 
 		FileUtil.DeleteFileOrDirectory(buildFolder);
 		Directory.CreateDirectory(buildFolder);
@@ -37,6 +54,10 @@ public static class BuildVPOBurstMod
 		if (report.summary.result != BuildResult.Succeeded)
 		{
 			Debug.LogError($"VPO Burst mod build failed: {report.summary.result}");
+			if (Application.isBatchMode)
+			{
+				EditorApplication.Exit(1);
+			}
 			return;
 		}
 
