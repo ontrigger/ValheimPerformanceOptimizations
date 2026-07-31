@@ -46,21 +46,33 @@
             <HintPath Condition="Exists('$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll')">$(VALHEIM_INSTALL)\BepInEx\plugins\Jotunn.dll</HintPath>
             <HintPath Condition="Exists('$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll')">$(R2MODMAN_INSTALL)\BepInEx\plugins\ValheimModding-Jotunn\Jotunn.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.Collections">
-            <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\Unity.Collections.dll</HintPath>
-        </Reference>
-        <Reference Include="Unity.Jobs">
-            <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\Unity.Jobs.dll</HintPath>
-        </Reference>
         <Reference Include="Unity.Mathematics">
             <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\Unity.Mathematics.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.UI.dll</HintPath>
         </Reference>
+        <Reference Include="VPOBurst_Managed">
+            <HintPath>BurstOutput\VPOBurst_Managed.dll</HintPath>
+            <Private>true</Private>
+        </Reference>
+        <Reference Include="Unity.Burst">
+            <HintPath>BurstOutput\Unity.Burst.dll</HintPath>
+            <Private>true</Private>
+        </Reference>
     </ItemGroup>
     <ItemGroup>
         <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="BurstOutput\VPOBurst_win_x86_64.dll" Condition="Exists('BurstOutput\VPOBurst_win_x86_64.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>VPOBurst_win_x86_64.dll</Link>
+        </None>
+        <None Include="BurstOutput\Unity.Burst.Unsafe.dll" Condition="Exists('BurstOutput\Unity.Burst.Unsafe.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>Unity.Burst.Unsafe.dll</Link>
+        </None>
     </ItemGroup>
     <PropertyGroup Condition="'$(Configuration)' == 'Release'">
         <PostBuildEvent>

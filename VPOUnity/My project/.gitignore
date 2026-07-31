@@ -1,0 +1,46 @@
+# =============== #
+# Unity generated #
+# =============== #
+Temp/
+Obj/
+UnityGenerated/
+Library/
+PluginTemp/
+# ===================================== #
+# Visual Studio / MonoDevelop generated #
+# ===================================== #
+ExportedObj/
+*.svd
+*.userprefs
+*.csproj
+*.pidb
+*.suo
+*.sln
+*.user
+*.unityproj
+*.booproj
+*.log
+.idea/
+.cursor/
+.venv/
+Build/*.pdb
+# ============ #
+# OS generated #
+# ============ #
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vs
+.log
+
+.vscode
+
+Build/
+venv/
+PythonProject/output/
+PythonProject/pythonproject.egg-info/
+PythonProject/*.avi

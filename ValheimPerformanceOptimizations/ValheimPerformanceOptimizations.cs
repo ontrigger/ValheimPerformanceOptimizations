@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BepInEx;
@@ -36,6 +36,8 @@ namespace ValheimPerformanceOptimizations
 		private void Awake()
 		{
 			_instance = this;
+
+			BurstLoader.Initialize();
 
 			_harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), PluginId);
 

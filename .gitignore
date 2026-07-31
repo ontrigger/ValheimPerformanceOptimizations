@@ -2,6 +2,7 @@ bin/
 obj/
 /packages/
 package/
+ValheimPerformanceOptimizations/BurstOutput/
 
 riderModule.iml
 /_ReSharper.Caches/
