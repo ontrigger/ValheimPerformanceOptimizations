@@ -18,7 +18,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private class CachedWearNTear
 		{
-			public Collider[] Source;
 			public readonly HashSet<Collider> Values = new();
 			public bool HasCenterOfMass;
 			public Vector3 CenterOfMass;
@@ -66,7 +65,6 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static void ReturnWearNTearCache(CachedWearNTear cached)
 		{
-			cached.Source = null;
 			cached.Values.Clear();
 			cached.HasCenterOfMass = false;
 			cached.CenterOfMass = default;
@@ -75,14 +73,11 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		private static HashSet<Collider> GetOwnColliders(WearNTear owner)
 		{
-			var colliders = owner.m_colliders;
 			var cached = GetOrCreateWearNTearCache(owner);
 
-			if (cached.Source != colliders)
+			if (cached.Values.Count == 0)
 			{
-				cached.Source = colliders;
-				cached.Values.Clear();
-				foreach (var ownCollider in colliders)
+				foreach (var ownCollider in owner.m_colliders)
 				{
 					cached.Values.Add(ownCollider);
 				}
