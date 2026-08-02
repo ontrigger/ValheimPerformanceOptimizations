@@ -5,7 +5,7 @@ using Unity.Jobs;
 using UnityEngine;
 using VPOBurst;
 
-namespace ValheimPerformanceOptimizations.Patches
+namespace ValheimPerformanceOptimizations.Patches.Water
 {
 	public class VPOWaterVolumeManager : MonoBehaviour
 	{

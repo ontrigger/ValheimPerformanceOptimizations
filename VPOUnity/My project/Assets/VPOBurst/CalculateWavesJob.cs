@@ -18,56 +18,69 @@ namespace VPOBurst
 	}
 
 	[BurstCompile]
-	public struct CalculateWavesJob : IJobParallelFor
+	public static class WaterWaves
 	{
-		[ReadOnly] public NativeArray<WaveRequestData> WaveRequests;
-		[ReadOnly] public float Time;
-
-		[WriteOnly] public NativeArray<float> Results;
-
-		public void Execute(int index)
-		{
-			var request = WaveRequests[index];
-			var wave = 0f;
-
-			if (request.UseGlobalWind && request.Depth != 0f)
-			{
-				if (request.WindBlend == 0f)
-				{
-					wave = CalcWave(request.Position, request.Depth, request.Wind, Time, 1f);
-				}
-				else
-				{
-					var a = CalcWave(request.Position, request.Depth, request.Wind, Time, 1f);
-					var b = CalcWave(request.Position, request.Depth, request.Wind2, Time, 1f);
-					wave = math.lerp(a, b, request.WindBlend);
-				}
-			}
-
-			Results[index] = request.HeightOffset + wave;
-		}
-
-		private static float CalcWave(Vector3 worldPos, float depth, Vector4 wind, float waterTime, float waveFactor)
+		[BurstCompile]
+		public static float CalcWave(
+			in float3 worldPos, float depth, in float4 wind, float waterTime, float waveFactor)
 		{
 			var dir0 = math.normalize(new float2(wind.x, wind.z));
 			var tan0 = new float2(-dir0.y, dir0.x);
 
+			// Mathf.Lerp clamps t; math.lerp does not.
 			var depthScale = math.lerp(0f, wind.w, math.saturate(depth));
 			var time = waterTime / 20f;
 
 			var sum =
-				CreateWave(worldPos, time, 10f, 0.04f, 8f, dir0, tan0, 0.5f) +
-				CreateWave(worldPos, time, 14.123f, 0.08f, 6f, Dir1, Tan1, 0.5f) +
-				CreateWave(worldPos, time, 22.312f, 0.1f, 4f, Dir2, Tan2, 0.5f) +
-				CreateWave(worldPos, time, 31.42f, 0.2f, 2f, Dir3, Tan3, 0.5f) +
-				CreateWave(worldPos, time, 35.42f, 0.4f, 1f, Dir4, Tan4, 0.5f) +
-				CreateWave(worldPos, time, 38.1223f, 1f, 0.8f, Dir5, Tan5, 0.7f) +
-				CreateWave(worldPos, time, 41.1223f, 1.2f, 0.6f * waveFactor, Dir6, Tan6, 0.8f) +
-				CreateWave(worldPos, time, 51.5123f, 1.3f, 0.4f * waveFactor, Dir7, Tan7, 0.9f) +
-				CreateWave(worldPos, time, 54.2f, 1.3f, 0.3f * waveFactor, Dir8, Tan8, 0.9f) +
-				CreateWave(worldPos, time, 56.123f, 1.5f, 0.2f * waveFactor, Dir9, Tan9, 0.9f);
+				CreateWave(in worldPos, time, 10f, 0.04f, 8f, dir0, tan0, 0.5f) +
+				CreateWave(in worldPos, time, 14.123f, 0.08f, 6f, Dir1, Tan1, 0.5f) +
+				CreateWave(in worldPos, time, 22.312f, 0.1f, 4f, Dir2, Tan2, 0.5f) +
+				CreateWave(in worldPos, time, 31.42f, 0.2f, 2f, Dir3, Tan3, 0.5f) +
+				CreateWave(in worldPos, time, 35.42f, 0.4f, 1f, Dir4, Tan4, 0.5f) +
+				CreateWave(in worldPos, time, 38.1223f, 1f, 0.8f, Dir5, Tan5, 0.7f) +
+				CreateWave(in worldPos, time, 41.1223f, 1.2f, 0.6f * waveFactor, Dir6, Tan6, 0.8f) +
+				CreateWave(in worldPos, time, 51.5123f, 1.3f, 0.4f * waveFactor, Dir7, Tan7, 0.9f) +
+				CreateWave(in worldPos, time, 54.2f, 1.3f, 0.3f * waveFactor, Dir8, Tan8, 0.9f) +
+				CreateWave(in worldPos, time, 56.123f, 1.5f, 0.2f * waveFactor, Dir9, Tan9, 0.9f);
 
 			return sum * depthScale;
+		}
+
+		[BurstCompile]
+		public static float CalcWaveBlended(
+			in float3 worldPos, float depth,
+			in float4 wind1, in float4 wind2, float windBlend,
+			float waterTime, float waveFactor)
+		{
+			if (depth == 0f)
+			{
+				return 0f;
+			}
+
+			if (windBlend == 0f)
+			{
+				return CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor);
+			}
+
+			var a = CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor);
+			var b = CalcWave(in worldPos, depth, in wind2, waterTime, waveFactor);
+			return math.lerp(a, b, windBlend);
+		}
+
+		private static float CreateWave(
+			in float3 worldPos, float time, float waveSpeed, float waveLength, float waveHeight,
+			float2 dir, float2 tangent, float sharpness)
+		{
+			var vector = -(worldPos.z * dir + worldPos.x * tangent);
+			var num = time * waveSpeed;
+			return (TrochSin(num + vector.y * waveLength, sharpness)
+					* TrochSin(num * 0.123f + vector.x * 0.13123f * waveLength, sharpness) - 0.2f)
+				* waveHeight;
+		}
+
+		private static float TrochSin(float x, float k)
+		{
+			return math.sin(x - math.cos(x) * k) * 0.5f + 0.5f;
 		}
 
 		private static readonly float2 Dir1 = math.normalize(new float2(1.0312f, 0.312f));
@@ -88,21 +101,31 @@ namespace VPOBurst
 		private static readonly float2 Tan8 = new float2(-Dir8.y, Dir8.x);
 		private static readonly float2 Dir9 = math.normalize(new float2(0.5312f, -0.812f));
 		private static readonly float2 Tan9 = new float2(-Dir9.y, Dir9.x);
+	}
 
-		private static float CreateWave(
-			Vector3 worldPos, float time, float waveSpeed, float waveLength, float waveHeight,
-			float2 dir, float2 tangent, float sharpness)
-		{
-			var vector = -(worldPos.z * dir + worldPos.x * tangent);
-			var num = time * waveSpeed;
-			return (TrochSin(num + vector.y * waveLength, sharpness)
-					* TrochSin(num * 0.123f + vector.x * 0.13123f * waveLength, sharpness) - 0.2f)
-				* waveHeight;
-		}
+	[BurstCompile]
+	public struct CalculateWavesJob : IJobParallelFor
+	{
+		[ReadOnly] public NativeArray<WaveRequestData> WaveRequests;
+		[ReadOnly] public float Time;
 
-		private static float TrochSin(float x, float k)
+		[WriteOnly] public NativeArray<float> Results;
+
+		public void Execute(int index)
 		{
-			return math.sin(x - math.cos(x) * k) * 0.5f + 0.5f;
+			var request = WaveRequests[index];
+			var wave = 0f;
+
+			if (request.UseGlobalWind && request.Depth != 0f)
+			{
+				var worldPos = (float3)request.Position;
+				var wind1 = (float4)request.Wind;
+				var wind2 = (float4)request.Wind2;
+				wave = WaterWaves.CalcWaveBlended(
+					in worldPos, request.Depth, in wind1, in wind2, request.WindBlend, Time, 1f);
+			}
+
+			Results[index] = request.HeightOffset + wave;
 		}
 	}
 }
