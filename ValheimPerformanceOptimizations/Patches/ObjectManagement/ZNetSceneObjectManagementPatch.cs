@@ -119,7 +119,8 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 
 			var created = 0;
 			__instance.CreateObjectsSorted(currentNearObjects, maxCreatedPerFrame, ref created);
-			__instance.CreateDistantObjects(currentDistantObjects, maxCreatedPerFrame, ref created);
+			var distantCreated = 0;
+			__instance.CreateDistantObjects(currentDistantObjects, maxCreatedPerFrame, ref distantCreated);
 
 			return false;
 		}
@@ -381,9 +382,9 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 
 		private static bool IsInActiveRange(bool distant, Vector2s sector)
 		{
-			return distant
-				? _lastDistantZoneSet.Contains(sector)
-				: _lastNearZoneSet.Contains(sector);
+			if (_lastNearZoneSet.Contains(sector)) { return true; }
+
+			return distant && _lastDistantZoneSet.Contains(sector);
 		}
 
 		private static void EnqueueForCreation(ZDO zdo)
