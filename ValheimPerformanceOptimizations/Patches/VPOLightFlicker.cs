@@ -33,11 +33,6 @@ public sealed class VPOLightFlicker : LightFlicker, IMonoUpdater
 
 		parentTransform = transform.parent;
 		parentHasZSyncTransform = parentTransform && parentTransform.GetComponent<ZSyncTransform>();
-		if (parentHasZSyncTransform)
-		{
-			VPO.Logger.LogWarning(
-				"VPOLightFlicker: ZSyncTransform detected on parent of light flicker. This is not supported and will cause performance issues.");
-		}
 	}
 
 	new private void OnEnable()
