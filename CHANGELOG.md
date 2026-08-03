@@ -1,3 +1,19 @@
+# Changes in 1.0.0
+
+Major rewrite for current Valheim:
+
+* Rewritten ZNetScene object streaming - no per-frame overhead when creating/destroying world objects when not needed
+* Burst-accelerated water wave jobs - cheaper wave math for floaters, fish, and surface queries
+* Burst terrain vertex color generation with fewer Color[] allocations
+* Modernized threaded terrain collision baking - less hitching while exploring
+* ZSFX optimizations for audiosources that keep playing while outside audible range
+* Light flicker culling - skip expensive flicker updates for point lights outside the camera
+* WearNTear support caching - slightly lower structural integrity CPU cost in large bases
+* Time-sliced reflection renderer - render cubemap faces over multiple frames
+* Prefab/particle cleanup - fire particles no longer render outside view frustum
+* Faster server-side ZDO ownership release scans
+* VisEquipment ZDO int caching and BinarySearchDictionary allocation fix
+
 # Changes in 0.7.6
 
 * Fixed conflict with SharedMap

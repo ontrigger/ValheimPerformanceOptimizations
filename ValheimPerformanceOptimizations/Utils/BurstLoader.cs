@@ -28,8 +28,6 @@ namespace ValheimPerformanceOptimizations
 			{
 				ValheimPerformanceOptimizations.Logger.LogWarning(
 					$"VPO Burst: missing '{BurstLibraryFileName}' next to the plugin.");
-				JobsAreBursted = ProbeIsBursted();
-				LogBurstStatus();
 				return;
 			}
 
@@ -41,21 +39,13 @@ namespace ValheimPerformanceOptimizations
 			}
 
 			JobsAreBursted = ProbeIsBursted();
-			LogBurstStatus();
-		}
-
-		private static void LogBurstStatus()
-		{
 			if (JobsAreBursted)
 			{
-				ValheimPerformanceOptimizations.Logger.LogInfo(
-					$"VPO Burst: GenerateColorsJob is Burst-compiled (library loaded={LibraryLoaded})");
+				ValheimPerformanceOptimizations.Logger.LogInfo($"VPO Burst: Burst jobs are enabled");
 			}
 			else
 			{
-				ValheimPerformanceOptimizations.Logger.LogWarning(
-					$"VPO Burst: GenerateColorsJob is NOT Burst-compiled (library loaded={LibraryLoaded}). " +
-					"Jobs will run as managed fallback.");
+				ValheimPerformanceOptimizations.Logger.LogWarning($"VPO Burst: Burst jobs are disabled");
 			}
 		}
 

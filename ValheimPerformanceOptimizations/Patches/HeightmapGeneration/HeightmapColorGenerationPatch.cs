@@ -26,8 +26,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		private static int _lastHeightmapWidth = -1;
 		private static int _lastDistantHeightmapWidth = -1;
 
-		private static bool _loggedBurstStatus;
-
 		[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
 		public static void Postfix(Heightmap __instance)
 		{
@@ -143,22 +141,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 				};
 
 				job.Schedule(_heightmapColors.Length, __instance.m_width + 1).Complete();
-
-				if (!_loggedBurstStatus)
-				{
-					_loggedBurstStatus = true;
-					var isBursted = BurstLoader.ProbeIsBursted();
-					if (isBursted)
-					{
-						ValheimPerformanceOptimizations.Logger.LogInfo(
-							"VPO Burst: GenerateColorsJob scheduled path is using Burst");
-					}
-					else
-					{
-						ValheimPerformanceOptimizations.Logger.LogWarning(
-							"VPO Burst: GenerateColorsJob scheduled path is NOT using Burst");
-					}
-				}
 			}
 			else
 			{
