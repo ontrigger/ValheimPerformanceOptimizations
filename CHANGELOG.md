@@ -1,3 +1,7 @@
+# Changes in 1.0.2
+
+* New physics patch that saves ~50kb of allocations per frame
+
 # Changes in 1.0.1
 
 * Fixed certain objects being erroneously marked as transparent, causing them to fall through the floor
