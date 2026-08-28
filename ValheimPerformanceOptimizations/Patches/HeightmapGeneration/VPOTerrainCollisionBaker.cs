@@ -4,9 +4,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
-using ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
 
-namespace ValheimPerformanceOptimizations.Patches
+namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	[DefaultExecutionOrder(-1000)]
 	public class VPOTerrainCollisionBaker : MonoBehaviour

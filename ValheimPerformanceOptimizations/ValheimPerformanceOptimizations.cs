@@ -12,18 +12,20 @@ namespace ValheimPerformanceOptimizations
 
 	[BepInDependency(ValheimRaftId, BepInDependency.DependencyFlags.SoftDependency)]
 	[BepInDependency(JotunnId, BepInDependency.DependencyFlags.SoftDependency)]
+	[BepInDependency(HDTerrain, BepInDependency.DependencyFlags.SoftDependency)]
 	[BepInPlugin(PluginId, "Valheim Performance Optimizations", PluginVersion)]
 	public class ValheimPerformanceOptimizations : BaseUnityPlugin
 	{
 		public const string PluginId = "dev.ontrigger.vpo";
-		public const string PluginVersion = "1.0.2";
+		public const string PluginVersion = "1.0.3";
 
 		public static event Action<ConfigFile, Harmony> OnInitialized;
 
 		internal const string ValheimRaftId = "BepIn.Sarcen.ValheimRAFT";
 		internal const string JotunnId = "com.jotunn.jotunn";
+		internal const string HDTerrain = "Badgers.ValheimHDTerrain";
 
-		private static ValheimPerformanceOptimizations _instance;
+		private static VPO _instance;
 		private Harmony _harmony;
 
 		private ValheimPerformanceOptimizations()

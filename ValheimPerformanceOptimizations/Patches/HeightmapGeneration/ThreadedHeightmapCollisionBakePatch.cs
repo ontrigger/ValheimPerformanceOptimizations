@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using BepInEx.Configuration;
 using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
@@ -19,26 +18,6 @@ public static class ThreadedHeightmapCollisionBakePatch
 {
 	public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new();
 	private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new();
-
-	private static ConfigEntry<bool> _threadedCollisionBakeEnabled;
-
-	static ThreadedHeightmapCollisionBakePatch()
-	{
-		ValheimPerformanceOptimizations.OnInitialized += Initialize;
-	}
-
-	public static void Initialize(ConfigFile configFile, Harmony harmony)
-	{
-		const string key = "Threaded terrain collision baking enabled";
-		const string description =
-			"Experimental: if enabled terrain is generated in parallel, this reduces lag spikes when moving through the world. This is an experimental feature, please report any issues that may occur.";
-		_threadedCollisionBakeEnabled = configFile.Bind("General", key, true, description);
-
-		if (_threadedCollisionBakeEnabled.Value)
-		{
-			harmony.PatchAll(typeof(ThreadedHeightmapCollisionBakePatch));
-		}
-	}
 
 	[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
 	[HarmonyPostfix]

@@ -12,7 +12,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 	/// <summary>
 	/// Remove pointless Color[32x32]/ToArray() allocations
 	/// </summary>
-	[HarmonyPatch]
 	public class HeightmapColorGenerationPatch
 	{
 		private static List<Vector2> _heightmapUVs;
