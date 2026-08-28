@@ -1,3 +1,7 @@
+# Changes in 1.0.3
+
+* Added compatibility with Badgers HD Terrain 2.0
+
 # Changes in 1.0.2
 
 * New physics patch that saves ~50kb of allocations per frame
