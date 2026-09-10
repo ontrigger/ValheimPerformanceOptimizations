@@ -117,6 +117,7 @@ public static class PrefabPatches
 
 	private static int PatchLocalParticleSystemCulling(GameObject prefab)
 	{
+		var effectLayer = LayerMask.NameToLayer("effect");
 		var patched = 0;
 		foreach (var particleSystem in prefab.GetComponentsInChildren<ParticleSystem>(true))
 		{
@@ -144,8 +145,12 @@ public static class PrefabPatches
 				continue;
 			}
 
-			// necessary to make the reflection renderer not re-simulate particles
-			go.layer = LayerMask.NameToLayer("TransparentFX");
+			if (go.layer != effectLayer)
+			{
+				// necessary to make the reflection renderer not re-simulate particles
+				go.layer = LayerMask.NameToLayer("TransparentFX");
+			}
+			
 			patched += 1;
 		}
 
@@ -240,7 +245,7 @@ public static class PrefabPatches
 				+ (DateTime.Now - now).TotalMilliseconds + " ms");
 		}
 
-		PatchSnowStormParticle();
+		//PatchSnowStormParticle();
 		patched += 1;
 
 		VPO.Logger.LogInfo(
