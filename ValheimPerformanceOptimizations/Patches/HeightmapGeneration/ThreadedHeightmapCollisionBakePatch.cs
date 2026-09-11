@@ -17,7 +17,7 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
 public static class ThreadedHeightmapCollisionBakePatch
 {
 	public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new();
-	private static readonly Dictionary<Vector2i, GameObject> SpawnedZones = new();
+	private static readonly Dictionary<Vector2s, GameObject> SpawnedZones = new();
 
 	[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
 	[HarmonyPostfix]
@@ -39,7 +39,11 @@ public static class ThreadedHeightmapCollisionBakePatch
 	{
 		if (heightmap == null) { return; }
 
-		heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
+		if (heightmap.m_collider)
+		{
+			heightmap.m_collider.sharedMesh = heightmap.m_collisionMesh;
+		}
+
 		HeightmapFinished[heightmap] = true;
 	}
 
@@ -48,6 +52,10 @@ public static class ThreadedHeightmapCollisionBakePatch
 	[HarmonyPrefix]
 	private static bool RebuildCollisionMeshPatch(Heightmap __instance)
 	{
+		// A full regeneration can happen more than once during a heightmap's lifetime.
+		// Invalidate the previous bake before publishing the newly generated mesh.
+		HeightmapFinished[__instance] = false;
+
 		var mesh = __instance.m_collisionMesh;
 		if (mesh == null)
 		{
@@ -109,10 +117,15 @@ public static class ThreadedHeightmapCollisionBakePatch
 		__instance.m_collisionMesh = mesh;
 
 		// TODO: merge it all
-		var deferBake = VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance, OnBakeDone);
-		if (__instance.m_collider && !deferBake)
+		var deferBake = __instance.m_collider &&
+			VPOTerrainCollisionBaker.Instance.RequestAsyncCollisionBake(__instance, OnBakeDone);
+		if (!deferBake)
 		{
-			__instance.m_collider.sharedMesh = mesh;
+			if (__instance.m_collider)
+			{
+				__instance.m_collider.sharedMesh = mesh;
+			}
+
 			HeightmapFinished[__instance] = true;
 		}
 
@@ -146,14 +159,14 @@ public static class ThreadedHeightmapCollisionBakePatch
 	[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnZone))]
 	[HarmonyPrefix]
 	private static bool SpawnZone(
-		ZoneSystem __instance, ref bool __result, Vector2i zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
+		ZoneSystem __instance, ref bool __result, Vector2s zoneID, ZoneSystem.SpawnMode mode, out GameObject root)
 	{
 		var zonePos = ZoneSystem.GetZonePos(zoneID);
 
 		var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
 		if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
 			    componentInChildren.m_scale,
-			    componentInChildren.m_isDistantLod,
+			    componentInChildren.IsDistantLod,
 			    WorldGenerator.instance) || __instance.m_locationInstances.TryGetValue(zoneID, out var location) &&
 		    !location.m_placed &&
 		    !__instance.PokeCanSpawnLocation(location.m_location, true))
@@ -212,7 +225,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 		}
 
 		var mainCamera = Utils.GetMainCamera();
-		__result = IsHeightmapReady(mainCamera.transform.position);
+		__result = mainCamera && IsHeightmapReady(mainCamera.transform.position);
 	}
 
 	private static bool IsHeightmapReady(Vector3 pos)
@@ -240,7 +253,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 		HeightmapFinished.Clear();
 	}
 
-	private static GameObject GetOrCreateZone(GameObject zonePrefab, Vector2i zoneID, Vector3 zonePos)
+	private static GameObject GetOrCreateZone(GameObject zonePrefab, Vector2s zoneID, Vector3 zonePos)
 	{
 		GameObject zone;
 		if (!SpawnedZones.ContainsKey(zoneID))

@@ -45,17 +45,20 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 		public bool RequestAsyncCollisionBake(Heightmap heightmap, Action<Heightmap> bakeDoneCallback)
 		{
-			if (heightmap.m_isDistantLod) { return false; }
+			if (heightmap.IsDistantLod || !heightmap.m_collider) { return false; }
 
 			// can't bake with jobs if all workers are busy
 			if (bakeRequests.Count >= JobsUtility.JobWorkerCount) { return false; }
 
-			var bakeData = new BakeData(heightmap, bakeDoneCallback);
-			if (!bakeRequests.Contains(bakeData))
+			for (var i = 0; i < bakeRequests.Count; i++)
 			{
-				bakeRequests.Add(bakeData);
+				if (bakeRequests[i].Heightmap == heightmap)
+				{
+					return true;
+				}
 			}
 
+			bakeRequests.Add(new BakeData(heightmap, bakeDoneCallback));
 			return true;
 		}
 
