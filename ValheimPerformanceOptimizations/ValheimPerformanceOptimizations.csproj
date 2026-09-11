@@ -69,14 +69,7 @@
       the patches can be audited and updated against the new vanilla implementations.
     -->
     <ItemGroup>
-        <!-- Vanilla now persists and validates its own generated minimap textures. -->
-        <Compile Remove="Patches\MinimapGenerationPatch.cs" />
-
-        <!-- Terrain generation now uses BiomeSector and the zone APIs use Vector2s. -->
-        <Compile Remove="Patches\HeightmapGeneration\HeightmapColorGenerationPatch.cs" />
-        <Compile Remove="Patches\HeightmapGeneration\TerrainPatches.cs" />
-        <Compile Remove="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
-        <Compile Remove="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
+        <!-- Collision baking and zone integration still need the Vector2s/lifecycle port. -->
 
         <!-- Water waves now include the Deep North large-wave fade parameter. -->
         <Compile Remove="Patches\Water\BurstedCalcWavePatch.cs" />
