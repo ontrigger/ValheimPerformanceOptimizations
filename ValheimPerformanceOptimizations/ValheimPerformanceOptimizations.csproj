@@ -71,9 +71,6 @@
     <ItemGroup>
         <!-- Collision baking and zone integration still need the Vector2s/lifecycle port. -->
 
-        <!-- Water waves now include the Deep North large-wave fade parameter. -->
-        <Compile Remove="Patches\Water\BurstedCalcWavePatch.cs" />
-        <Compile Remove="Patches\Water\VPOWaterVolumeManager.cs" />
         <Compile Remove="Patches\Water\WaterVolumeVisibilityPatch.cs" />
 
         <!-- The replacement omits newer vanilla support-state update behavior. -->

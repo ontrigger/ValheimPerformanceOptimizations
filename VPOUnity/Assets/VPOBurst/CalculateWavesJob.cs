@@ -11,6 +11,7 @@ namespace VPOBurst
 		public Vector3 Position;
 		public float Depth;
 		public float HeightOffset;
+		public float WaveFactorBig;
 		public Vector4 Wind;
 		public Vector4 Wind2;
 		public float WindBlend;
@@ -22,7 +23,7 @@ namespace VPOBurst
 	{
 		[BurstCompile]
 		public static float CalcWave(
-			in float3 worldPos, float depth, in float4 wind, float waterTime, float waveFactor)
+			in float3 worldPos, float depth, in float4 wind, float waterTime, float waveFactor, float waveFactorBig)
 		{
 			var dir0 = math.normalize(new float2(wind.x, wind.z));
 			var tan0 = new float2(-dir0.y, dir0.x);
@@ -32,12 +33,12 @@ namespace VPOBurst
 			var time = waterTime / 20f;
 
 			var sum =
-				CreateWave(in worldPos, time, 10f, 0.04f, 8f, dir0, tan0, 0.5f) +
-				CreateWave(in worldPos, time, 14.123f, 0.08f, 6f, Dir1, Tan1, 0.5f) +
-				CreateWave(in worldPos, time, 22.312f, 0.1f, 4f, Dir2, Tan2, 0.5f) +
-				CreateWave(in worldPos, time, 31.42f, 0.2f, 2f, Dir3, Tan3, 0.5f) +
-				CreateWave(in worldPos, time, 35.42f, 0.4f, 1f, Dir4, Tan4, 0.5f) +
-				CreateWave(in worldPos, time, 38.1223f, 1f, 0.8f, Dir5, Tan5, 0.7f) +
+				CreateWave(in worldPos, time, 10f, 0.04f, 8f * waveFactorBig, dir0, tan0, 0.5f) +
+				CreateWave(in worldPos, time, 14.123f, 0.08f, 6f * waveFactorBig, Dir1, Tan1, 0.5f) +
+				CreateWave(in worldPos, time, 22.312f, 0.1f, 4f * waveFactorBig, Dir2, Tan2, 0.5f) +
+				CreateWave(in worldPos, time, 31.42f, 0.2f, 2f * waveFactorBig, Dir3, Tan3, 0.5f) +
+				CreateWave(in worldPos, time, 35.42f, 0.4f, 1f * waveFactorBig, Dir4, Tan4, 0.5f) +
+				CreateWave(in worldPos, time, 38.1223f, 1f, 0.8f * waveFactorBig, Dir5, Tan5, 0.7f) +
 				CreateWave(in worldPos, time, 41.1223f, 1.2f, 0.6f * waveFactor, Dir6, Tan6, 0.8f) +
 				CreateWave(in worldPos, time, 51.5123f, 1.3f, 0.4f * waveFactor, Dir7, Tan7, 0.9f) +
 				CreateWave(in worldPos, time, 54.2f, 1.3f, 0.3f * waveFactor, Dir8, Tan8, 0.9f) +
@@ -50,7 +51,7 @@ namespace VPOBurst
 		public static float CalcWaveBlended(
 			in float3 worldPos, float depth,
 			in float4 wind1, in float4 wind2, float windBlend,
-			float waterTime, float waveFactor)
+			float waterTime, float waveFactor, float waveFactorBig)
 		{
 			if (depth == 0f)
 			{
@@ -59,11 +60,11 @@ namespace VPOBurst
 
 			if (windBlend == 0f)
 			{
-				return CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor);
+				return CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor, waveFactorBig);
 			}
 
-			var a = CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor);
-			var b = CalcWave(in worldPos, depth, in wind2, waterTime, waveFactor);
+			var a = CalcWave(in worldPos, depth, in wind1, waterTime, waveFactor, waveFactorBig);
+			var b = CalcWave(in worldPos, depth, in wind2, waterTime, waveFactor, waveFactorBig);
 			return math.lerp(a, b, windBlend);
 		}
 
@@ -122,7 +123,7 @@ namespace VPOBurst
 				var wind1 = (float4)request.Wind;
 				var wind2 = (float4)request.Wind2;
 				wave = WaterWaves.CalcWaveBlended(
-					in worldPos, request.Depth, in wind1, in wind2, request.WindBlend, Time, 1f);
+					in worldPos, request.Depth, in wind1, in wind2, request.WindBlend, Time, 1f, request.WaveFactorBig);
 			}
 
 			Results[index] = request.HeightOffset + wave;

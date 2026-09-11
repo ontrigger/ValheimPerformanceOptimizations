@@ -93,6 +93,7 @@ namespace ValheimPerformanceOptimizations.Patches.Water
 						Position = position,
 						Depth = waterVolume.Depth(position),
 						HeightOffset = heightOffset - downwardsOffset,
+						WaveFactorBig = 1f - (float)WorldGenerator.DeepNorthWaveFade(position.x, position.z),
 						Wind = wind1,
 						Wind2 = wind2,
 						WindBlend = windAlpha,

@@ -13,7 +13,7 @@ namespace ValheimPerformanceOptimizations.Patches.Water
 	{
 		private static readonly MethodInfo VanillaCalcWave = AccessTools.Method(
 			typeof(WaterVolume), nameof(WaterVolume.CalcWave),
-			[typeof(Vector3), typeof(float), typeof(float), typeof(float)]);
+			[typeof(Vector3), typeof(float), typeof(float), typeof(float), typeof(float)]);
 
 		private static readonly MethodInfo BurstedCalcWave = AccessTools.Method(
 			typeof(BurstedCalcWavePatch), nameof(CalcWaveBursted));
@@ -42,13 +42,13 @@ namespace ValheimPerformanceOptimizations.Patches.Water
 		}
 
 		public static float CalcWaveBursted(
-			WaterVolume _, Vector3 worldPos, float depth, float waterTime, float waveFactor)
+			WaterVolume _, Vector3 worldPos, float depth, float waterTime, float waveFactor, float waveFactorBig)
 		{
 			var pos = (float3)worldPos;
 			var wind1 = (float4)WaterVolume.s_globalWind1;
 			var wind2 = (float4)WaterVolume.s_globalWind2;
 			return WaterWaves.CalcWaveBlended(
-				in pos, depth, in wind1, in wind2, WaterVolume.s_globalWindAlpha, waterTime, waveFactor);
+				in pos, depth, in wind1, in wind2, WaterVolume.s_globalWindAlpha, waterTime, waveFactor, waveFactorBig);
 		}
 	}
 }
