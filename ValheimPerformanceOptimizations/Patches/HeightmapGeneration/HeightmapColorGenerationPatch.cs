@@ -126,16 +126,16 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 			if (!isDistant)
 			{
-				var cornerBiomes = new NativeArray<int>(4, Allocator.TempJob);
+				var cornerColors = new NativeArray<Color32>(4, Allocator.TempJob);
 				for (var i = 0; i < 4; i++)
 				{
-					cornerBiomes[i] = (int)__instance.m_cornerBiomes[i];
+					cornerColors[i] = Heightmap.GetBiomeColor(__instance.m_cornerBiomes[i]);
 				}
 
 				var job = new GenerateColorsJob
 				{
 					Width = width,
-					CornerBiomes = cornerBiomes,
+					CornerColors = cornerColors,
 					Colors = _heightmapColors,
 				};
 
@@ -153,9 +153,9 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 
 					var wx = vector.x + j * scale;
 					var wy = vector.z + i * scale;
-					var biome = worldGen.GetBiome(wx, wy);
+					var biomeSector = worldGen.GetBiomeSector(wx, wy);
 
-					_distantHeightmapColors[idx] = Heightmap.GetBiomeColor(biome);
+					_distantHeightmapColors[idx] = Heightmap.GetBiomeColor(biomeSector);
 				}
 			}
 
