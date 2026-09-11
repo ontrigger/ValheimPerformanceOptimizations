@@ -1,15 +1,15 @@
 # ValheimPerformanceOptimizations
 
-Rendering, logic, and loading time optimizations for both client and server versions of Valheim.
+Rendering and logic optimizations for both client and server versions of Valheim.
 
 Unlike other mods of its kind, VPO does not disable, modify, throttle or otherwise change vanilla behavior at all.
-Please note that I have not tested this mod on servers outside
+Please note that I have not tested this mod on servers or in the new Deep North biome
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
-# Changes in 1.0.3
+# Changes in 1.1.0
 
-* Added compatibility with Badgers HD Terrain 2.0
+* Added support for the Deep North update
 
 ...
 ## Changes in 1.0.0

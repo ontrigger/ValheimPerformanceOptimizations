@@ -1,3 +1,7 @@
+# Changes in 1.1.0
+
+* Added support for the Deep North update
+
 # Changes in 1.0.3
 
 * Added compatibility with Badgers HD Terrain 2.0
