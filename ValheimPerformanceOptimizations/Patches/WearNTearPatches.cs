@@ -151,7 +151,7 @@ internal static class WearNTearPatches
 					}
 
 					var componentInParent = supportOwners[i];
-					if (!componentInParent.m_supports)
+					if (componentInParent == null || !componentInParent.m_supports)
 					{
 						break;
 					}
@@ -259,9 +259,13 @@ internal static class WearNTearPatches
 				var componentInParent = GetOrCacheOwner(collider);
 				if (componentInParent == null)
 				{
+					var supportBeforeReset = __instance.m_support;
 					__instance.m_support = maxSupport;
 					__instance.ClearCachedSupport();
-					__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+					if (!__instance.m_support.Equals(supportBeforeReset))
+					{
+						__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+					}
 					return false;
 				}
 
@@ -307,8 +311,12 @@ internal static class WearNTearPatches
 
 		if (flag)
 		{
+			var supportBeforeTerrain = __instance.m_support;
 			__instance.m_support = maxSupport;
-			__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+			if (!__instance.m_support.Equals(supportBeforeTerrain))
+			{
+				__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+			}
 			return false;
 		}
 
@@ -338,8 +346,12 @@ internal static class WearNTearPatches
 			}
 		}
 
+		var previousSupport = __instance.m_support;
 		__instance.m_support = Mathf.Min(num3, maxSupport);
-		__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+		if (!__instance.m_support.Equals(previousSupport))
+		{
+			__instance.m_nview.GetZDO().Set(ZDOVars.s_support, __instance.m_support);
+		}
 		if (!__instance.HaveSupport())
 		{
 			__instance.ClearCachedSupport();

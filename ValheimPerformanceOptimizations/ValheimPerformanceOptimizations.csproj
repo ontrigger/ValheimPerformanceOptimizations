@@ -65,16 +65,14 @@
         <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
     </ItemGroup>
     <!--
-      Temporarily disabled for Valheim 1.0.7. Keep the sources in the project tree so
-      the patches can be audited and updated against the new vanilla implementations.
+      Some patches remain temporarily disabled for Valheim 1.0.7. Keep their sources in
+      the project tree so they can be audited and updated against vanilla implementations.
     -->
     <ItemGroup>
         <!-- Collision baking and zone integration still need the Vector2s/lifecycle port. -->
 
         <Compile Remove="Patches\Water\WaterVolumeVisibilityPatch.cs" />
 
-        <!-- The replacement omits newer vanilla support-state update behavior. -->
-        <Compile Remove="Patches\WearNTearPatches.cs" />
     </ItemGroup>
     <ItemGroup>
         <None Include="BurstOutput\VPOBurst_win_x86_64.dll" Condition="Exists('BurstOutput\VPOBurst_win_x86_64.dll')">
