@@ -1,38 +1,41 @@
 using System.Collections.Generic;
 using HarmonyLib;
-using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace ValheimPerformanceOptimizations.Patches.ObjectManagement;
 
 /// <summary>
-/// Avoids repeatedly resolving an owned ZDOs owner through ZDOExtraData during the
-/// servers periodic ownership handoff scan.
+/// reduces chebyshev distance allocs, constant simulation distance rechecks and getowner calls
 /// </summary>
 [HarmonyPatch(typeof(ZDOMan), "ReleaseNearbyZDOS")]
 internal static class ZDOManReleaseNearbyPatch
 {
-	private static readonly ProfilerMarker ReleaseNearbyMarker = new("VPO.ZDOMan.ReleaseNearbyZDOS");
-
 	[HarmonyPrefix]
 	private static bool Prefix(ZDOMan __instance, Vector3 refPosition, long uid)
 	{
-		ReleaseNearbyMarker.Begin();
+		Profiler.BeginSample("ReleaseNearbyZDOS");
 		var zone = ZoneSystem.GetZone(refPosition);
+		var syncedSimulationDistance = ZNet.instance.GetSyncedSimulationDistance();
+		var zoneSize = ZoneSystem.instance.m_zoneSize;
+		var zonePosition = ZoneSystem.GetZonePos(zone);
 		List<ZDO> nearbyObjects = __instance.m_tempNearObjects;
 		nearbyObjects.Clear();
-		__instance.FindSectorObjects(zone, ZoneSystem.instance.m_activeArea, 0, nearbyObjects);
+		var nearSimulationDistance = new SimulationDistance(
+			syncedSimulationDistance.NearSimulationDistance,
+			0,
+			syncedSimulationDistance.IsClassic);
+		__instance.FindSectorObjects(zone, nearSimulationDistance, nearbyObjects);
 
-		var activatedArea = ZoneSystem.instance.m_activeArea - 1;
-		var isServerPass = uid == ZDOMan.GetSessionID();
+		var sessionId = ZDOMan.GetSessionID();
+		var isServerPass = uid == sessionId;
 		for (var i = 0; i < nearbyObjects.Count; i++)
 		{
 			var zdo = nearbyObjects[i];
 			if (!zdo.Persistent) { continue; }
 
-			var sector = zdo.GetSector();
+			var position = zdo.GetPosition();
 			var hasOwner = zdo.HasOwner();
-
 			long owner;
 			bool ownedByPassPeer;
 			if (isServerPass)
@@ -48,7 +51,7 @@ internal static class ZDOManReleaseNearbyPatch
 
 			if (ownedByPassPeer)
 			{
-				if (!ZNetScene.InActiveArea(sector, zone, activatedArea))
+				if (!IsInActiveArea(position, zonePosition, syncedSimulationDistance, zoneSize))
 				{
 					zdo.SetOwner(0L);
 				}
@@ -56,14 +59,77 @@ internal static class ZDOManReleaseNearbyPatch
 				continue;
 			}
 
-			if ((!hasOwner || !__instance.IsInPeerActiveArea(sector, owner))
-			    && ZNetScene.InActiveArea(sector, zone, activatedArea))
+			if ((!hasOwner || !IsInPeerActiveArea(
+				    position, owner, sessionId, syncedSimulationDistance, zoneSize))
+			    && IsInActiveArea(position, zonePosition, syncedSimulationDistance, zoneSize))
 			{
 				zdo.SetOwner(uid);
 			}
 		}
 
-		ReleaseNearbyMarker.End();
+		Profiler.EndSample();
+
 		return false;
+	}
+
+	private static bool IsInPeerActiveArea(
+		Vector3 point,
+		long uid,
+		long sessionId,
+		SimulationDistance simulationDistance,
+		float zoneSize)
+	{
+		Vector3 referencePosition;
+		if (uid == sessionId)
+		{
+			referencePosition = ZNet.instance.GetReferencePosition();
+		}
+		else
+		{
+			var peer = ZNet.instance.GetPeer(uid);
+			if (peer == null) { return false; }
+
+			referencePosition = peer.GetRefPos();
+		}
+
+		var zone = ZoneSystem.GetZone(referencePosition);
+		return IsInActiveArea(point, ZoneSystem.GetZonePos(zone), simulationDistance, zoneSize);
+	}
+
+	private static bool IsInActiveArea(
+		Vector3 point, Vector3 zonePosition, SimulationDistance simulationDistance, float zoneSize)
+	{
+		point.y = 0f;
+		var maxChebyshevDistance =
+			(simulationDistance.NearSimulationDistance == 1 ? 1f : 1.5f) * zoneSize;
+		if (Utils.ChebyshevDistance(zonePosition, point) > maxChebyshevDistance)
+		{
+			return false;
+		}
+
+		if (simulationDistance.NearSimulationDistance == 2 && !simulationDistance.IsClassic)
+		{
+			var maxDistance = zoneSize * 1.75f;
+			return (zonePosition - point).sqrMagnitude < maxDistance * maxDistance;
+		}
+
+		return true;
+	}
+
+	// this allocd 1.5mb lmfao
+	[HarmonyPatch(typeof(Utils), nameof(Utils.ChebyshevDistance), typeof(Vector3), typeof(Vector3))]
+	private static class ChebyshevDistanceAllocPatch
+	{
+		[HarmonyPrefix]
+		private static bool Prefix(Vector3 a, Vector3 b, ref float __result)
+		{
+			var x = Mathf.Abs(a.x - b.x);
+			var y = Mathf.Abs(a.y - b.y);
+			var z = Mathf.Abs(a.z - b.z);
+
+			// Use the two-argument overload so the params-array overload does not allocate.
+			__result = Mathf.Max(Mathf.Max(x, y), z);
+			return false;
+		}
 	}
 }

@@ -78,11 +78,6 @@
         <Compile Remove="Patches\HeightmapGeneration\ThreadedHeightmapCollisionBakePatch.cs" />
         <Compile Remove="Patches\HeightmapGeneration\VPOTerrainCollisionBaker.cs" />
 
-        <!-- Object streaming/ownership now uses configurable SimulationDistance ranges. -->
-        <Compile Remove="Patches\ObjectManagement\ZDOManReleaseNearbyPatch.cs" />
-        <Compile Remove="Patches\ObjectManagement\ZNetSceneObjectManagementPatch.cs" />
-        <Compile Remove="Patches\ObjectManagement\ZNetSceneObjectManagementPatch.ObjectCollection.cs" />
-
         <!-- Water waves now include the Deep North large-wave fade parameter. -->
         <Compile Remove="Patches\Water\BurstedCalcWavePatch.cs" />
         <Compile Remove="Patches\Water\VPOWaterVolumeManager.cs" />
