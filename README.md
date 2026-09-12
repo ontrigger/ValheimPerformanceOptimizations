@@ -7,6 +7,10 @@ Please note that I have not tested this mod on servers or in the new Deep North 
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+# Changes in 1.2.0
+
+* Improved GetZoneLocation performance; -10ms on Blue Hills
+
 # Changes in 1.1.0
 
 * Added support for the Deep North update

@@ -1,3 +1,7 @@
+# Changes in 1.2.0
+
+* Improved GetZoneLocation performance; -10ms on Blue Hills
+
 # Changes in 1.1.0
 
 * Added support for the Deep North update
