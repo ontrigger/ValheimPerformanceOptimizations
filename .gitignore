@@ -3,6 +3,7 @@ obj/
 /packages/
 package/
 ValheimPerformanceOptimizations/BurstOutput/
+VPOUnity/.*
 
 riderModule.iml
 /_ReSharper.Caches/
