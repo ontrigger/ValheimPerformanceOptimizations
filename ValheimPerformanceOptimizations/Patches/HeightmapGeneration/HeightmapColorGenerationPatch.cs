@@ -11,6 +11,8 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 {
 	/// <summary>
 	/// Remove pointless Color[32x32]/ToArray() allocations
+	/// Add burst-optimized color generation
+	/// Regenerate fixed amount of tangents per frame
 	/// </summary>
 	public class HeightmapColorGenerationPatch
 	{
@@ -21,6 +23,9 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		private static NativeArray<Color32> _distantHeightmapColors;
 
 		private static readonly Queue<Mesh> RegenerateTangentQueue = new();
+		private const int MaxTangentsPerFrame = 2;
+		private static int _tangentRegenerationFrame = -1;
+		private static int _tangentsRegeneratedThisFrame;
 
 		private static int _lastHeightmapWidth = -1;
 		private static int _lastDistantHeightmapWidth = -1;
@@ -200,8 +205,18 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		[HarmonyPostfix]
 		private static void CustomLateUpdatePostfix()
 		{
-			if (RegenerateTangentQueue.Count == 0) { return; }
+			if (_tangentRegenerationFrame != Time.frameCount)
+			{
+				_tangentRegenerationFrame = Time.frameCount;
+				_tangentsRegeneratedThisFrame = 0;
+			}
 
+			if (_tangentsRegeneratedThisFrame >= MaxTangentsPerFrame || RegenerateTangentQueue.Count == 0)
+			{
+				return;
+			}
+
+			Profiler.BeginSample("Regenerate tangents");
 			var mesh = RegenerateTangentQueue.Dequeue();
 			while (mesh == null && RegenerateTangentQueue.Count > 0)
 			{
@@ -211,7 +226,9 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 			if (mesh != null)
 			{
 				mesh.RecalculateTangents(~MeshUpdateFlags.Default);
+				_tangentsRegeneratedThisFrame++;
 			}
+			Profiler.EndSample();
 		}
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))] [HarmonyPostfix]

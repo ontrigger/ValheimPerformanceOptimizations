@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
-using Unity.Jobs.LowLevel.Unsafe;
 using UnityEngine;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
@@ -46,9 +45,6 @@ namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration
 		public bool RequestAsyncCollisionBake(Heightmap heightmap, Action<Heightmap> bakeDoneCallback)
 		{
 			if (heightmap.IsDistantLod || !heightmap.m_collider) { return false; }
-
-			// can't bake with jobs if all workers are busy
-			if (bakeRequests.Count >= JobsUtility.JobWorkerCount) { return false; }
 
 			for (var i = 0; i < bakeRequests.Count; i++)
 			{

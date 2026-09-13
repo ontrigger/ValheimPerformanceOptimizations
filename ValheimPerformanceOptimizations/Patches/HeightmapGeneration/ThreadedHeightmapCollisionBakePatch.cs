@@ -3,6 +3,7 @@ using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
+using UnityEngine.Profiling;
 using VPOBurst;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
@@ -52,6 +53,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 	[HarmonyPrefix]
 	private static bool RebuildCollisionMeshPatch(Heightmap __instance)
 	{
+		Profiler.BeginSample("RebuildCollisionMesh");
 		// A full regeneration can happen more than once during a heightmap's lifetime.
 		// Invalidate the previous bake before publishing the newly generated mesh.
 		HeightmapFinished[__instance] = false;
@@ -136,6 +138,8 @@ public static class ThreadedHeightmapCollisionBakePatch
 		{
 			indices.Dispose();
 		}
+		
+		Profiler.EndSample();
 
 		return false;
 	}
