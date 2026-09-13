@@ -3,13 +3,15 @@ using System.Reflection;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
+using UnityEngine;
 using VPOBurst;
 
 namespace ValheimPerformanceOptimizations
 {
 	public static class BurstLoader
 	{
-		public const string BurstLibraryFileName = "VPOBurst_win_x86_64.dll";
+		public const string WindowsBurstLibraryFileName = "VPOBurst_win_x86_64.dll";
+		public const string LinuxBurstLibraryFileName = "VPOBurst_linux_x86_64.so";
 
 		public static bool LibraryLoaded { get; private set; }
 		public static bool JobsAreBursted { get; private set; }
@@ -23,11 +25,28 @@ namespace ValheimPerformanceOptimizations
 				return;
 			}
 
-			var burstPath = Path.Combine(pluginDir, BurstLibraryFileName);
+			string burstLibraryFileName;
+			if (Application.platform == RuntimePlatform.WindowsPlayer)
+			{
+				burstLibraryFileName = WindowsBurstLibraryFileName;
+			}
+			else
+			{
+				burstLibraryFileName = Application.platform == RuntimePlatform.LinuxPlayer ? LinuxBurstLibraryFileName : null;
+			}
+			
+			if (burstLibraryFileName == null)
+			{
+				ValheimPerformanceOptimizations.Logger.LogWarning(
+					$"VPO Burst: unsupported Unity platform '{Application.platform}'");
+				return;
+			}
+
+			var burstPath = Path.Combine(pluginDir, burstLibraryFileName);
 			if (!File.Exists(burstPath))
 			{
 				ValheimPerformanceOptimizations.Logger.LogWarning(
-					$"VPO Burst: missing '{BurstLibraryFileName}' next to the plugin.");
+					$"VPO Burst: missing '{burstLibraryFileName}' next to the plugin.");
 				return;
 			}
 
@@ -47,6 +66,21 @@ namespace ValheimPerformanceOptimizations
 			{
 				ValheimPerformanceOptimizations.Logger.LogWarning($"VPO Burst: Burst jobs are disabled");
 			}
+		}
+
+		private static string GetBurstLibraryFileName()
+		{
+			if (Application.platform == RuntimePlatform.WindowsPlayer)
+			{
+				return WindowsBurstLibraryFileName;
+			}
+
+			if (Application.platform == RuntimePlatform.LinuxPlayer)
+			{
+				return LinuxBurstLibraryFileName;
+			}
+
+			return null;
 		}
 
 		public static bool ProbeIsBursted()

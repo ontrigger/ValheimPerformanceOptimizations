@@ -79,6 +79,10 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>VPOBurst_win_x86_64.dll</Link>
         </None>
+        <None Include="BurstOutput\VPOBurst_linux_x86_64.so" Condition="Exists('BurstOutput\VPOBurst_linux_x86_64.so')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>VPOBurst_linux_x86_64.so</Link>
+        </None>
         <None Include="BurstOutput\Unity.Burst.Unsafe.dll" Condition="Exists('BurstOutput\Unity.Burst.Unsafe.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>Unity.Burst.Unsafe.dll</Link>
@@ -86,8 +90,9 @@
     </ItemGroup>
     <PropertyGroup Condition="'$(Configuration)' == 'Release'">
         <PostBuildEvent>
-            powershell Compress-Archive -Path '$(ProjectDir)Package\*' -DestinationPath '$(SolutionDir)PublishOutput\$(MSBuildProjectName).zip' -Force
-            xcopy "$(TargetDir)" "$(VALHEIM_INSTALL)\BepInEx\plugins\$(MSBuildProjectName)\" /q /s /y /i
+            if exist "$(MSBuildProjectDirectory)\Package" if not exist "$(MSBuildProjectDirectory)\PublishOutput" mkdir "$(MSBuildProjectDirectory)\PublishOutput"
+            if exist "$(MSBuildProjectDirectory)\Package" powershell -NoProfile -Command "Compress-Archive -Path '$(MSBuildProjectDirectory)\Package\*' -DestinationPath '$(MSBuildProjectDirectory)\PublishOutput\$(MSBuildProjectName).zip' -Force"
+            if exist "$(MSBuildProjectDirectory)\$(OutputPath)" if not "$(VALHEIM_INSTALL)"=="" xcopy "$(MSBuildProjectDirectory)\$(OutputPath)" "$(VALHEIM_INSTALL)\BepInEx\plugins\$(MSBuildProjectName)\" /q /s /y /i
         </PostBuildEvent>
     </PropertyGroup>
 </Project>

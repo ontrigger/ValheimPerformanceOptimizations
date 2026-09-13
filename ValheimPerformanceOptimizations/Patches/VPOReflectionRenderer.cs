@@ -1,3 +1,4 @@
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -7,7 +8,6 @@ namespace ValheimPerformanceOptimizations.Patches;
 /// <summary>
 /// renders reflection probes one face at a time
 /// </summary>
-[HarmonyPatch]
 public class VPOReflectionRenderer : ReflectionUpdate
 {
 	public const int CubemapSize = 128;
@@ -213,5 +213,26 @@ public class VPOReflectionRenderer : ReflectionUpdate
 
 		var target = m_current == m_probe1 ? cubemap1 : cubemap2;
 		m_current.realtimeTexture = target;
+	}
+}
+
+public static class ReflectionProbeOptimizationConfig
+{
+	static ReflectionProbeOptimizationConfig()
+	{
+		ValheimPerformanceOptimizations.OnInitialized += Initialize;
+	}
+
+	private static void Initialize(ConfigFile configFile, Harmony harmony)
+	{
+		const string key = "Reflection probe optimizations enabled";
+		const string description =
+			"Time-sliced reflection probe rendering. Disable this if you encounter reflection probe issues on Linux.";
+
+		var enabled = configFile.Bind("General", key, true, description);
+		if (enabled.Value)
+		{
+			harmony.PatchAll(typeof(VPOReflectionRenderer));
+		}
 	}
 }
