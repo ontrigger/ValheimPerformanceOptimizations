@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace ValheimPerformanceOptimizations.Patches;
+using VPO = ValheimPerformanceOptimizations;
 
 /// <summary>
 /// renders reflection probes one face at a time
@@ -21,6 +22,7 @@ public class VPOReflectionRenderer : ReflectionUpdate
 
 	private CubemapFace nextFace = CubemapFace.Unknown; // -1 = idle, 0..5 = rendering faces
 	private bool isFinished;
+	private bool lastRenderFailed;
 	private Vector3 renderPosition;
 
 	private LayerMask characterMask;
@@ -50,7 +52,7 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		return false;
 	}
 
-	[HarmonyPatch(typeof(ReflectionUpdate), nameof(ReflectionUpdate.UpdateReflection))]
+	[HarmonyPatch(typeof(ReflectionUpdate), nameof(UpdateReflection))]
 	[HarmonyPrefix]
 	private static bool UpdateReflection_Prefix(ReflectionUpdate __instance)
 	{
@@ -69,8 +71,8 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		cam.enabled = false;
 		cam.farClipPlane = farClip;
 
-		cubemap1 = CreateCubemapRT();
-		cubemap2 = CreateCubemapRT();
+		cubemap1 = CreateCubemapRT("Reflection Cubemap 1");
+		cubemap2 = CreateCubemapRT("Reflection Cubemap 2");
 		
 		characterMask = LayerMask.NameToLayer("character");
 		effectMask = LayerMask.NameToLayer("effect");
@@ -82,12 +84,16 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		m_current = m_probe1;
 	}
 
-	private static RenderTexture CreateCubemapRT()
+	private static RenderTexture CreateCubemapRT(string textureName)
 	{
 		var rt = new RenderTexture(CubemapSize, CubemapSize, 16)
 		{
-			dimension = TextureDimension.Cube, useMipMap = true, autoGenerateMips = true,
+			name = textureName,
+			dimension = TextureDimension.Cube,
+			useMipMap = true,
+			autoGenerateMips = false,
 		};
+		DontDestroyOnLoad(rt);
 		return rt;
 	}
 
@@ -96,10 +102,12 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		if (cubemap1)
 		{
 			cubemap1.Release();
+			Destroy(cubemap1);
 		}
 		if (cubemap2)
 		{
 			cubemap2.Release();
+			Destroy(cubemap2);
 		}
 
 		m_instance = null;
@@ -160,6 +168,7 @@ public class VPOReflectionRenderer : ReflectionUpdate
 
 		nextFace = CubemapFace.PositiveX;
 		isFinished = false;
+		lastRenderFailed = false;
 	}
 
 	private void RequestCubemapRender()
@@ -195,7 +204,15 @@ public class VPOReflectionRenderer : ReflectionUpdate
 			}*/
 			LayerCullDistances[pieceMask.value] = 500f; // half distance for pieces
 			cam.layerCullDistances = LayerCullDistances;
-			cam.RenderToCubemap(target, 1 << (int)face);
+			if (!cam.RenderToCubemap(target, 1 << (int)face))
+			{
+				if (lastRenderFailed)
+				{
+					VPO.Logger.LogWarning(
+						$"Failed to render reflection cubemap face {face}");
+				}
+				lastRenderFailed = false;
+			}
 		}
 		finally
 		{
@@ -209,10 +226,19 @@ public class VPOReflectionRenderer : ReflectionUpdate
 	private void EndCubemapRender()
 	{
 		nextFace = CubemapFace.Unknown;
-		isFinished = true;
 
 		var target = m_current == m_probe1 ? cubemap1 : cubemap2;
-		m_current.realtimeTexture = target;
+		if (lastRenderFailed)
+		{
+			m_current = m_current == m_probe1 ? m_probe2 : m_probe1;
+			isFinished = false;
+			return;
+		}
+
+		target.GenerateMips();
+		m_current.customBakedTexture = target;
+		m_current.mode = ReflectionProbeMode.Custom;
+		isFinished = true;
 	}
 }
 
@@ -220,7 +246,7 @@ public static class ReflectionProbeOptimizationConfig
 {
 	static ReflectionProbeOptimizationConfig()
 	{
-		ValheimPerformanceOptimizations.OnInitialized += Initialize;
+		VPO.OnInitialized += Initialize;
 	}
 
 	private static void Initialize(ConfigFile configFile, Harmony harmony)

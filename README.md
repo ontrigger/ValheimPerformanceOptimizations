@@ -1,4 +1,4 @@
-# ValheimPerformanceOptimizations
+# ValheimPerformanceOptimizations [1.0 Compatible]
 
 Rendering and logic optimizations for both client and server versions of Valheim.
 
@@ -7,13 +7,17 @@ Please note that I have not tested this mod on servers or in the new Deep North 
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
+# Changes in 1.2.2
+
+* Speculative fix for reflection probe flickering
+
+# Changes in 1.2.1
+
+* Added Linux support
+
 # Changes in 1.2.0
 
 * Improved GetZoneLocation performance; -10ms on Blue Hills
-
-# Changes in 1.1.0
-
-* Added support for the Deep North update
 
 ...
 ## Changes in 1.0.0

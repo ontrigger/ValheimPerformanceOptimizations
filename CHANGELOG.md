@@ -1,3 +1,11 @@
+# Changes in 1.2.2
+
+* Speculative fix for reflection probe flickering
+
+# Changes in 1.2.1
+
+* Added Linux support
+
 # Changes in 1.2.0
 
 * Improved GetZoneLocation performance; -10ms on Blue Hills
