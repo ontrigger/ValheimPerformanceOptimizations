@@ -1,4 +1,5 @@
 using HarmonyLib;
+using UnityEngine;
 
 namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 {
@@ -57,6 +58,31 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 		private static void ZNetScene_AddInstance_Postfix(ZDO zdo)
 		{
 			MarkAreaMembershipDirty(zdo.m_uid);
+		}
+
+		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Destroy))]
+		[HarmonyPrefix]
+		private static bool ZNetScene_Destroy_Prefix(ZNetScene __instance, GameObject go)
+		{
+			var zNetView = go.GetComponent<ZNetView>();
+			if (zNetView && zNetView.GetZDO() != null)
+			{
+				var zdo = zNetView.GetZDO();
+				zNetView.ResetZDO();
+				__instance.m_instances.Remove(zdo);
+				if (zdo.IsOwner())
+				{
+					ZDOMan.instance.DestroyZDO(zdo);
+				}
+				else
+				{
+					// vanilla would recreate this zdo on the next scan because it never actually got destroyed serverside
+					MarkAreaMembershipDirty(zdo.m_uid);
+				}
+			}
+
+			Object.Destroy(go);
+			return false;
 		}
 
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Shutdown))]

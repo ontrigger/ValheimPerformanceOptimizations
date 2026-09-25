@@ -1,3 +1,8 @@
+# Changes in 1.2.3
+
+* Added Linux server support
+* Fixed infinite loading when entering dungeons due to vanilla incorrectly destroying non owned zdos
+
 # Changes in 1.2.2
 
 * Speculative fix for reflection probe flickering

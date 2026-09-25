@@ -7,17 +7,10 @@ Please note that I have not tested this mod on servers or in the new Deep North 
 
 You can use the mod on either the server or the client, or both, it should work regardless.
 
-# Changes in 1.2.2
+# Changes in 1.2.3
 
-* Speculative fix for reflection probe flickering
-
-# Changes in 1.2.1
-
-* Added Linux support
-
-# Changes in 1.2.0
-
-* Improved GetZoneLocation performance; -10ms on Blue Hills
+* Added Linux server support
+* Fixed infinite loading when entering dungeons due to vanilla incorrectly destroying non owned zdos
 
 ...
 ## Changes in 1.0.0
