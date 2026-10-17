@@ -239,19 +239,25 @@ public static class PrefabPatches
 		}
 		if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Null)
 		{
+#if DEBUG
 			var now = DateTime.Now;
+#endif
 			patched += namedPrefabs.PatchPrefabs(PrefabsWithWastedMaterials, PatchPrefabWithWastedMaterials);
+#if DEBUG
 			VPO.Logger.LogInfo("Combined prefab mats in "
 				+ (DateTime.Now - now).TotalMilliseconds + " ms");
+#endif
 		}
 
 		//PatchSnowStormParticle();
 		patched += 1;
 
+#if DEBUG
 		VPO.Logger.LogInfo(
 			$"Updated culling for {particleCullingPatched} local-space flare or flame particle systems"
 		);
 		VPO.Logger.LogInfo($"Patched {patched} prefabs");
+#endif
 
 		_isPatched = true;
 	}

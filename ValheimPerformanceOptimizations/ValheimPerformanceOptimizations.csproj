@@ -12,7 +12,7 @@
     <Import Project="..\Environment.props" />
 
     <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-        <DefineConstants>DEBUG;TRACE;ENABLE_PROFILER;_DEBUG</DefineConstants>
+        <DefineConstants>DEBUG;TRACE;ENABLE_PROFILER;_DEBUG;UNITY_ASSERTIONS</DefineConstants>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Configuration)' == 'Release'">
         <DefineConstants>TRACE</DefineConstants>
@@ -62,7 +62,11 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="..\IndirectRendering\IndirectRendering.csproj" />
+    </ItemGroup>
+    <ItemGroup>
         <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
+        <EmbeddedResource Include="AssetBundles\piece_shader" />
     </ItemGroup>
     <!--
       Some patches remain temporarily disabled for Valheim 1.0.7. Keep their sources in

@@ -1,7 +1,10 @@
+using System;
 using BepInEx.Configuration;
 using HarmonyLib;
+using IndirectRendering;
 using UnityEngine;
 using UnityEngine.Rendering;
+using ValheimPerformanceOptimizations.Patches.IndirectRendering;
 
 namespace ValheimPerformanceOptimizations.Patches;
 using VPO = ValheimPerformanceOptimizations;
@@ -12,6 +15,7 @@ using VPO = ValheimPerformanceOptimizations;
 public class VPOReflectionRenderer : ReflectionUpdate
 {
 	public const int CubemapSize = 128;
+	private const float PieceCullDistance = 500f;
 
 	public float farClip = 1000f;
 	public float lodBias = 5f;
@@ -21,6 +25,8 @@ public class VPOReflectionRenderer : ReflectionUpdate
 	private RenderTexture cubemap2;
 
 	private CubemapFace nextFace = CubemapFace.Unknown; // -1 = idle, 0..5 = rendering faces
+	private bool faceQueued;
+	private Action<int> renderQueuedFace;
 	private bool isFinished;
 	private bool lastRenderFailed;
 	private Vector3 renderPosition;
@@ -70,6 +76,7 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		cam = gameObject.AddComponent<Camera>();
 		cam.enabled = false;
 		cam.farClipPlane = farClip;
+		renderQueuedFace = RenderQueuedFace;
 
 		cubemap1 = CreateCubemapRT("Reflection Cubemap 1");
 		cubemap2 = CreateCubemapRT("Reflection Cubemap 2");
@@ -123,14 +130,10 @@ public class VPOReflectionRenderer : ReflectionUpdate
 			StartCubemapRender();
 		}
 
-		if (nextFace is >= 0 and <= CubemapFace.NegativeZ)
+		if (nextFace is >= 0 and <= CubemapFace.NegativeZ && !faceQueued)
 		{
-			RenderFace(nextFace);
-			nextFace += 1;
-			if (nextFace > CubemapFace.NegativeZ)
-			{
-				EndCubemapRender();
-			}
+			faceQueued = true;
+			VPOIndirectRenderer.QueueView(CreateFaceView(nextFace), renderQueuedFace);
 		}
 
 		if (isFinished)
@@ -177,7 +180,47 @@ public class VPOReflectionRenderer : ReflectionUpdate
 		StartCubemapRender();
 	}
 
-	private void RenderFace(CubemapFace face)
+	private IndirectView CreateFaceView(CubemapFace face)
+	{
+		var direction = face switch
+		{
+			CubemapFace.PositiveX => Vector3.right,
+			CubemapFace.NegativeX => Vector3.left,
+			CubemapFace.PositiveY => Vector3.up,
+			CubemapFace.NegativeY => Vector3.down,
+			CubemapFace.PositiveZ => Vector3.forward,
+			_ => Vector3.back,
+		};
+		var up = face is CubemapFace.PositiveY or CubemapFace.NegativeY ? Vector3.forward : Vector3.up;
+		var view = IndirectView.Perspective(
+			renderPosition,
+			Quaternion.LookRotation(direction, up),
+			91f,
+			cam.nearClipPlane,
+			farClip,
+			IndirectView.GetLodScale(lodBias, 90f));
+		// Indirect instances are mostly pieces, so they all take the piece distance.
+		view.Sphere.w = PieceCullDistance;
+		return view;
+	}
+
+	private void RenderQueuedFace(int viewIndex)
+	{
+		faceQueued = false;
+		if (!this || nextFace is < 0 or > CubemapFace.NegativeZ)
+		{
+			return;
+		}
+
+		RenderFace(nextFace, viewIndex);
+		nextFace += 1;
+		if (nextFace > CubemapFace.NegativeZ)
+		{
+			EndCubemapRender();
+		}
+	}
+
+	private void RenderFace(CubemapFace face, int viewIndex)
 	{
 		cam.transform.position = renderPosition;
 
@@ -202,8 +245,9 @@ public class VPOReflectionRenderer : ReflectionUpdate
 			{
 				LayerCullDistances[i] = ((1 << i) & cam.cullingMask) != 0 ? 1000f : 0f;
 			}*/
-			LayerCullDistances[pieceMask.value] = 500f; // half distance for pieces
+			LayerCullDistances[pieceMask.value] = PieceCullDistance;
 			cam.layerCullDistances = LayerCullDistances;
+			VPOIndirectRenderer.Renderer?.SubmitViewDraws(viewIndex, cam);
 			if (!cam.RenderToCubemap(target, 1 << (int)face))
 			{
 				if (lastRenderFailed)

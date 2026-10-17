@@ -6,6 +6,8 @@ Obj/
 UnityGenerated/
 Library/
 PluginTemp/
+Logs/
+UserSettings/
 # ===================================== #
 # Visual Studio / MonoDevelop generated #
 # ===================================== #
@@ -44,3 +46,8 @@ venv/
 PythonProject/output/
 PythonProject/pythonproject.egg-info/
 PythonProject/*.avi
+
+# Local configuration created by the Unity Pipeline editor package.
+Assets/Settings.meta
+Assets/Settings/Pipeline.meta
+Assets/Settings/Pipeline/

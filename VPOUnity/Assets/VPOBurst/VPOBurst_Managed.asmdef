@@ -11,7 +11,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "!INDIRECT_RENDERING_BURST_BUILD"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }

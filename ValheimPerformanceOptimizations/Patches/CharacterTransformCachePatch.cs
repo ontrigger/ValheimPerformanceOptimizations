@@ -10,7 +10,7 @@ namespace ValheimPerformanceOptimizations.Patches
 	/// <summary>
 	/// caches get_transform calls avoiding unmarshalling from native
 	/// </summary>
-	//[HarmonyPatch]
+	[HarmonyPatch]
 	internal static class CharacterTransformCachePatch
 	{
 		private static Character _cachedCharacter;
@@ -88,7 +88,7 @@ namespace ValheimPerformanceOptimizations.Patches
 		}
 	}
 
-	//[HarmonyPatch]
+	[HarmonyPatch]
 	internal static class CharacterTransformCacheTranspiler
 	{
 		private static readonly MethodInfo TransformGetter = AccessTools.PropertyGetter(
@@ -124,14 +124,38 @@ namespace ValheimPerformanceOptimizations.Patches
 			return !method.IsStatic
 				&& !method.IsAbstract
 				&& !method.ContainsGenericParameters
-				&& method.GetMethodBody() != null;
+				&& method.GetMethodBody() != null
+				&& ReadsOwnTransform(method);
+		}
+
+		/// <summary>
+		/// Patching a method stops Mono from inlining it, so methods without anything to rewrite
+		/// (IsOnGround, IsSwimming, ...) would only get slower
+		/// </summary>
+		private static bool ReadsOwnTransform(MethodBase method)
+		{
+			var previousOpcode = OpCodes.Nop;
+			foreach (var instruction in PatchProcessor.ReadMethodBody(method))
+			{
+				// reflection can hand out different MethodInfo objects for the same method, so compare handles
+				if (previousOpcode == OpCodes.Ldarg_0
+				    && instruction.Value is MethodInfo called
+				    && called.MethodHandle == TransformGetter.MethodHandle)
+				{
+					return true;
+				}
+
+				previousOpcode = instruction.Key;
+			}
+
+			return false;
 		}
 
 		[HarmonyTranspiler]
 		private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
 		{
 			var code = new List<CodeInstruction>(instructions);
-			for (var i = 1; i < code.Count; i++)
+			for (var i = 1; i < code.Count; i += 1)
 			{
 				if (!code[i].Calls(TransformGetter) || code[i - 1].opcode != OpCodes.Ldarg_0)
 				{

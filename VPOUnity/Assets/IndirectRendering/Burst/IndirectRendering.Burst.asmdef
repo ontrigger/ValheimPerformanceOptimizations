@@ -1,0 +1,20 @@
+{
+    "name": "IndirectRendering.Burst",
+    "rootNamespace": "IndirectRendering.Burst",
+    "references": [
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "!VPO_BURST_BUILD"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

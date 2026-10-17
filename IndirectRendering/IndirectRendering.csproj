@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <RootNamespace>IndirectRendering</RootNamespace>
+        <AssemblyName>IndirectRendering</AssemblyName>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    </PropertyGroup>
+
+    <Import Project="..\Environment.props" />
+
+    <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+        <DefineConstants>DEBUG;TRACE;ENABLE_PROFILER;_DEBUG;UNITY_ASSERTIONS</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <DefineConstants>TRACE</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="UnityEngine.Modules" Version="6000.0.61">
+            <IncludeAssets>all</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- For UnityEngine.ObjectDispatcher, which is internal; see InstanceTransformTracker. -->
+        <Publicize Include="UnityEngine.CoreModule" PublicizeTarget="All" PublicizeCompilerGenerated="false" IncludeOriginalAttributesAttribute="true" Strip="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="Unity.Mathematics">
+            <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\Unity.Mathematics.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <!-- Built by VPOUnity: BuildVPOBurstMod.BuildIndirectRenderingBatch. -->
+        <Reference Include="Unity.Collections">
+            <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\Unity.Collections.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="IndirectRendering.Burst">
+            <HintPath>BurstOutput\IndirectRendering.Burst.dll</HintPath>
+        </Reference>
+        <Reference Include="Unity.Burst">
+            <HintPath>BurstOutput\Unity.Burst.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="BurstOutput\IndirectRendering.Burst_win_x86_64.dll" Condition="Exists('BurstOutput\IndirectRendering.Burst_win_x86_64.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>IndirectRendering.Burst_win_x86_64.dll</Link>
+        </None>
+        <None Include="BurstOutput\Unity.Burst.Unsafe.dll" Condition="Exists('BurstOutput\Unity.Burst.Unsafe.dll')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>Unity.Burst.Unsafe.dll</Link>
+        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Built by VPOUnity: BuildVPOAssetBundles.BuildIndirectRendererBundleBatch. -->
+        <EmbeddedResource Include="AssetBundles\indirect_renderer" />
+    </ItemGroup>
+</Project>

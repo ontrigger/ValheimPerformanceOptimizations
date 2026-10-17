@@ -3,7 +3,16 @@ obj/
 /packages/
 package/
 ValheimPerformanceOptimizations/BurstOutput/
+IndirectRendering/BurstOutput/
 VPOUnity/.*
+/VPOUnityCacheRecovery-*/
+
+# Unity asset-bundle build metadata (the named runtime bundles are kept).
+/ValheimPerformanceOptimizations/AssetBundles/AssetBundles
+/ValheimPerformanceOptimizations/AssetBundles/AssetBundles.manifest
+/ValheimPerformanceOptimizations/AssetBundles/*.manifest
+/IndirectRendering/AssetBundles/AssetBundles
+/IndirectRendering/AssetBundles/*.manifest
 
 riderModule.iml
 /_ReSharper.Caches/

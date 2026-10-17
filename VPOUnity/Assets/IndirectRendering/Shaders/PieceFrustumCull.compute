@@ -1,0 +1,1240 @@
+#pragma kernel ShadowFrustumCull
+#pragma kernel PrepareShadowCascadeDraws
+#pragma kernel ClearShadowReceiverMap
+#pragma kernel BuildShadowDepthTiles
+#pragma kernel ScatterShadowReceivers
+#pragma kernel BuildShadowReceiverMips
+#pragma kernel ViewCull
+#pragma kernel ClearInstanceCounts
+#pragma kernel ScatterInstances
+#pragma kernel CopyInstances
+
+#define THREAD_GROUP_SIZE 64
+#define MAX_DISPATCH_GROUPS_X 65535
+#define MAX_DIRECTIONAL_CASCADES 4
+// Set on BatchData.visibleCapacityAndFlags for batches that cast shadows.
+#define SHADOW_CASTER_BATCH_FLAG 0x80000000u
+#define CULL_DIAGNOSTICS_CAMERA_OVERFLOW_INDEX 0
+#define CULL_DIAGNOSTICS_SHADOW_VOLUME_PASS_OFFSET 2
+#define CULL_DIAGNOSTICS_SHADOW_RECEIVER_CULL_OFFSET \
+	(CULL_DIAGNOSTICS_SHADOW_VOLUME_PASS_OFFSET + MAX_DIRECTIONAL_CASCADES)
+#define CULL_DIAGNOSTICS_VIEW_OVERFLOW_INDEX \
+	(CULL_DIAGNOSTICS_SHADOW_RECEIVER_CULL_OFFSET + MAX_DIRECTIONAL_CASCADES)
+// Set on ViewData.flags for views that only draw shadow casters.
+#define VIEW_SHADOW_CASTERS_ONLY_FLAG 1u
+// Set on the first of a point light's six face views, see ViewCull.
+#define VIEW_CUBE_FACES_FLAG 2u
+// Set on the camera's view, which also skips instances below
+// _MinimumScreenPercentage of the screen.
+#define VIEW_SCREEN_SIZE_FLAG 4u
+#define CUBE_FACE_COUNT 6
+#define SHADOW_RECEIVER_MAP_RESOLUTION 128
+#define SHADOW_RECEIVER_MAP_LEVEL_COUNT 8
+#define SHADOW_RECEIVER_MAP_CASCADE_STRIDE 21845
+#define SHADOW_RECEIVER_DEPTH_TILE_SIZE 16
+#define SHADOW_RECEIVER_SLAB_SEGMENT_CELL_EXTENT 4.0
+#define SHADOW_RECEIVER_MAX_SLAB_SEGMENTS 128
+// A receiver box is marked at the finest level where it spans at most this
+// many cells per axis, down to SHADOW_RECEIVER_SCATTER_MAX_LEVEL;
+// BuildShadowReceiverMips folds those levels into level 0.
+#define SHADOW_RECEIVER_SCATTER_MAX_CELL_SPAN 4
+#define SHADOW_RECEIVER_SCATTER_MAX_LEVEL 3
+
+struct VPOIndirectInstanceData
+{
+	float4x4 objectToWorld;
+	float4x4 worldToObject;
+};
+
+StructuredBuffer<VPOIndirectInstanceData> _InputInstances;
+
+struct BatchData
+{
+	float3 localBoundsCenter;
+	uint visibleOffset;
+	float3 localBoundsExtents;
+	uint visibleCapacityAndFlags;
+};
+
+// Shared by every view: view 0 is the camera, views 1-4 the shadow cascades.
+// Draw v * _BatchCount + b is batch b in view v; its visible range starts at
+// v * visible stride + _BatchData[b].visibleOffset.
+StructuredBuffer<BatchData> _BatchData;
+RWStructuredBuffer<uint> _VisibleInstanceIndices;
+RWStructuredBuffer<uint> _IndirectArguments;
+uint _BatchCount;
+RWStructuredBuffer<uint> _CullDiagnostics;
+uint _CullDiagnosticsEnabled;
+
+struct ShadowCullParameters
+{
+	uint instanceCount;
+	uint batchCount;
+	uint visibleStride;
+	uint planeCount;
+	// Main camera position and lodBias / (2 tan(fov / 2)). Shadows use the
+	// camera's, since a LODGroup selects its shadow casters with the camera's
+	// selection.
+	float4 lodParameters;
+};
+
+StructuredBuffer<ShadowCullParameters> _ShadowCullParameters;
+// Recorded into the shadow command buffers, which a cascade count change
+// re-records. A uniform loop bound keeps the shadow cull's barriers legal.
+uint _ShadowCascadeCount;
+// The camera's shadow-distance slice extruded toward the light.
+StructuredBuffer<float4> _ShadowCullingPlanes;
+
+struct ShadowDepthTile
+{
+	uint minimumDepth;
+	uint maximumDepth;
+};
+
+// Each cascade's receiver map is a SHADOW_RECEIVER_MAP_RESOLUTION grid with its
+// mip chain, at cascadeIndex * SHADOW_RECEIVER_MAP_CASCADE_STRIDE, covering the
+// light-space disc of the cascade's split sphere.
+struct ShadowReceiverParameters
+{
+	float4x4 inverseViewProjection;
+	// w: +1 when raw depth decreases with distance (reversed Z), -1 otherwise.
+	float4 lightBasisX;
+	float4 lightBasisY;
+	float4 lightBasisZ;
+	// xy depth texture size, z tile size, w raw depth at the shadow distance.
+	float4 depthSizeAndTileSize;
+	// xy tile counts, z receiver depth bias, w unused.
+	float4 tileCountAndSettings;
+};
+
+StructuredBuffer<ShadowReceiverParameters> _ShadowReceiverParameters;
+// Unity's split spheres captured on the GPU this frame: [0..3] = world center and
+// squared radius, [4].x = 1 once the capture draw has run.
+StructuredBuffer<float4> _ShadowCascadeSpheres;
+RWStructuredBuffer<uint> _ShadowReceiverMap;
+RWStructuredBuffer<ShadowDepthTile> _ShadowDepthTiles;
+
+RWStructuredBuffer<uint> _ShadowRenderArguments;
+RWStructuredBuffer<uint> _ShadowRenderVisibleOffsets;
+// The draws ClearInstanceCounts resets: _ClearDrawCount of them in
+// _ClearArguments, from _ClearDrawStart. Draw d is batch d % _BatchCount.
+RWStructuredBuffer<uint> _ClearArguments;
+uint _ClearDrawStart;
+uint _ClearDrawCount;
+// Per batch: index count, start index and base vertex of its draws.
+StructuredBuffer<uint4> _BatchArguments;
+
+Texture2D<float> _CameraDepthTexture;
+
+uint _ShadowPrepareViewIndex;
+// 6 when _ShadowPrepareViewIndex is a point light's first face view, else 1.
+uint _ShadowPrepareFaceCount;
+// The cube face being rendered, written by the capture draw before each face.
+StructuredBuffer<uint> _ShadowFaceCapture;
+
+// Every view but the shadow cascades, culled together in one pass: the
+// camera, then reflection faces, the sky depth camera and local shadow lights.
+struct ViewData
+{
+	// Inward-facing; (0, 0, 0, 1) always passes.
+	float4 planes[6];
+	// Same layout as ShadowCullParameters.lodParameters.
+	float4 lodParameters;
+	// xyz center, w radius; w <= 0 disables the test.
+	float4 sphere;
+	uint viewIndex;
+	uint flags;
+	uint2 padding;
+};
+
+StructuredBuffer<ViewData> _Views;
+uint _ViewCount;
+uint _VisibleStride;
+
+float4x4 _ViewProjectionMatrix;
+float _MinimumScreenPercentage;
+uint _InstanceCount;
+
+bool IsOutsidePlane(float4 plane, float3 center, float3 extents)
+{
+	return dot(plane.xyz, center) + plane.w + dot(abs(plane.xyz), extents) < 0.0;
+}
+
+bool IsInShadowVolume(float3 center, float3 extents, uint planeCount)
+{
+	[loop]
+	for (uint index = 0; index < planeCount; index++)
+	{
+		if (IsOutsidePlane(_ShadowCullingPlanes[index], center, extents))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// One thread per instance slot.
+uint GetInstanceIndex(uint3 groupId, uint3 groupThreadId)
+{
+	return (groupId.x + groupId.y * MAX_DISPATCH_GROUPS_X) * THREAD_GROUP_SIZE + groupThreadId.x;
+}
+
+// worldToObject's bottom row holds the batch index plus one in y. Free slots
+// are zeroed, so theirs wraps past every batch.
+uint GetBatchIndex(uint instanceIndex)
+{
+	return (uint)_InputInstances[instanceIndex].worldToObject[3].y - 1;
+}
+
+// Row 3 of objectToWorld carries the LOD range: xyz the LODGroup's reference
+// point, w the start and end camera distances as halves. With LODs off the
+// scale is float max, which squares to infinity for any nonzero distance, so
+// only levels starting at 0 are drawn, at any distance.
+bool IsInLodRange(float4 lodRange, float4 parameters)
+{
+	uint distances = asuint(lodRange.w);
+	float startDistance = f16tof32(distances) * parameters.w;
+	float endDistance = f16tof32(distances >> 16) * parameters.w;
+	float3 offset = lodRange.xyz - parameters.xyz;
+	float distanceSquared = dot(offset, offset);
+	return distanceSquared >= startDistance * startDistance && distanceSquared < endDistance * endDistance;
+}
+
+bool IsFinite(float value)
+{
+	return value == value && abs(value) < 3.402823466e+38;
+}
+
+bool IsFinite(float4 value)
+{
+	return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z) && IsFinite(value.w);
+}
+
+float4 GetClipRadius(float3 extents)
+{
+	float4 row0 = _ViewProjectionMatrix[0];
+	float4 row1 = _ViewProjectionMatrix[1];
+	float4 row2 = _ViewProjectionMatrix[2];
+	float4 row3 = _ViewProjectionMatrix[3];
+	return float4(
+		dot(abs(row0.xyz), extents),
+		dot(abs(row1.xyz), extents),
+		dot(abs(row2.xyz), extents),
+		dot(abs(row3.xyz), extents));
+}
+
+float2 ProjectInterval(
+	float numeratorCenter,
+	float numeratorRadius,
+	float minimumW,
+	float maximumW)
+{
+	float minimumNumerator = numeratorCenter - numeratorRadius;
+	float maximumNumerator = numeratorCenter + numeratorRadius;
+	float first = minimumNumerator / minimumW;
+	float second = minimumNumerator / maximumW;
+	float third = maximumNumerator / minimumW;
+	float fourth = maximumNumerator / maximumW;
+	return float2(
+		min(min(first, second), min(third, fourth)),
+		max(max(first, second), max(third, fourth)));
+}
+
+bool IsLargeEnoughUsingProjectedBounds(float3 center, float3 extents)
+{
+	if (_MinimumScreenPercentage <= 0.0)
+	{
+		return true;
+	}
+
+	float4 clipCenter = mul(_ViewProjectionMatrix, float4(center, 1.0));
+	float4 clipRadius = GetClipRadius(extents);
+	if (!IsFinite(clipCenter) || !IsFinite(clipRadius))
+	{
+		return true;
+	}
+
+	float minimumW = clipCenter.w - clipRadius.w;
+	if (!(minimumW > 1e-5))
+	{
+		return true;
+	}
+
+	float maximumW = clipCenter.w + clipRadius.w;
+	float2 projectedX = ProjectInterval(clipCenter.x, clipRadius.x, minimumW, maximumW);
+	float2 projectedY = ProjectInterval(clipCenter.y, clipRadius.y, minimumW, maximumW);
+	if (!IsFinite(float4(projectedX, projectedY)))
+	{
+		return true;
+	}
+
+	float2 minimum = float2(projectedX.x, projectedY.x) * 0.5 + 0.5;
+	float2 maximum = float2(projectedX.y, projectedY.y) * 0.5 + 0.5;
+	float2 screenSize = max(0.0, min(maximum, 1.0) - max(minimum, 0.0));
+	return max(screenSize.x, screenSize.y) >= _MinimumScreenPercentage;
+}
+
+uint EncodeOrderableFloat(float value)
+{
+	uint bits = asuint(value);
+	return (bits & 0x80000000) != 0 ? ~bits : bits ^ 0x80000000;
+}
+
+// The sum of the earlier levels' cell counts, R^2 + (R/2)^2 + ..., in closed
+// form: 4R^2 (1 - 4^-level) / 3. For level 8 it is the cascade stride.
+uint GetShadowReceiverMipOffset(uint level)
+{
+	uint fullChain = SHADOW_RECEIVER_MAP_RESOLUTION * SHADOW_RECEIVER_MAP_RESOLUTION * 4;
+	return (fullChain - (fullChain >> (level * 2))) / 3;
+}
+
+// Unity only selects cascades by split sphere with two or more cascades. Without
+// captured spheres every caster is drawn into every cascade.
+bool HasCapturedShadowCascadeSpheres(uint cascadeCount)
+{
+	if (cascadeCount < 2 || cascadeCount > MAX_DIRECTIONAL_CASCADES ||
+		_ShadowCascadeSpheres[MAX_DIRECTIONAL_CASCADES].x != 1.0)
+	{
+		return false;
+	}
+
+	bool valid = true;
+	for (uint cascade = 0; cascade < cascadeCount; cascade++)
+	{
+		float4 sphere = _ShadowCascadeSpheres[cascade];
+		valid = valid && IsFinite(sphere) && sphere.w > 0.0;
+	}
+
+	return valid;
+}
+
+// Split sphere in light space: xyz center, w squared radius.
+float4 GetLightSpaceShadowCascadeSphere(ShadowReceiverParameters parameters, uint cascadeIndex)
+{
+	float4 sphere = _ShadowCascadeSpheres[cascadeIndex];
+	return float4(
+		dot(sphere.xyz, parameters.lightBasisX.xyz),
+		dot(sphere.xyz, parameters.lightBasisY.xyz),
+		dot(sphere.xyz, parameters.lightBasisZ.xyz),
+		sphere.w);
+}
+
+// Grid origin (xy) and cell size (z) over the light-space disc of a cascade's
+// split sphere, from GetLightSpaceShadowCascadeSphere. Unity samples cascade i
+// only inside sphere i, so every receiver of the cascade, and every caster that
+// can shadow one, lies within that disc.
+float3 GetShadowReceiverDomain(float4 lightSphere)
+{
+	float radius = sqrt(lightSphere.w);
+	return float3(lightSphere.xy - radius, radius * 2.0 / SHADOW_RECEIVER_MAP_RESOLUTION);
+}
+
+// Conservative for the light-space box: true unless the box misses sphere i or
+// lies entirely inside an earlier sphere, which Unity would select instead.
+bool CanSampleShadowCascade(
+	float4 lightSpheres[MAX_DIRECTIONAL_CASCADES],
+	uint cascadeIndex,
+	float3 minimumLight,
+	float3 maximumLight)
+{
+	float4 sphere = lightSpheres[cascadeIndex];
+	float3 closest = max(0.0, max(minimumLight - sphere.xyz, sphere.xyz - maximumLight));
+	if (dot(closest, closest) > sphere.w * 1.001)
+	{
+		return false;
+	}
+
+	for (uint earlier = 0; earlier < cascadeIndex; earlier++)
+	{
+		float4 earlierSphere = lightSpheres[earlier];
+		float3 farthest = max(abs(minimumLight - earlierSphere.xyz), abs(maximumLight - earlierSphere.xyz));
+		if (dot(farthest, farthest) < earlierSphere.w * 0.999)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void GetLightSpaceFootprint(
+	ShadowReceiverParameters parameters,
+	float3 worldCenter,
+	float3 worldExtents,
+	out float2 footprintCenter,
+	out float2 footprintHalfSize)
+{
+	footprintCenter = float2(
+		dot(worldCenter, parameters.lightBasisX.xyz),
+		dot(worldCenter, parameters.lightBasisY.xyz));
+	footprintHalfSize = float2(
+		dot(abs(parameters.lightBasisX.xyz), worldExtents),
+		dot(abs(parameters.lightBasisY.xyz), worldExtents));
+}
+
+// The caster's light-space footprint against the split sphere's disc, grown by
+// two receiver cells to cover shadow filtering at the disc edge.
+bool CanShadowCascade(float4 lightSphere, float2 footprintCenter, float2 footprintHalfSize)
+{
+	float radius = sqrt(lightSphere.w);
+	float margin = radius * 4.0 / SHADOW_RECEIVER_MAP_RESOLUTION;
+	float2 closest = max(0.0, abs(footprintCenter - lightSphere.xy) - footprintHalfSize);
+	return dot(closest, closest) <= (radius + margin) * (radius + margin);
+}
+
+// The range of the corner rays' lerp parameter where the tile's slab can reach
+// the light-space split sphere. The cross-section's center moves linearly
+// along the slab and every corner stays within the larger of its two end
+// offsets from it, so the sphere grown by that spread bounds the cross-section.
+// The rest of the slab is outside the sphere, so the cascade never samples it.
+bool GetShadowCascadeSlabRange(
+	float3 minimumDepthCorners[4],
+	float3 maximumDepthCorners[4],
+	float4 lightSphere,
+	out float2 range)
+{
+	float3 nearCenter = (minimumDepthCorners[0] + minimumDepthCorners[1] +
+		minimumDepthCorners[2] + minimumDepthCorners[3]) * 0.25;
+	float3 farCenter = (maximumDepthCorners[0] + maximumDepthCorners[1] +
+		maximumDepthCorners[2] + maximumDepthCorners[3]) * 0.25;
+	float spread = 0.0;
+	[unroll]
+	for (uint corner = 0; corner < 4; corner += 1)
+	{
+		spread = max(spread, max(
+			length(minimumDepthCorners[corner] - nearCenter),
+			length(maximumDepthCorners[corner] - farCenter)));
+	}
+
+	// Padded like CanSampleShadowCascade's sphere test, plus a centimeter for
+	// rounding.
+	float radius = sqrt(lightSphere.w) * 1.001 + spread + 0.01;
+	float3 direction = farCenter - nearCenter;
+	float3 offset = nearCenter - lightSphere.xyz;
+	float a = dot(direction, direction);
+	float halfB = dot(offset, direction);
+	float c = dot(offset, offset) - radius * radius;
+	if (a < 1e-8)
+	{
+		range = float2(0.0, 1.0);
+		return c <= 0.0;
+	}
+
+	float discriminant = halfB * halfB - a * c;
+	if (discriminant < 0.0)
+	{
+		range = 0.0;
+		return false;
+	}
+
+	float root = sqrt(discriminant);
+	range = float2(max((-halfB - root) / a, 0.0), min((-halfB + root) / a, 1.0));
+	return range.x <= range.y;
+}
+
+bool ReconstructShadowDepthWorldPosition(
+	ShadowReceiverParameters parameters,
+	uint2 pixel,
+	float rawDepth,
+	out float3 worldPosition)
+{
+	float2 depthSize = parameters.depthSizeAndTileSize.xy;
+	float2 uv = (float2(pixel) + 0.5) / depthSize;
+
+	// Render texture UVs have a bottom-left origin on every API; the inverse
+	// uses the unflipped GPU projection to match.
+	float4 clipPosition = float4(uv * 2.0 - 1.0, rawDepth, 1.0);
+	float4 homogeneousPosition = mul(parameters.inverseViewProjection, clipPosition);
+	if (abs(homogeneousPosition.w) < 1e-5 || !IsFinite(homogeneousPosition))
+	{
+		worldPosition = 0.0;
+		return false;
+	}
+
+	worldPosition = homogeneousPosition.xyz / homogeneousPosition.w;
+	return IsFinite(float4(worldPosition, 1.0));
+}
+
+// View depth never exceeds camera distance, so this planar test against the raw
+// depth at the shadow distance keeps a superset of the pixels within the shadow
+// distance, and rejects sky.
+bool IsValidShadowDepthSample(ShadowReceiverParameters parameters, float rawDepth)
+{
+	return parameters.lightBasisX.w * (rawDepth - parameters.depthSizeAndTileSize.w) > 1e-7;
+}
+
+// Light-space positions of the tile's four corner rays at its minimum and
+// maximum raw depth. Any depth sub-range of the slab is covered by lerping
+// along these rays, so the matrix work happens once per tile.
+bool GetShadowReceiverTileCorners(
+	ShadowReceiverParameters parameters,
+	uint2 tileCoordinate,
+	float minimumDepth,
+	float maximumDepth,
+	out float3 minimumDepthCorners[4],
+	out float3 maximumDepthCorners[4])
+{
+	uint2 depthSize = (uint2)parameters.depthSizeAndTileSize.xy;
+	uint tileSize = (uint)parameters.depthSizeAndTileSize.z;
+	uint2 minimumPixel = tileCoordinate * tileSize;
+	uint2 maximumPixel = min(minimumPixel + tileSize - 1, depthSize - 1);
+
+	[unroll]
+	for (uint corner = 0; corner < 4; corner++)
+	{
+		uint2 pixel = uint2(
+			(corner & 1) == 0 ? minimumPixel.x : maximumPixel.x,
+			(corner & 2) == 0 ? minimumPixel.y : maximumPixel.y);
+		float3 minimumWorld;
+		float3 maximumWorld;
+		if (!ReconstructShadowDepthWorldPosition(parameters, pixel, minimumDepth, minimumWorld) ||
+			!ReconstructShadowDepthWorldPosition(parameters, pixel, maximumDepth, maximumWorld))
+		{
+			minimumDepthCorners[corner] = 0.0;
+			maximumDepthCorners[corner] = 0.0;
+			return false;
+		}
+
+		minimumDepthCorners[corner] = float3(
+			dot(minimumWorld, parameters.lightBasisX.xyz),
+			dot(minimumWorld, parameters.lightBasisY.xyz),
+			dot(minimumWorld, parameters.lightBasisZ.xyz));
+		maximumDepthCorners[corner] = float3(
+			dot(maximumWorld, parameters.lightBasisX.xyz),
+			dot(maximumWorld, parameters.lightBasisY.xyz),
+			dot(maximumWorld, parameters.lightBasisZ.xyz));
+	}
+
+	return true;
+}
+
+// Marks the receiver cells the box touches, at the finest level where it
+// spans at most SHADOW_RECEIVER_SCATTER_MAX_CELL_SPAN cells per axis. A
+// coarse cell stands for all its level-0 cells, so long slabs, whose boxes
+// are mostly empty, take a few atomics instead of hundreds.
+void MarkShadowReceiverBox(
+	float3 domain,
+	uint cascadeIndex,
+	float3 minimumLight,
+	float3 maximumLight)
+{
+	float2 minimumCell = (minimumLight.xy - domain.xy) / domain.z;
+	float2 maximumCell = (maximumLight.xy - domain.xy) / domain.z;
+	if (maximumCell.x < 0.0 || maximumCell.y < 0.0 ||
+		minimumCell.x >= SHADOW_RECEIVER_MAP_RESOLUTION || minimumCell.y >= SHADOW_RECEIVER_MAP_RESOLUTION)
+	{
+		return;
+	}
+
+	// Only the cells the box touches. IsReceiverCulled pads its lookup by a cell
+	// instead, which halves the atomics here.
+	uint2 minimum = (uint2)max(0, (int2)floor(minimumCell));
+	uint2 maximum = (uint2)min(SHADOW_RECEIVER_MAP_RESOLUTION - 1, (int2)floor(maximumCell));
+	uint level = 0;
+	while (level < SHADOW_RECEIVER_SCATTER_MAX_LEVEL &&
+		max((maximum.x >> level) - (minimum.x >> level), (maximum.y >> level) - (minimum.y >> level)) >=
+		SHADOW_RECEIVER_SCATTER_MAX_CELL_SPAN)
+	{
+		level += 1;
+	}
+
+	minimum >>= level;
+	maximum >>= level;
+	uint resolution = SHADOW_RECEIVER_MAP_RESOLUTION >> level;
+	uint levelOffset = cascadeIndex * SHADOW_RECEIVER_MAP_CASCADE_STRIDE + GetShadowReceiverMipOffset(level);
+	uint encodedDepth = EncodeOrderableFloat(maximumLight.z);
+	for (uint y = minimum.y; y <= maximum.y; y += 1)
+	{
+		for (uint x = minimum.x; x <= maximum.x; x += 1)
+		{
+			InterlockedMax(_ShadowReceiverMap[levelOffset + y * resolution + x], encodedDepth);
+		}
+	}
+}
+
+// Each 1x1 mip is the max over its whole cascade map. All cascades empty means
+// no receiver was found at all (missing depth, sky-only view), so the receiver
+// cull must keep every caster. A single empty cascade is legitimate: per-cascade
+// filtering leaves far cascades empty when nothing visible samples them.
+bool HasAnyShadowReceiver(uint cascadeCount)
+{
+	uint topMipOffset = GetShadowReceiverMipOffset(SHADOW_RECEIVER_MAP_LEVEL_COUNT - 1);
+	uint anyReceiver = 0;
+	for (uint cascade = 0; cascade < cascadeCount; cascade += 1)
+	{
+		anyReceiver |= _ShadowReceiverMap[cascade * SHADOW_RECEIVER_MAP_CASCADE_STRIDE + topMipOffset];
+	}
+
+	return anyReceiver != 0;
+}
+
+// Only valid with captured split spheres and HasAnyShadowReceiver.
+// nearestDepth is the caster's nearest light-space depth.
+bool IsReceiverCulled(
+	float4 lightSphere,
+	uint cascadeIndex,
+	float2 footprintCenter,
+	float2 footprintHalfSize,
+	float nearestDepth,
+	float depthBias)
+{
+	// Every receiver of the cascade lies inside the domain, so a footprint
+	// reaching past it is clamped to it.
+	float3 domain = GetShadowReceiverDomain(lightSphere);
+	float2 minimumCell = (footprintCenter - footprintHalfSize - domain.xy) / domain.z;
+	float2 maximumCell = (footprintCenter + footprintHalfSize - domain.xy) / domain.z;
+
+	// The coarsest level where the footprint spans at most about two cells.
+	float2 footprintCells = maximumCell - minimumCell;
+	// Padded by a cell after picking the level, the margin MarkShadowReceiverBox
+	// leaves out.
+	minimumCell -= 1.0;
+	maximumCell += 1.0;
+	uint mipLevel = min(
+		SHADOW_RECEIVER_MAP_LEVEL_COUNT - 1u,
+		(uint)ceil(log2(max(1.0, max(footprintCells.x, footprintCells.y)))));
+	int mipResolution = SHADOW_RECEIVER_MAP_RESOLUTION >> mipLevel;
+	float mipScale = 1.0 / (float)(1u << mipLevel);
+	int2 minimumMipCell = clamp((int2)floor(minimumCell * mipScale), 0, mipResolution - 1);
+	int2 maximumMipCell = clamp((int2)floor(maximumCell * mipScale), 0, mipResolution - 1);
+	uint receiverMapOffset = cascadeIndex * SHADOW_RECEIVER_MAP_CASCADE_STRIDE +
+		GetShadowReceiverMipOffset(mipLevel);
+	uint receiverMaxDepth = 0;
+	for (int y = minimumMipCell.y; y <= maximumMipCell.y; y++)
+	{
+		for (int x = minimumMipCell.x; x <= maximumMipCell.x; x++)
+		{
+			receiverMaxDepth = max(
+				receiverMaxDepth,
+				_ShadowReceiverMap[receiverMapOffset + (uint)(y * mipResolution + x)]);
+		}
+	}
+
+	return receiverMaxDepth < EncodeOrderableFloat(nearestDepth - depthBias);
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ClearShadowReceiverMap(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	if (dispatchThreadId.x < _ShadowCascadeCount * SHADOW_RECEIVER_MAP_CASCADE_STRIDE)
+	{
+		_ShadowReceiverMap[dispatchThreadId.x] = 0;
+	}
+}
+
+groupshared uint _ShadowDepthTileMinimum;
+groupshared uint _ShadowDepthTileMaximum;
+
+// Each thread reduces a 2x2 pixel quad, so a tile takes a quarter of the
+// groupshared atomics.
+[numthreads(SHADOW_RECEIVER_DEPTH_TILE_SIZE / 2, SHADOW_RECEIVER_DEPTH_TILE_SIZE / 2, 1)]
+void BuildShadowDepthTiles(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	ShadowReceiverParameters parameters = _ShadowReceiverParameters[0];
+	uint tileCountX = (uint)parameters.tileCountAndSettings.x;
+	uint tileCountY = (uint)parameters.tileCountAndSettings.y;
+	uint2 depthSize = (uint2)parameters.depthSizeAndTileSize.xy;
+	uint2 tileCoordinate = groupId.xy;
+	uint2 quadPixel = tileCoordinate * SHADOW_RECEIVER_DEPTH_TILE_SIZE + groupThreadId.xy * 2;
+	if (groupThreadId.x == 0 && groupThreadId.y == 0)
+	{
+		_ShadowDepthTileMinimum = 0xffffffff;
+		_ShadowDepthTileMaximum = 0;
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	if (tileCoordinate.x < tileCountX && tileCoordinate.y < tileCountY)
+	{
+		// Raw depth is non-negative, so its bit pattern orders like the float.
+		uint minimumDepth = 0xffffffff;
+		uint maximumDepth = 0;
+		[unroll]
+		for (uint quad = 0; quad < 4; quad++)
+		{
+			uint2 pixel = quadPixel + uint2(quad & 1, quad >> 1);
+			if (pixel.x < depthSize.x && pixel.y < depthSize.y)
+			{
+				float rawDepth = _CameraDepthTexture.Load(int3(pixel, 0));
+				if (IsValidShadowDepthSample(parameters, rawDepth))
+				{
+					minimumDepth = min(minimumDepth, asuint(rawDepth));
+					maximumDepth = max(maximumDepth, asuint(rawDepth));
+				}
+			}
+		}
+
+		if (minimumDepth != 0xffffffff)
+		{
+			InterlockedMin(_ShadowDepthTileMinimum, minimumDepth);
+			InterlockedMax(_ShadowDepthTileMaximum, maximumDepth);
+		}
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+	if (groupThreadId.x == 0 && groupThreadId.y == 0 &&
+		tileCoordinate.x < tileCountX && tileCoordinate.y < tileCountY)
+	{
+		uint tileIndex = tileCoordinate.x + tileCoordinate.y * tileCountX;
+		_ShadowDepthTiles[tileIndex].minimumDepth = _ShadowDepthTileMinimum;
+		_ShadowDepthTiles[tileIndex].maximumDepth = _ShadowDepthTileMaximum;
+	}
+}
+
+[numthreads(8, 8, 1)]
+void ScatterShadowReceivers(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	ShadowReceiverParameters parameters = _ShadowReceiverParameters[0];
+	uint tileCountX = (uint)parameters.tileCountAndSettings.x;
+	uint tileCountY = (uint)parameters.tileCountAndSettings.y;
+	uint2 tileCoordinate = dispatchThreadId.xy;
+	if (tileCoordinate.x >= tileCountX || tileCoordinate.y >= tileCountY)
+	{
+		return;
+	}
+
+	uint cascadeCount = _ShadowCascadeCount;
+	if (!HasCapturedShadowCascadeSpheres(cascadeCount))
+	{
+		return;
+	}
+
+	uint tileIndex = tileCoordinate.x + tileCoordinate.y * tileCountX;
+	ShadowDepthTile tile = _ShadowDepthTiles[tileIndex];
+	if (tile.minimumDepth == 0xffffffff)
+	{
+		return;
+	}
+
+	float3 minimumDepthCorners[4];
+	float3 maximumDepthCorners[4];
+	if (!GetShadowReceiverTileCorners(
+		parameters,
+		tileCoordinate,
+		asfloat(tile.minimumDepth),
+		asfloat(tile.maximumDepth),
+		minimumDepthCorners,
+		maximumDepthCorners))
+	{
+		return;
+	}
+
+	float4 lightSpheres[MAX_DIRECTIONAL_CASCADES];
+	[unroll]
+	for (uint sphereIndex = 0; sphereIndex < MAX_DIRECTIONAL_CASCADES; sphereIndex++)
+	{
+		lightSpheres[sphereIndex] = GetLightSpaceShadowCascadeSphere(parameters, sphereIndex);
+	}
+
+	float3 fullMinimumLight = minimumDepthCorners[0];
+	float3 fullMaximumLight = minimumDepthCorners[0];
+	[unroll]
+	for (uint corner = 0; corner < 4; corner++)
+	{
+		fullMinimumLight = min(fullMinimumLight, min(minimumDepthCorners[corner], maximumDepthCorners[corner]));
+		fullMaximumLight = max(fullMaximumLight, max(minimumDepthCorners[corner], maximumDepthCorners[corner]));
+	}
+
+	for (uint cascadeIndex = 0; cascadeIndex < cascadeCount; cascadeIndex++)
+	{
+		if (!CanSampleShadowCascade(lightSpheres, cascadeIndex, fullMinimumLight, fullMaximumLight))
+		{
+			continue;
+		}
+
+		float2 range;
+		if (!GetShadowCascadeSlabRange(minimumDepthCorners, maximumDepthCorners, lightSpheres[cascadeIndex], range))
+		{
+			continue;
+		}
+
+		// Equal world-space segments along the corner rays keep each segment's
+		// light-space box a few cells wide; their union still covers the slab.
+		float3 rangeMinimum = 3.402823e+38;
+		float3 rangeMaximum = -3.402823e+38;
+		[unroll]
+		for (uint rangeCorner = 0; rangeCorner < 4; rangeCorner += 1)
+		{
+			float3 start = lerp(minimumDepthCorners[rangeCorner], maximumDepthCorners[rangeCorner], range.x);
+			float3 end = lerp(minimumDepthCorners[rangeCorner], maximumDepthCorners[rangeCorner], range.y);
+			rangeMinimum = min(rangeMinimum, min(start, end));
+			rangeMaximum = max(rangeMaximum, max(start, end));
+		}
+
+		float3 domain = GetShadowReceiverDomain(lightSpheres[cascadeIndex]);
+		float2 footprint = (rangeMaximum.xy - rangeMinimum.xy) / domain.z;
+		uint segmentCount = clamp(
+			(uint)ceil(max(footprint.x, footprint.y) / SHADOW_RECEIVER_SLAB_SEGMENT_CELL_EXTENT),
+			1u,
+			(uint)SHADOW_RECEIVER_MAX_SLAB_SEGMENTS);
+		for (uint segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1)
+		{
+			float first = lerp(range.x, range.y, (float)segmentIndex / segmentCount);
+			float second = lerp(range.x, range.y, (float)(segmentIndex + 1) / segmentCount);
+			float3 segmentMinimum = 3.402823e+38;
+			float3 segmentMaximum = -3.402823e+38;
+			[unroll]
+			for (uint segmentCorner = 0; segmentCorner < 4; segmentCorner++)
+			{
+				float3 start = lerp(minimumDepthCorners[segmentCorner], maximumDepthCorners[segmentCorner], first);
+				float3 end = lerp(minimumDepthCorners[segmentCorner], maximumDepthCorners[segmentCorner], second);
+				segmentMinimum = min(segmentMinimum, min(start, end));
+				segmentMaximum = max(segmentMaximum, max(start, end));
+			}
+
+			if (CanSampleShadowCascade(lightSpheres, cascadeIndex, segmentMinimum, segmentMaximum))
+			{
+				MarkShadowReceiverBox(domain, cascadeIndex, segmentMinimum, segmentMaximum);
+			}
+		}
+	}
+}
+
+#define SHADOW_RECEIVER_MIP_GROUP_SIZE (SHADOW_RECEIVER_MAP_RESOLUTION / 4)
+
+groupshared uint _ShadowReceiverMipCells[SHADOW_RECEIVER_MIP_GROUP_SIZE * SHADOW_RECEIVER_MIP_GROUP_SIZE];
+
+// One group per cascade builds the whole chain: each thread max-reduces a 4x4
+// block of level 0 into levels 1 and 2, then levels 3+ reduce in groupshared.
+// The coarse cells ScatterShadowReceivers marked at levels 1-3 are first
+// folded into the level-0 cells under them, which IsReceiverCulled can read.
+[numthreads(SHADOW_RECEIVER_MIP_GROUP_SIZE, SHADOW_RECEIVER_MIP_GROUP_SIZE, 1)]
+void BuildShadowReceiverMips(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint2 thread = groupThreadId.xy;
+	uint levelZeroOffset = groupId.x * SHADOW_RECEIVER_MAP_CASCADE_STRIDE;
+	uint levelOneOffset = levelZeroOffset + GetShadowReceiverMipOffset(1);
+	uint levelTwoOffset = levelZeroOffset + GetShadowReceiverMipOffset(2);
+	uint levelThreeOffset = levelZeroOffset + GetShadowReceiverMipOffset(3);
+	// The thread's level-2 cell and the level-3 cell over it. Four threads read
+	// that level-3 cell; it is only rewritten after the barrier below.
+	uint coarseDepth = max(
+		_ShadowReceiverMap[levelTwoOffset + thread.x + thread.y * (SHADOW_RECEIVER_MAP_RESOLUTION >> 2)],
+		_ShadowReceiverMap[levelThreeOffset + (thread.x >> 1) + (thread.y >> 1) * (SHADOW_RECEIVER_MAP_RESOLUTION >> 3)]);
+	uint levelTwoMaximum = 0;
+	[unroll]
+	for (uint quadrant = 0; quadrant < 4; quadrant += 1)
+	{
+		uint2 levelOneCoordinate = thread * 2 + uint2(quadrant & 1, quadrant >> 1);
+		uint levelOneIndex = levelOneOffset + levelOneCoordinate.x +
+			levelOneCoordinate.y * (SHADOW_RECEIVER_MAP_RESOLUTION >> 1);
+		uint inheritedDepth = max(coarseDepth, _ShadowReceiverMap[levelOneIndex]);
+		uint2 levelZeroCoordinate = levelOneCoordinate * 2;
+		uint levelOneMaximum = 0;
+		[unroll]
+		for (uint child = 0; child < 4; child += 1)
+		{
+			uint levelZeroIndex = levelZeroOffset + levelZeroCoordinate.x + (child & 1) +
+				(levelZeroCoordinate.y + (child >> 1)) * SHADOW_RECEIVER_MAP_RESOLUTION;
+			uint depth = _ShadowReceiverMap[levelZeroIndex];
+			if (depth < inheritedDepth)
+			{
+				depth = inheritedDepth;
+				_ShadowReceiverMap[levelZeroIndex] = depth;
+			}
+
+			levelOneMaximum = max(levelOneMaximum, depth);
+		}
+
+		_ShadowReceiverMap[levelOneIndex] = levelOneMaximum;
+		levelTwoMaximum = max(levelTwoMaximum, levelOneMaximum);
+	}
+
+	_ShadowReceiverMap[levelTwoOffset + thread.x + thread.y * SHADOW_RECEIVER_MIP_GROUP_SIZE] = levelTwoMaximum;
+	_ShadowReceiverMipCells[thread.x + thread.y * SHADOW_RECEIVER_MIP_GROUP_SIZE] = levelTwoMaximum;
+
+	for (uint level = 3; level < SHADOW_RECEIVER_MAP_LEVEL_COUNT; level++)
+	{
+		GroupMemoryBarrierWithGroupSync();
+		uint resolution = SHADOW_RECEIVER_MAP_RESOLUTION >> level;
+		bool active = thread.x < resolution && thread.y < resolution;
+		uint maximumDepth = 0;
+		if (active)
+		{
+			uint2 source = thread * 2;
+			maximumDepth = max(
+				max(_ShadowReceiverMipCells[source.x + source.y * SHADOW_RECEIVER_MIP_GROUP_SIZE],
+					_ShadowReceiverMipCells[source.x + 1 + source.y * SHADOW_RECEIVER_MIP_GROUP_SIZE]),
+				max(_ShadowReceiverMipCells[source.x + (source.y + 1) * SHADOW_RECEIVER_MIP_GROUP_SIZE],
+					_ShadowReceiverMipCells[source.x + 1 + (source.y + 1) * SHADOW_RECEIVER_MIP_GROUP_SIZE]));
+		}
+
+		// Every thread finishes reading the previous level before any overwrite.
+		GroupMemoryBarrierWithGroupSync();
+		if (active)
+		{
+			_ShadowReceiverMipCells[thread.x + thread.y * SHADOW_RECEIVER_MIP_GROUP_SIZE] = maximumDepth;
+			_ShadowReceiverMap[levelZeroOffset + GetShadowReceiverMipOffset(level) +
+				thread.x + thread.y * resolution] = maximumDepth;
+		}
+	}
+}
+
+// The cull kernels count their visible instances per group first, so a
+// draw's instance count takes one global atomic per group instead of one
+// per instance. A group's threads hold at most THREAD_GROUP_SIZE distinct
+// batches; each gets an entry, keyed by batch index plus one (0 is empty).
+groupshared uint _VisibleGroupKeys[THREAD_GROUP_SIZE];
+groupshared uint _VisibleGroupCounts[THREAD_GROUP_SIZE];
+groupshared uint _VisibleGroupBases[THREAD_GROUP_SIZE];
+
+// Every thread of the group calls this once, before any ReserveVisibleIndex.
+// Returns the batch's entry; isOwner is set on the one thread that reserves
+// the entry's range in each view.
+uint BeginVisibleGroup(uint groupThreadIndex, bool active, uint batchIndex, out bool isOwner)
+{
+	_VisibleGroupKeys[groupThreadIndex] = 0;
+	_VisibleGroupCounts[groupThreadIndex] = 0;
+	GroupMemoryBarrierWithGroupSync();
+
+	isOwner = false;
+	uint entry = 0;
+	if (active)
+	{
+		// Adjacent batch indices land in distinct entries; the probe ends
+		// since there are no more keys than entries.
+		uint key = batchIndex + 1;
+		entry = batchIndex & (THREAD_GROUP_SIZE - 1);
+		[loop]
+		for (uint probe = 0; probe < THREAD_GROUP_SIZE; probe += 1)
+		{
+			uint previous;
+			InterlockedCompareExchange(_VisibleGroupKeys[entry], 0, key, previous);
+			if (previous == 0 || previous == key)
+			{
+				isOwner = previous == 0;
+				break;
+			}
+
+			entry = (entry + 1) & (THREAD_GROUP_SIZE - 1);
+		}
+	}
+
+	return entry;
+}
+
+// Every thread of the group calls this together, once per view. Returns a
+// visible thread's index in its draw's visible range: its place among the
+// group's visible instances of the batch, after the earlier groups'.
+uint ReserveVisibleIndex(bool visible, uint entry, bool isOwner, uint argumentIndex)
+{
+	uint groupIndex = 0;
+	if (visible)
+	{
+		InterlockedAdd(_VisibleGroupCounts[entry], 1, groupIndex);
+	}
+
+	GroupMemoryBarrierWithGroupSync();
+	if (isOwner)
+	{
+		uint count = _VisibleGroupCounts[entry];
+		uint base = 0;
+		if (count != 0)
+		{
+			InterlockedAdd(_IndirectArguments[argumentIndex], count, base);
+		}
+
+		_VisibleGroupBases[entry] = base;
+		// The next view counts only after the barrier below.
+		_VisibleGroupCounts[entry] = 0;
+	}
+
+	// Every thread reads its base before the next view's barrier, ahead of
+	// the owner's next write.
+	GroupMemoryBarrierWithGroupSync();
+	return _VisibleGroupBases[entry] + groupIndex;
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ShadowFrustumCull(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	ShadowCullParameters parameters = _ShadowCullParameters[0];
+	uint instanceIndex = GetInstanceIndex(groupId, groupThreadId);
+	// Threads past the instances, on free slots or culled stay inactive for
+	// the group's barriers instead of returning.
+	uint batchIndex = 0;
+	bool active = false;
+	if (instanceIndex < parameters.instanceCount)
+	{
+		batchIndex = GetBatchIndex(instanceIndex);
+		active = batchIndex < parameters.batchCount;
+	}
+
+	bool isOwner;
+	uint entry = BeginVisibleGroup(groupThreadId.x, active, batchIndex, isOwner);
+
+	bool inShadowVolume = false;
+	uint visibleCapacity = 0;
+	uint visibleOffset = 0;
+	float3 worldCenter = 0.0;
+	float3 worldExtents = 0.0;
+	if (active)
+	{
+		BatchData batch = _BatchData[batchIndex];
+		float4x4 objectToWorld = _InputInstances[instanceIndex].objectToWorld;
+		visibleCapacity = batch.visibleCapacityAndFlags & ~SHADOW_CASTER_BATCH_FLAG;
+		visibleOffset = batch.visibleOffset;
+		worldCenter = mul((float3x4)objectToWorld, float4(batch.localBoundsCenter, 1.0));
+		worldExtents = mul(abs((float3x3)objectToWorld), batch.localBoundsExtents);
+		inShadowVolume = (batch.visibleCapacityAndFlags & SHADOW_CASTER_BATCH_FLAG) != 0 &&
+			IsInLodRange(objectToWorld[3], parameters.lodParameters) &&
+			IsInShadowVolume(worldCenter, worldExtents, parameters.planeCount);
+	}
+
+	ShadowReceiverParameters receiverParameters = _ShadowReceiverParameters[0];
+	// Without captured spheres the cascade bounds are unknown, so every caster
+	// in the shadow volume is drawn into every cascade.
+	bool spheresValid = HasCapturedShadowCascadeSpheres(_ShadowCascadeCount);
+	bool receiversValid = spheresValid && HasAnyShadowReceiver(_ShadowCascadeCount);
+
+	// The caster's light-space footprint and nearest depth are the same for
+	// every cascade.
+	float2 footprintCenter;
+	float2 footprintHalfSize;
+	GetLightSpaceFootprint(receiverParameters, worldCenter, worldExtents, footprintCenter, footprintHalfSize);
+	float nearestDepth = dot(worldCenter, receiverParameters.lightBasisZ.xyz) -
+		dot(abs(receiverParameters.lightBasisZ.xyz), worldExtents);
+
+	[loop]
+	for (uint cascadeIndex = 0; cascadeIndex < _ShadowCascadeCount; cascadeIndex += 1)
+	{
+		bool visible = inShadowVolume;
+		float4 lightSphere = 0.0;
+		if (visible && spheresValid)
+		{
+			lightSphere = GetLightSpaceShadowCascadeSphere(receiverParameters, cascadeIndex);
+			visible = CanShadowCascade(lightSphere, footprintCenter, footprintHalfSize);
+		}
+
+		if (visible && _CullDiagnosticsEnabled != 0)
+		{
+			InterlockedAdd(
+				_CullDiagnostics[CULL_DIAGNOSTICS_SHADOW_VOLUME_PASS_OFFSET + cascadeIndex],
+				1);
+		}
+
+		if (visible && receiversValid &&
+			IsReceiverCulled(
+				lightSphere,
+				cascadeIndex,
+				footprintCenter,
+				footprintHalfSize,
+				nearestDepth,
+				receiverParameters.tileCountAndSettings.z))
+		{
+			visible = false;
+			if (_CullDiagnosticsEnabled != 0)
+			{
+				InterlockedAdd(
+					_CullDiagnostics[CULL_DIAGNOSTICS_SHADOW_RECEIVER_CULL_OFFSET + cascadeIndex],
+					1);
+			}
+		}
+
+		uint viewIndex = 1 + cascadeIndex;
+		uint drawIndex = viewIndex * parameters.batchCount + batchIndex;
+		uint localVisibleIndex = ReserveVisibleIndex(visible, entry, isOwner, drawIndex * 5 + 1);
+		// No continue in this loop: fxc treats it as varying flow control
+		// around the barriers.
+		if (visible && localVisibleIndex < visibleCapacity)
+		{
+			uint destination = viewIndex * parameters.visibleStride
+				+ visibleOffset
+				+ localVisibleIndex;
+			_VisibleInstanceIndices[destination] = instanceIndex;
+		}
+		else if (visible && _CullDiagnosticsEnabled != 0)
+		{
+			InterlockedAdd(_CullDiagnostics[1], 1);
+		}
+	}
+}
+
+// Copies one cascade's, spot light's or cube face's arguments and visible
+// offsets into the Unity-facing buffers that the shadow draws read during that
+// pass.
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void PrepareShadowCascadeDraws(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	uint batchIndex = dispatchThreadId.x;
+	if (batchIndex >= _BatchCount)
+	{
+		return;
+	}
+
+	uint viewIndex = _ShadowPrepareViewIndex;
+	if (_ShadowPrepareFaceCount > 1)
+	{
+		viewIndex += min(_ShadowFaceCapture[0], _ShadowPrepareFaceCount - 1);
+	}
+
+	uint sourceDrawIndex = viewIndex * _BatchCount + batchIndex;
+	[unroll]
+	for (uint wordIndex = 0; wordIndex < 5; wordIndex++)
+	{
+		_ShadowRenderArguments[batchIndex * 5 + wordIndex] = _IndirectArguments[sourceDrawIndex * 5 + wordIndex];
+	}
+
+	_ShadowRenderVisibleOffsets[batchIndex] = viewIndex * _VisibleStride + _BatchData[batchIndex].visibleOffset;
+}
+
+// One thread per instance slot, tested against every view in _Views. Each
+// view's draws and visible ranges use the shared layout at its view index.
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ViewCull(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint instanceIndex = GetInstanceIndex(groupId, groupThreadId);
+	// Threads past the instances or on free slots stay inactive for the
+	// group's barriers instead of returning.
+	uint batchIndex = 0;
+	bool active = false;
+	if (instanceIndex < _InstanceCount)
+	{
+		batchIndex = GetBatchIndex(instanceIndex);
+		active = batchIndex < _BatchCount;
+	}
+
+	bool isOwner;
+	uint entry = BeginVisibleGroup(groupThreadId.x, active, batchIndex, isOwner);
+
+	bool castsShadows = false;
+	uint visibleCapacity = 0;
+	uint visibleOffset = 0;
+	float4 lodRange = 0.0;
+	float3 worldCenter = 0.0;
+	float3 worldExtents = 0.0;
+	if (active)
+	{
+		BatchData batch = _BatchData[batchIndex];
+		float4x4 objectToWorld = _InputInstances[instanceIndex].objectToWorld;
+		castsShadows = (batch.visibleCapacityAndFlags & SHADOW_CASTER_BATCH_FLAG) != 0;
+		visibleCapacity = batch.visibleCapacityAndFlags & ~SHADOW_CASTER_BATCH_FLAG;
+		visibleOffset = batch.visibleOffset;
+		lodRange = objectToWorld[3];
+		worldCenter = mul((float3x4)objectToWorld, float4(batch.localBoundsCenter, 1.0));
+		worldExtents = mul(abs((float3x3)objectToWorld), batch.localBoundsExtents);
+	}
+
+	// A point light's face views share its sphere and LOD tests, so they run
+	// once, on its first face, for all six. The loop runs every slot so the
+	// barriers stay in uniform flow control.
+	bool passesLight = false;
+	uint remainingFaces = 0;
+	[loop]
+	for (uint viewSlot = 0; viewSlot < _ViewCount; viewSlot += 1)
+	{
+		ViewData face = _Views[viewSlot];
+		if (remainingFaces == 0)
+		{
+			remainingFaces = (face.flags & VIEW_CUBE_FACES_FLAG) != 0 ? CUBE_FACE_COUNT : 1;
+			passesLight = active &&
+				((face.flags & VIEW_SHADOW_CASTERS_ONLY_FLAG) == 0 || castsShadows);
+			if (passesLight && face.sphere.w > 0.0)
+			{
+				float3 closest = max(0.0, abs(worldCenter - face.sphere.xyz) - worldExtents);
+				passesLight = dot(closest, closest) <= face.sphere.w * face.sphere.w;
+			}
+
+			if (passesLight)
+			{
+				passesLight = IsInLodRange(lodRange, face.lodParameters);
+			}
+		}
+
+		remainingFaces -= 1;
+
+		bool visible = passesLight;
+		[unroll]
+		for (uint planeIndex = 0; planeIndex < 6; planeIndex += 1)
+		{
+			visible = visible && !IsOutsidePlane(face.planes[planeIndex], worldCenter, worldExtents);
+		}
+
+		if (visible && (face.flags & VIEW_SCREEN_SIZE_FLAG) != 0)
+		{
+			visible = IsLargeEnoughUsingProjectedBounds(worldCenter, worldExtents);
+		}
+
+		uint drawIndex = face.viewIndex * _BatchCount + batchIndex;
+		uint localVisibleIndex = ReserveVisibleIndex(visible, entry, isOwner, drawIndex * 5 + 1);
+		// No continue in this loop: fxc treats it as varying flow control
+		// around the barriers.
+		if (visible && localVisibleIndex < visibleCapacity)
+		{
+			_VisibleInstanceIndices[face.viewIndex * _VisibleStride + visibleOffset + localVisibleIndex] =
+				instanceIndex;
+		}
+		else if (visible && _CullDiagnosticsEnabled != 0)
+		{
+			InterlockedAdd(
+				_CullDiagnostics[face.viewIndex == 0
+					? CULL_DIAGNOSTICS_CAMERA_OVERFLOW_INDEX
+					: CULL_DIAGNOSTICS_VIEW_OVERFLOW_INDEX],
+				1);
+		}
+	}
+}
+
+// Resets a range of draws to their batch's arguments with no instances, before
+// they are culled again.
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ClearInstanceCounts(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint drawOffset = GetInstanceIndex(groupId, groupThreadId);
+	if (drawOffset >= _ClearDrawCount)
+	{
+		return;
+	}
+
+	uint drawIndex = _ClearDrawStart + drawOffset;
+	uint4 arguments = _BatchArguments[drawIndex % _BatchCount];
+	uint argumentIndex = drawIndex * 5;
+	_ClearArguments[argumentIndex] = arguments.x;
+	_ClearArguments[argumentIndex + 1] = 0;
+	_ClearArguments[argumentIndex + 2] = arguments.y;
+	_ClearArguments[argumentIndex + 3] = arguments.z;
+	_ClearArguments[argumentIndex + 4] = 0;
+}
+
+// Writes to the instance buffer: _ScatterInstances[i] goes to slot
+// _ScatterSlots[i], or only its override index with SCATTER_OVERRIDE_ONLY_FLAG.
+// See IndirectRenderer.ScatterInstances.
+#define SCATTER_OVERRIDE_ONLY_FLAG 0x80000000u
+StructuredBuffer<uint> _ScatterSlots;
+StructuredBuffer<VPOIndirectInstanceData> _ScatterInstances;
+RWStructuredBuffer<VPOIndirectInstanceData> _ScatterOutputInstances;
+StructuredBuffer<VPOIndirectInstanceData> _CopySourceInstances;
+uint _ScatterCount;
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ScatterInstances(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint index = GetInstanceIndex(groupId, groupThreadId);
+	if (index >= _ScatterCount)
+	{
+		return;
+	}
+
+	uint slot = _ScatterSlots[index];
+	if ((slot & SCATTER_OVERRIDE_ONLY_FLAG) != 0)
+	{
+		_ScatterOutputInstances[slot & ~SCATTER_OVERRIDE_ONLY_FLAG].worldToObject[3].x =
+			_ScatterInstances[index].worldToObject[3].x;
+		return;
+	}
+
+	_ScatterOutputInstances[slot] = _ScatterInstances[index];
+}
+
+// Copies the first _ScatterCount instances into a grown buffer.
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void CopyInstances(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint index = GetInstanceIndex(groupId, groupThreadId);
+	if (index >= _ScatterCount)
+	{
+		return;
+	}
+
+	_ScatterOutputInstances[index] = _CopySourceInstances[index];
+}

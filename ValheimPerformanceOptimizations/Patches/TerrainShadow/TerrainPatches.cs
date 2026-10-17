@@ -43,7 +43,9 @@ namespace ValheimPerformanceOptimizations.Patches
 
 		public void HeightmapChanged()
 		{
+#if DEBUG
 			ValheimPerformanceOptimizations.Logger.LogInfo("HEIGHTMAP CHANGED");
+#endif
 			UpdateCommandBuffer();
 			SetShadowCascadeCount(QualitySettings.shadowCascades);
 		}

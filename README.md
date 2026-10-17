@@ -59,6 +59,10 @@ however some of its optimizations might cause compatibility issues with other mo
 
   The engine can run physics many times per frame, which is often the most expensive part of Valheim. Lowering this (default 8, range 5–15) can significantly boost FPS in bases at the cost of less accurate physics.
 
+* Unity-managed indirect shadows
+
+  Shadows use Unity-managed indirect submissions with per-cascade GPU preparation.
+
 ## Contributors
 
 * ontrigger
