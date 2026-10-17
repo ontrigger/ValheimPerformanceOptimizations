@@ -4,7 +4,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.Profiling;
-using VPOBurst;
+using ValheimPerformanceOptimizations.Burst;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
 

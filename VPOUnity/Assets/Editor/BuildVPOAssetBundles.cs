@@ -28,23 +28,13 @@ public static class BuildVPOAssetBundles
 	[MenuItem("VPO/Build Piece Shader Asset Bundle")]
 	public static void BuildPieceShaderBundle()
 	{
-		var path = EditorUtility.SaveFolderPanel(
-			"Choose Asset Bundle Location", GetDefaultOutput(PieceShaderBundle), "");
-		if (!string.IsNullOrEmpty(path))
-		{
-			BuildTo(PieceShaderBundle, path);
-		}
+		BuildTo(PieceShaderBundle, GetDefaultOutput(PieceShaderBundle));
 	}
 
 	[MenuItem("VPO/Build Indirect Renderer Asset Bundle")]
 	public static void BuildIndirectRendererBundle()
 	{
-		var path = EditorUtility.SaveFolderPanel(
-			"Choose Asset Bundle Location", GetDefaultOutput(IndirectRendererBundle), "");
-		if (!string.IsNullOrEmpty(path))
-		{
-			BuildTo(IndirectRendererBundle, path);
-		}
+		BuildTo(IndirectRendererBundle, GetDefaultOutput(IndirectRendererBundle));
 	}
 
 	/// <summary>

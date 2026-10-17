@@ -4,7 +4,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace VPOBurst
+namespace ValheimPerformanceOptimizations.Burst
 {
 	[StructLayout(LayoutKind.Sequential)]
 	public struct PackedCullCell

@@ -52,8 +52,8 @@
         <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
             <HintPath>$(VALHEIM_INSTALL)\unstripped_corlib\UnityEngine.UI.dll</HintPath>
         </Reference>
-        <Reference Include="VPOBurst_Managed">
-            <HintPath>BurstOutput\VPOBurst_Managed.dll</HintPath>
+        <Reference Include="ValheimPerformanceOptimizations.Burst">
+            <HintPath>BurstOutput\ValheimPerformanceOptimizations.Burst.dll</HintPath>
             <Private>true</Private>
         </Reference>
         <Reference Include="Unity.Burst">
@@ -65,7 +65,6 @@
         <ProjectReference Include="..\IndirectRendering\IndirectRendering.csproj" />
     </ItemGroup>
     <ItemGroup>
-        <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
         <EmbeddedResource Include="AssetBundles\piece_shader" />
     </ItemGroup>
     <ItemGroup>
@@ -73,13 +72,13 @@
 
     </ItemGroup>
     <ItemGroup>
-        <None Include="BurstOutput\VPOBurst_win_x86_64.dll" Condition="Exists('BurstOutput\VPOBurst_win_x86_64.dll')">
+        <None Include="BurstOutput\ValheimPerformanceOptimizations.Burst_win_x86_64.dll" Condition="Exists('BurstOutput\ValheimPerformanceOptimizations.Burst_win_x86_64.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <Link>VPOBurst_win_x86_64.dll</Link>
+            <Link>ValheimPerformanceOptimizations.Burst_win_x86_64.dll</Link>
         </None>
-        <None Include="BurstOutput\VPOBurst_linux_x86_64.so" Condition="Exists('BurstOutput\VPOBurst_linux_x86_64.so')">
+        <None Include="BurstOutput\ValheimPerformanceOptimizations.Burst_linux_x86_64.so" Condition="Exists('BurstOutput\ValheimPerformanceOptimizations.Burst_linux_x86_64.so')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-            <Link>VPOBurst_linux_x86_64.so</Link>
+            <Link>ValheimPerformanceOptimizations.Burst_linux_x86_64.so</Link>
         </None>
         <None Include="BurstOutput\Unity.Burst.Unsafe.dll" Condition="Exists('BurstOutput\Unity.Burst.Unsafe.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -97,13 +96,14 @@
         <ItemGroup>
             <PluginFile Include="$(OutDir)$(AssemblyName).dll" />
             <PluginFile Include="$(OutDir)$(AssemblyName).pdb" />
-            <PluginFile Include="$(OutDir)VPOBurst_Managed.dll" />
-            <PluginFile Include="$(OutDir)VPOBurst_win_x86_64.dll" />
-            <PluginFile Include="$(OutDir)VPOBurst_linux_x86_64.so" />
+            <PluginFile Include="$(OutDir)ValheimPerformanceOptimizations.Burst.dll" />
+            <PluginFile Include="$(OutDir)ValheimPerformanceOptimizations.Burst_win_x86_64.dll" />
+            <PluginFile Include="$(OutDir)ValheimPerformanceOptimizations.Burst_linux_x86_64.so" />
             <PluginFile Include="$(OutDir)IndirectRendering.dll" />
             <PluginFile Include="$(OutDir)IndirectRendering.pdb" />
             <PluginFile Include="$(OutDir)IndirectRendering.Burst.dll" />
             <PluginFile Include="$(OutDir)IndirectRendering.Burst_win_x86_64.dll" />
+            <PluginFile Include="$(OutDir)IndirectRendering.Burst_linux_x86_64.so" />
         </ItemGroup>
         <Copy SourceFiles="@(PluginFile)" DestinationFolder="$(VALHEIM_INSTALL)\BepInEx\plugins\VPO" Condition="Exists('%(FullPath)')" SkipUnchangedFiles="true" />
     </Target>

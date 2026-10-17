@@ -53,6 +53,10 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>IndirectRendering.Burst_win_x86_64.dll</Link>
         </None>
+        <None Include="BurstOutput\IndirectRendering.Burst_linux_x86_64.so" Condition="Exists('BurstOutput\IndirectRendering.Burst_linux_x86_64.so')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>IndirectRendering.Burst_linux_x86_64.so</Link>
+        </None>
         <None Include="BurstOutput\Unity.Burst.Unsafe.dll" Condition="Exists('BurstOutput\Unity.Burst.Unsafe.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>Unity.Burst.Unsafe.dll</Link>

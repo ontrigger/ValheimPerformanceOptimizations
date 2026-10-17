@@ -4,14 +4,14 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
-using VPOBurst;
+using ValheimPerformanceOptimizations.Burst;
 
 namespace ValheimPerformanceOptimizations;
 
 public static class BurstLoader
 {
-	public const string WindowsBurstLibraryFileName = "VPOBurst_win_x86_64.dll";
-	public const string LinuxBurstLibraryFileName = "VPOBurst_linux_x86_64.so";
+	public const string WindowsBurstLibraryFileName = "ValheimPerformanceOptimizations.Burst_win_x86_64.dll";
+	public const string LinuxBurstLibraryFileName = "ValheimPerformanceOptimizations.Burst_linux_x86_64.so";
 
 	public static bool LibraryLoaded { get; private set; }
 	public static bool JobsAreBursted { get; private set; }

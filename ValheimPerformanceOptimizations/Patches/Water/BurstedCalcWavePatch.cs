@@ -4,7 +4,7 @@ using System.Reflection.Emit;
 using HarmonyLib;
 using Unity.Mathematics;
 using UnityEngine;
-using VPOBurst;
+using ValheimPerformanceOptimizations.Burst;
 
 namespace ValheimPerformanceOptimizations.Patches.Water
 {

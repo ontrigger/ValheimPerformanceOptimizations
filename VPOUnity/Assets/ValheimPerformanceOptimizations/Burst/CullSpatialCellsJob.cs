@@ -1,6 +1,6 @@
 using Unity.Mathematics;
 
-namespace VPOBurst
+namespace ValheimPerformanceOptimizations.Burst
 {
 	public struct CullingAabb
 	{

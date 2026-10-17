@@ -1,6 +1,6 @@
 {
-    "name": "VPOBurst_Managed",
-    "rootNamespace": "VPOBurst",
+    "name": "ValheimPerformanceOptimizations.Burst",
+    "rootNamespace": "ValheimPerformanceOptimizations.Burst",
     "references": [
         "Unity.Burst",
         "Unity.Mathematics"

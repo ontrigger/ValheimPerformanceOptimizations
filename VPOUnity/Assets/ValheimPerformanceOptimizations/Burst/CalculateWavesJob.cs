@@ -4,7 +4,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace VPOBurst
+namespace ValheimPerformanceOptimizations.Burst
 {
 	public struct WaveRequestData
 	{
