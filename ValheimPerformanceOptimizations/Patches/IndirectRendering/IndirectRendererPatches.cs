@@ -39,7 +39,7 @@ internal static class IndirectRendererPatches
 		_toggleShortcut = configFile.Bind(
 			section,
 			"Toggle shortcut",
-			new KeyboardShortcut(KeyCode.F9, KeyCode.LeftAlt),
+			new KeyboardShortcut(KeyCode.F8, KeyCode.LeftAlt),
 			"Toggles Enabled in game, for comparing against vanilla rendering.");
 		MinimumScreenPercentage = configFile.Bind(
 			section,

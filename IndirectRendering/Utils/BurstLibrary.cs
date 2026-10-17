@@ -25,7 +25,7 @@ internal static class BurstLibrary
 		}
 
 		_initialized = true;
-		var fileName = Application.platform == RuntimePlatform.LinuxPlayer
+		var fileName = Application.platform is RuntimePlatform.LinuxPlayer or RuntimePlatform.LinuxServer
 			? "IndirectRendering.Burst_linux_x86_64.so"
 			: "IndirectRendering.Burst_win_x86_64.dll";
 		var directory = Path.GetDirectoryName(typeof(BurstLibrary).Assembly.Location);

@@ -25,18 +25,7 @@ public static class BurstLoader
 			return;
 		}
 
-		string burstLibraryFileName;
-		if (Application.platform == RuntimePlatform.WindowsPlayer)
-		{
-			burstLibraryFileName = WindowsBurstLibraryFileName;
-		}
-		else
-		{
-			burstLibraryFileName = 
-				(Application.platform == RuntimePlatform.LinuxPlayer
-				|| Application.platform == RuntimePlatform.LinuxServer) ? LinuxBurstLibraryFileName : null;
-		}
-
+		var burstLibraryFileName = GetBurstLibraryFileName();
 		if (burstLibraryFileName == null)
 		{
 			ValheimPerformanceOptimizations.Logger.LogWarning(
@@ -72,17 +61,12 @@ public static class BurstLoader
 
 	private static string GetBurstLibraryFileName()
 	{
-		if (Application.platform == RuntimePlatform.WindowsPlayer)
+		return Application.platform switch
 		{
-			return WindowsBurstLibraryFileName;
-		}
-
-		if (Application.platform == RuntimePlatform.LinuxPlayer)
-		{
-			return LinuxBurstLibraryFileName;
-		}
-
-		return null;
+			RuntimePlatform.WindowsPlayer or RuntimePlatform.WindowsServer => WindowsBurstLibraryFileName,
+			RuntimePlatform.LinuxPlayer or RuntimePlatform.LinuxServer => LinuxBurstLibraryFileName,
+			_ => null,
+		};
 	}
 
 	public static bool ProbeIsBursted()
