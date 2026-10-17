@@ -68,13 +68,7 @@
         <EmbeddedResource Include="AssetBundles\smoke_instanced_shader" />
         <EmbeddedResource Include="AssetBundles\piece_shader" />
     </ItemGroup>
-    <!--
-      Some patches remain temporarily disabled for Valheim 1.0.7. Keep their sources in
-      the project tree so they can be audited and updated against vanilla implementations.
-    -->
     <ItemGroup>
-        <!-- Collision baking and zone integration still need the Vector2s/lifecycle port. -->
-
         <Compile Remove="Patches\Water\WaterVolumeVisibilityPatch.cs" />
 
     </ItemGroup>
@@ -96,7 +90,21 @@
         <PostBuildEvent>
             if exist "$(MSBuildProjectDirectory)\Package" if not exist "$(MSBuildProjectDirectory)\PublishOutput" mkdir "$(MSBuildProjectDirectory)\PublishOutput"
             if exist "$(MSBuildProjectDirectory)\Package" powershell -NoProfile -Command "Compress-Archive -Path '$(MSBuildProjectDirectory)\Package\*' -DestinationPath '$(MSBuildProjectDirectory)\PublishOutput\$(MSBuildProjectName).zip' -Force"
-            if exist "$(MSBuildProjectDirectory)\$(OutputPath)" if not "$(VALHEIM_INSTALL)"=="" xcopy "$(MSBuildProjectDirectory)\$(OutputPath)" "$(VALHEIM_INSTALL)\BepInEx\plugins\$(MSBuildProjectName)\" /q /s /y /i
         </PostBuildEvent>
     </PropertyGroup>
+
+    <Target Name="CopyToPlugins" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' And '$(VALHEIM_INSTALL)' != ''">
+        <ItemGroup>
+            <PluginFile Include="$(OutDir)$(AssemblyName).dll" />
+            <PluginFile Include="$(OutDir)$(AssemblyName).pdb" />
+            <PluginFile Include="$(OutDir)VPOBurst_Managed.dll" />
+            <PluginFile Include="$(OutDir)VPOBurst_win_x86_64.dll" />
+            <PluginFile Include="$(OutDir)VPOBurst_linux_x86_64.so" />
+            <PluginFile Include="$(OutDir)IndirectRendering.dll" />
+            <PluginFile Include="$(OutDir)IndirectRendering.pdb" />
+            <PluginFile Include="$(OutDir)IndirectRendering.Burst.dll" />
+            <PluginFile Include="$(OutDir)IndirectRendering.Burst_win_x86_64.dll" />
+        </ItemGroup>
+        <Copy SourceFiles="@(PluginFile)" DestinationFolder="$(VALHEIM_INSTALL)\BepInEx\plugins\VPO" Condition="Exists('%(FullPath)')" SkipUnchangedFiles="true" />
+    </Target>
 </Project>
