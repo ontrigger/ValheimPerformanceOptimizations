@@ -44,9 +44,10 @@ public sealed partial class IndirectRenderer
 
 	/// <summary>
 	/// Starts culling the batches for the camera, the directional shadows and
-	/// the collected views. Call after the views are collected.
+	/// the collected views, or with viewsOnly, the collected views alone. Call
+	/// after the views are collected.
 	/// </summary>
-	private void ScheduleBatchCull()
+	private void ScheduleBatchCull(bool viewsOnly = false)
 	{
 		CompleteBatchCull();
 		culledBatchCount = 0;
@@ -56,7 +57,8 @@ public sealed partial class IndirectRenderer
 			return;
 		}
 
-		var cullViewCount = 2 + views.Count;
+		var fixedCullViewCount = viewsOnly ? 0 : 2;
+		var cullViewCount = fixedCullViewCount + views.Count;
 		batchCullViews.EnsureCapacity(cullViewCount);
 		batchCullPlanes.EnsureCapacity(cameraFrustumPlanes.Length + MaxShadowCullingPlanes + views.Count * 6);
 		shadowCullRows.EnsureCapacity(1 + views.Count);
@@ -71,13 +73,17 @@ public sealed partial class IndirectRenderer
 		var lodScale = cameraLodParameters.w;
 		var planeCount = 0;
 		var shadowRowCount = 0;
-		shadowCullRows[shadowRowCount] = DirectionalShadowCullRow * batchCount;
-		shadowRowCount += 1;
-		batchCullViews[0] = CreateCullView(
-			cameraFrustumPlanes, cameraFrustumPlanes.Length, default, lodOrigin, lodScale, 0, ref planeCount);
-		batchCullViews[1] = CreateCullView(
-			shadowPlanes, shadowPlaneCount, default, lodOrigin, lodScale,
-			DirectionalShadowCullRow * batchCount, ref planeCount);
+		if (!viewsOnly)
+		{
+			shadowCullRows[shadowRowCount] = DirectionalShadowCullRow * batchCount;
+			shadowRowCount += 1;
+			batchCullViews[0] = CreateCullView(
+				cameraFrustumPlanes, cameraFrustumPlanes.Length, default, lodOrigin, lodScale, 0, ref planeCount);
+			batchCullViews[1] = CreateCullView(
+				shadowPlanes, shadowPlaneCount, default, lodOrigin, lodScale,
+				DirectionalShadowCullRow * batchCount, ref planeCount);
+		}
+
 		for (var index = 0; index < views.Count; index += 1)
 		{
 			var view = views[index];
@@ -88,7 +94,7 @@ public sealed partial class IndirectRenderer
 				batchCullPlanes[planeCount + plane] = viewFrustumPlanes[index * ViewPlaneCount + plane];
 			}
 
-			batchCullViews[2 + index] = new BatchCullView
+			batchCullViews[fixedCullViewCount + index] = new BatchCullView
 			{
 				Sphere = view.Sphere, LodOrigin = view.LodOrigin, LodScale = view.LodScale,
 				PlaneStart = planeCount, PlaneCount = viewPlaneCount, OutputOffset = outputOffset,
@@ -109,7 +115,8 @@ public sealed partial class IndirectRenderer
 			CellCount = batchCells.CellCount, BatchCount = batchCount, Visibility = batchVisibility,
 			BoundsMinimum = batchBoundsMinimum, BoundsMaximum = batchBoundsMaximum,
 		}.Schedule(cullViewCount, 1);
-		batchCullHandle = new MergeBatchVisibilityJob
+		// The shared shadow draws are only submitted by Render.
+		batchCullHandle = viewsOnly ? markHandle : new MergeBatchVisibilityJob
 		{
 			Visibility = batchVisibility, BoundsMinimum = batchBoundsMinimum, BoundsMaximum = batchBoundsMaximum,
 			RowOffsets = shadowCullRows, RowCount = shadowRowCount,
@@ -190,6 +197,24 @@ public sealed partial class IndirectRenderer
 
 		var bounds = default(Bounds);
 		bounds.SetMinMax(shadowBatchBoundsMinimum[batchIndex], shadowBatchBoundsMaximum[batchIndex]);
+		return bounds;
+	}
+
+	/// <summary>
+	/// The bounds of the batch's instances in the cells the view sees, or its
+	/// registered bounds when this frame's batches were not culled. Only valid
+	/// for a batch IsBatchVisible accepts.
+	/// </summary>
+	private Bounds GetViewBatchBounds(int viewIndex, int batchIndex, in Bounds registeredBounds)
+	{
+		if (culledBatchCount == 0)
+		{
+			return registeredBounds;
+		}
+
+		var index = viewIndex * culledBatchCount + batchIndex;
+		var bounds = default(Bounds);
+		bounds.SetMinMax(batchBoundsMinimum[index], batchBoundsMaximum[index]);
 		return bounds;
 	}
 

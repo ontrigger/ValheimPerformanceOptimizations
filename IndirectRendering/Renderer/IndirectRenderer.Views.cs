@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using IndirectRendering.Extensions;
 using Debug = UnityEngine.Debug;
@@ -54,6 +55,8 @@ public sealed partial class IndirectRenderer
 	// view index queuedViewStart.
 	private readonly List<IndirectView> views = new();
 	private int queuedViewStart = FixedViewCount;
+	// The last frame Render ran; see CullViewsNow.
+	private int renderedFrame = -1;
 
 	private const int ViewPlaneCount = 6;
 
@@ -86,24 +89,80 @@ public sealed partial class IndirectRenderer
 	}
 
 	/// <summary>
+	/// Culls views at once, for a camera that renders before this frame's
+	/// Render: view i is culled into view index first + i, for SubmitViewDraws,
+	/// until the next CullViewsNow or Render. Returns first, or -1 when nothing
+	/// was culled: while the renderer is disabled, or after this frame's
+	/// Render, whose draws still need the view slots.
+	/// </summary>
+	public int CullViewsNow(ReadOnlySpan<IndirectView> requestedViews)
+	{
+		if (!Enabled || requestedViews.Length == 0 || renderedFrame == Time.frameCount)
+		{
+			return -1;
+		}
+
+		Profiler.BeginSample("CullViewsNow");
+		// The attached shadow command buffers would prepare the last Render's
+		// views from these slots in the camera's shadow passes, and a relayout
+		// releases buffers they hold. Render attaches them again.
+		DetachShadowCommandBuffers();
+		// Render repeats these and finds nothing left to do.
+		ApplyMovedInstances();
+		UploadInstanceChanges();
+
+		// Render collects its own views over these.
+		views.Clear();
+		foreach (var view in requestedViews)
+		{
+			views.Add(view);
+		}
+
+		CalculateViewFrustumPlanes();
+		if (FixedViewCount + views.Count > viewCapacity)
+		{
+			viewCapacity = FixedViewCount + Mathf.NextPowerOfTwo(views.Count);
+			layoutDirty = true;
+		}
+
+		EnsureBatchLayout();
+		var instanceCount = instanceSlots.LiveCount != 0 ? instanceSlots.HighWaterMark : 0;
+		if (instanceCount != 0)
+		{
+			ScheduleBatchCull(true);
+			CompleteBatchCull();
+			EnsureCullDiagnosticsBuffer();
+			DispatchViewCull(default, instanceCount, true);
+		}
+
+		Profiler.EndSample();
+		return instanceCount != 0 ? FixedViewCount : -1;
+	}
+
+	/// <summary>
 	/// Draws a culled view into camera with each batch's own material, through
 	/// Unity's renderer so the camera's lighting and shadows apply. Call before
-	/// rendering the camera. Returns the number of draws submitted.
+	/// rendering the camera. A ShadowCastersOnly view draws into the camera's
+	/// shadow maps only. Returns the number of draws submitted.
 	/// </summary>
 	public int SubmitViewDraws(int viewIndex, Camera camera)
 	{
 		if (viewIndex < 0) { return 0; }
 
+		var viewSlot = viewIndex - FixedViewCount;
+		var shadowsOnly = viewSlot >= 0 && viewSlot < views.Count && views[viewSlot].ShadowCastersOnly;
 		var submissionCount = 0;
 		for (var batchIndex = 0; batchIndex < runtimeBatches.Count; batchIndex += 1)
 		{
 			var runtimeBatch = runtimeBatches[batchIndex];
-			if (runtimeBatch.RegisteredInstanceCount == 0 || !IsBatchVisible(viewIndex, batchIndex))
+			if (runtimeBatch.RegisteredInstanceCount == 0 || !IsBatchVisible(viewIndex, batchIndex) ||
+			    shadowsOnly && !runtimeBatch.ShadowEligible)
 			{
 				continue;
 			}
 
-			var renderParams = runtimeBatch.CameraRenderParams;
+			var renderParams = shadowsOnly ? runtimeBatch.ShadowRenderParams : runtimeBatch.CameraRenderParams;
+			renderParams.worldBounds = GetViewBatchBounds(viewIndex, batchIndex, runtimeBatch.WorldBounds);
 			renderParams.camera = camera;
 			renderParams.matProps = GetViewMaterialProperties(runtimeBatch, viewIndex);
 			Graphics.RenderMeshIndirect(
@@ -259,15 +318,21 @@ public sealed partial class IndirectRenderer
 	}
 
 	/// <summary>
-	/// Culls the camera (view 0) and the collected views in one pass.
+	/// Culls the camera (view 0) and the collected views in one pass, or with
+	/// viewsOnly, the collected views alone.
 	/// </summary>
-	private void DispatchViewCull(Matrix4x4 viewProjectionMatrix, int instanceCount)
+	private void DispatchViewCull(Matrix4x4 viewProjectionMatrix, int instanceCount, bool viewsOnly = false)
 	{
-		var viewCount = 1 + views.Count;
+		var cameraViewCount = viewsOnly ? 0 : 1;
+		var viewCount = cameraViewCount + views.Count;
 		var batchCount = runtimeBatches.Count;
 		// The cascades' draws are reset too; the shadow pass resets them again
 		// before culling them.
-		ClearInstanceCounts(indirectArgumentsBuffer, 0, (FixedViewCount + views.Count) * batchCount);
+		var clearStart = viewsOnly ? FixedViewCount : 0;
+		ClearInstanceCounts(
+			indirectArgumentsBuffer,
+			clearStart * batchCount,
+			(FixedViewCount + views.Count - clearStart) * batchCount);
 
 		if (viewDataBuffer == null || viewDataBuffer.count < viewCount)
 		{
@@ -279,9 +344,13 @@ public sealed partial class IndirectRenderer
 			viewData = new ViewData[viewDataBuffer.count];
 		}
 
-		var cameraView = new ViewData { LodParameters = cameraLodParameters, ViewIndex = 0, Flags = ViewScreenSizeFlag };
-		SetPlanes(ref cameraView, cameraFrustumPlanes);
-		viewData[0] = cameraView;
+		if (!viewsOnly)
+		{
+			var cameraView = new ViewData { LodParameters = cameraLodParameters, ViewIndex = 0, Flags = ViewScreenSizeFlag };
+			SetPlanes(ref cameraView, cameraFrustumPlanes);
+			viewData[0] = cameraView;
+		}
+
 		for (var index = 0; index < views.Count; index += 1)
 		{
 			var view = views[index];
@@ -299,7 +368,7 @@ public sealed partial class IndirectRenderer
 			data.Plane3 = viewFrustumPlanes[start + 3];
 			data.Plane4 = viewFrustumPlanes[start + 4];
 			data.Plane5 = viewFrustumPlanes[start + 5];
-			viewData[1 + index] = data;
+			viewData[cameraViewCount + index] = data;
 		}
 
 		viewDataBuffer.SetData(viewData, 0, 0, viewCount);
@@ -318,7 +387,8 @@ public sealed partial class IndirectRenderer
 		computeShader.SetBuffer(kernel, IndirectArgumentsId, indirectArgumentsBuffer);
 		computeShader.SetBuffer(kernel, ViewsId, viewDataBuffer);
 		computeShader.SetBuffer(kernel, CullDiagnosticsId, cullDiagnosticsBuffer);
-		computeShader.SetInt(CullDiagnosticsEnabledId, CullDiagnosticsEnabled);
+		// Render resets and reads back the diagnostics around its own cull only.
+		computeShader.SetInt(CullDiagnosticsEnabledId, viewsOnly ? 0 : CullDiagnosticsEnabled);
 		ComputeDispatch.GetDimensions(
 			ComputeDispatch.GetThreadGroupCount(instanceCount, shaders.ViewCullGroupSize),
 			out var dispatchX, out var dispatchY);

@@ -116,6 +116,7 @@ public sealed partial class IndirectRenderer : IDisposable
 	/// </summary>
 	public void Render(Camera camera, Light directionalLight, IReadOnlyList<Light> shadowedLights)
 	{
+		renderedFrame = Time.frameCount;
 		if (!Enabled || !camera || !directionalLight)
 		{
 			SkipFrame();
