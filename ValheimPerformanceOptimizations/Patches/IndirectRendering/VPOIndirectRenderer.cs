@@ -30,6 +30,7 @@ internal sealed class VPOIndirectRenderer : MonoBehaviour
 			{
 				BatchCellSize = ZoneSystem.c_ZoneSize,
 				MinimumScreenFraction = IndirectRendererPatches.MinimumScreenPercentage.Value * 0.01f,
+				MultiDrawCasterResolver = MultiDrawCasters.TryGetCaster,
 			});
 		Renderer = indirectRenderer;
 	}
@@ -48,8 +49,8 @@ internal sealed class VPOIndirectRenderer : MonoBehaviour
 
 	private void OnDestroy()
 	{
-
 		indirectRenderer.Dispose();
+		MultiDrawCasters.Release();
 		if (Renderer == indirectRenderer)
 		{
 			Renderer = null;

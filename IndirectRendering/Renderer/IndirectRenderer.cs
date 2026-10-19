@@ -57,9 +57,11 @@ public sealed partial class IndirectRenderer : IDisposable
 	{
 		settings ??= new IndirectRendererSettings();
 		BurstLibrary.EnsureLoaded();
+		MultiDraw.EnsureInitialized();
 		shaders = settings.Shaders ?? IndirectRendererShaders.LoadEmbedded();
 		this.overrideStore = overrideStore;
 		minimumScreenFraction = settings.MinimumScreenFraction;
+		multiDrawCasterResolver = settings.MultiDrawCasterResolver;
 		batchCells = new BatchCellGrid(settings.BatchCellSize);
 		ValidateShadowBufferStrides();
 		Current = this;
@@ -144,6 +146,8 @@ public sealed partial class IndirectRenderer : IDisposable
 		Profiler.EndSample();
 		var instanceCount = instanceSlots.LiveCount != 0 ? instanceSlots.HighWaterMark : 0;
 		var hasShadowWork = instanceCount != 0 && shadowCascadeCount != 0;
+		// The batch cull leaves the multi-draw casters out of the shadow draws.
+		SetMultiDrawActive(hasShadowWork && PrepareMultiDrawCasters());
 		if (instanceCount != 0)
 		{
 			Profiler.BeginSample("BatchCullSchedule");
@@ -160,7 +164,6 @@ public sealed partial class IndirectRenderer : IDisposable
 		PrepareCullDiagnostics(instanceCount);
 	#if DEBUG
 		unityShadowSubmissionCount = 0;
-		shadowCascadePreparationDispatchCount = hasShadowWork ? shadowCascadeCount : 0;
 		cameraSubmissionCount = 0;
 	#endif
 		UpdateShadowReceiverResources(camera, directionalLight, hasShadowWork);
@@ -189,14 +192,18 @@ public sealed partial class IndirectRenderer : IDisposable
 		if (hasShadowWork)
 		{
 			Profiler.BeginSample("ShadowPreparationRecording");
-			RecordShadowPreparationCommandBuffers();
+			RecordShadowPreparationCommandBuffers(directionalLight.cullingMask);
 			Profiler.EndSample();
-			SubmitShadowDraws(camera);
+			SubmitDirectionalShadowPlaceholder(camera);
 		}
 
 		Profiler.BeginSample("LocalShadowRecording");
 		RecordLocalShadowCommandBuffers(hasShadowWork);
 		Profiler.EndSample();
+		if (hasShadowWork)
+		{
+			SubmitLocalShadowPlaceholders(camera);
+		}
 
 		Profiler.BeginSample("QueuedViews");
 		RunQueuedViews(instanceCount != 0);
@@ -266,7 +273,8 @@ public sealed partial class IndirectRenderer : IDisposable
 		ReleaseBuffer(ref shadowReceiverMapBuffer);
 		ReleaseBuffer(ref shadowDepthTilesBuffer);
 		ReleaseBuffer(ref shadowCascadeSpheresBuffer);
-		ReleaseBuffer(ref shadowFaceCaptureBuffer);
+		ReleaseBuffer(ref emptyShadowArgumentsBuffer);
+		ReleaseMultiDrawShadows();
 		if (shadowCascadeCaptureMaterial)
 		{
 			UnityEngine.Object.Destroy(shadowCascadeCaptureMaterial);
@@ -288,7 +296,6 @@ public sealed partial class IndirectRenderer : IDisposable
 		shadowReceiverShadowFar = 0f;
 	#if DEBUG
 		unityShadowSubmissionCount = 0;
-		shadowCascadePreparationDispatchCount = 0;
 	#endif
 	}
 

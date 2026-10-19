@@ -13,6 +13,7 @@ internal static class PieceShaderBundle
 	private const string CreatureShaderName = "VPO/Creature";
 	private const string StandardShaderName = "VPO/Standard";
 	private const string SkyDepthShaderName = "Hidden/VPO/SkyDepth";
+	private const string MultiDrawShadowCasterShaderName = "Hidden/VPO/MultiDrawShadowCaster";
 
 	private static AssetBundle _bundle;
 
@@ -22,6 +23,7 @@ internal static class PieceShaderBundle
 	internal static Shader CreatureShader { get; private set; }
 	internal static Shader StandardShader { get; private set; }
 	internal static Shader SkyDepthShader { get; private set; }
+	internal static Shader MultiDrawShadowCasterShader { get; private set; }
 
 	internal static void Load()
 	{
@@ -38,11 +40,12 @@ internal static class PieceShaderBundle
 		CreatureShader = shaders.Single(shader => shader.name == CreatureShaderName);
 		StandardShader = shaders.Single(shader => shader.name == StandardShaderName);
 		SkyDepthShader = shaders.Single(shader => shader.name == SkyDepthShaderName);
+		MultiDrawShadowCasterShader = shaders.Single(shader => shader.name == MultiDrawShadowCasterShaderName);
 #if DEBUG
 		VPO.Logger.LogInfo(
 			$"Loaded {ShaderName}, {StaticRockShaderName}, {VegetationShaderName}, {CreatureShaderName}, " +
-			$"{StandardShaderName} and " +
-			$"{SkyDepthShaderName} from the " +
+			$"{StandardShaderName}, {SkyDepthShaderName} and " +
+			$"{MultiDrawShadowCasterShaderName} from the " +
 			$"embedded {BundleName} asset bundle.");
 #endif
 	}

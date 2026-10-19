@@ -30,7 +30,6 @@ public sealed partial class IndirectRenderer
 
 	private int shadowPreparationRerecordCount;
 	private int unityShadowSubmissionCount;
-	private int shadowCascadePreparationDispatchCount;
 #endif
 	private int nextTopologyValidationFrame = 300;
 	// The cull kernels write to it, so it is bound in Release too, where
@@ -103,7 +102,6 @@ public sealed partial class IndirectRenderer
 			$"attached={attachedShadowCascadeCount != 0}, " +
 			$"cameraSubmissions={cameraSubmissionCount}, managedShadowSubmissions={unityShadowSubmissionCount}, " +
 			$"batchCells={batchCells.CellCount}, " +
-			$"cascadePreparationDispatches={shadowCascadePreparationDispatchCount}, " +
 			$"instanceSlots={instanceSlots.HighWaterMark}, liveInstances={instanceSlots.LiveCount}, " +
 			$"preparationRerecords={shadowPreparationRerecordCount}, " +
 			$"volumePasses={shadowVolumePasses}, receiverCulls={shadowReceiverCulls}, " +

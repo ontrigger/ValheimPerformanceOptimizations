@@ -1,5 +1,4 @@
 #pragma kernel ShadowFrustumCull
-#pragma kernel PrepareShadowCascadeDraws
 #pragma kernel ClearShadowReceiverMap
 #pragma kernel BuildShadowDepthTiles
 #pragma kernel ScatterShadowReceivers
@@ -8,6 +7,7 @@
 #pragma kernel ClearInstanceCounts
 #pragma kernel ScatterInstances
 #pragma kernel CopyInstances
+#pragma kernel PrepareMultiDrawArguments
 
 #define THREAD_GROUP_SIZE 64
 #define MAX_DISPATCH_GROUPS_X 65535
@@ -22,12 +22,9 @@
 	(CULL_DIAGNOSTICS_SHADOW_RECEIVER_CULL_OFFSET + MAX_DIRECTIONAL_CASCADES)
 // Set on ViewData.flags for views that only draw shadow casters.
 #define VIEW_SHADOW_CASTERS_ONLY_FLAG 1u
-// Set on the first of a point light's six face views, see ViewCull.
-#define VIEW_CUBE_FACES_FLAG 2u
 // Set on the camera's view, which also skips instances below
 // _MinimumScreenPercentage of the screen.
 #define VIEW_SCREEN_SIZE_FLAG 4u
-#define CUBE_FACE_COUNT 6
 #define SHADOW_RECEIVER_MAP_RESOLUTION 128
 #define SHADOW_RECEIVER_MAP_LEVEL_COUNT 8
 #define SHADOW_RECEIVER_MAP_CASCADE_STRIDE 21845
@@ -114,8 +111,6 @@ StructuredBuffer<float4> _ShadowCascadeSpheres;
 RWStructuredBuffer<uint> _ShadowReceiverMap;
 RWStructuredBuffer<ShadowDepthTile> _ShadowDepthTiles;
 
-RWStructuredBuffer<uint> _ShadowRenderArguments;
-RWStructuredBuffer<uint> _ShadowRenderVisibleOffsets;
 // The draws ClearInstanceCounts resets: _ClearDrawCount of them in
 // _ClearArguments, from _ClearDrawStart. Draw d is batch d % _BatchCount.
 RWStructuredBuffer<uint> _ClearArguments;
@@ -125,12 +120,6 @@ uint _ClearDrawCount;
 StructuredBuffer<uint4> _BatchArguments;
 
 Texture2D<float> _CameraDepthTexture;
-
-uint _ShadowPrepareViewIndex;
-// 6 when _ShadowPrepareViewIndex is a point light's first face view, else 1.
-uint _ShadowPrepareFaceCount;
-// The cube face being rendered, written by the capture draw before each face.
-StructuredBuffer<uint> _ShadowFaceCapture;
 
 // Every view but the shadow cascades, culled together in one pass: the
 // camera, then reflection faces, the sky depth camera and local shadow lights.
@@ -1050,32 +1039,47 @@ void ShadowFrustumCull(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_Grou
 	}
 }
 
-// Copies one cascade's, spot light's or cube face's arguments and visible
-// offsets into the Unity-facing buffers that the shadow draws read during that
-// pass.
-[numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void PrepareShadowCascadeDraws(uint3 dispatchThreadId : SV_DispatchThreadID)
+// A batch drawn by the shadowed lights' native multi-draws, from the shared
+// caster index buffer. Its indices already address the shared vertex buffer.
+struct MultiDrawBatch
 {
-	uint batchIndex = dispatchThreadId.x;
-	if (batchIndex >= _BatchCount)
+	uint batchIndex;
+	uint indexCount;
+	uint startIndex;
+	uint layerMask;
+};
+
+StructuredBuffer<MultiDrawBatch> _MultiDrawBatches;
+// Draw e is _MultiDrawBatches[e].
+RWStructuredBuffer<uint> _MultiDrawArguments;
+uint _MultiDrawBatchCount;
+uint _MultiDrawViewIndex;
+uint _MultiDrawCullingMask;
+
+// Copies the culled instance counts of the multi-draw batches in one view into
+// a shadow pass's multi-draw arguments, for the layers in _MultiDrawCullingMask.
+// The draw's startInstance is the batch's visible offset; the view base comes
+// from the pass's material properties.
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void PrepareMultiDrawArguments(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID)
+{
+	uint drawIndex = GetInstanceIndex(groupId, groupThreadId);
+	if (drawIndex >= _MultiDrawBatchCount)
 	{
 		return;
 	}
 
-	uint viewIndex = _ShadowPrepareViewIndex;
-	if (_ShadowPrepareFaceCount > 1)
-	{
-		viewIndex += min(_ShadowFaceCapture[0], _ShadowPrepareFaceCount - 1);
-	}
-
-	uint sourceDrawIndex = viewIndex * _BatchCount + batchIndex;
-	[unroll]
-	for (uint wordIndex = 0; wordIndex < 5; wordIndex++)
-	{
-		_ShadowRenderArguments[batchIndex * 5 + wordIndex] = _IndirectArguments[sourceDrawIndex * 5 + wordIndex];
-	}
-
-	_ShadowRenderVisibleOffsets[batchIndex] = viewIndex * _VisibleStride + _BatchData[batchIndex].visibleOffset;
+	MultiDrawBatch batch = _MultiDrawBatches[drawIndex];
+	uint sourceDrawIndex = _MultiDrawViewIndex * _BatchCount + batch.batchIndex;
+	uint instanceCount = (batch.layerMask & _MultiDrawCullingMask) != 0
+		? _IndirectArguments[sourceDrawIndex * 5 + 1]
+		: 0;
+	uint argumentIndex = drawIndex * 5;
+	_MultiDrawArguments[argumentIndex] = batch.indexCount;
+	_MultiDrawArguments[argumentIndex + 1] = instanceCount;
+	_MultiDrawArguments[argumentIndex + 2] = batch.startIndex;
+	_MultiDrawArguments[argumentIndex + 3] = 0;
+	_MultiDrawArguments[argumentIndex + 4] = _BatchData[batch.batchIndex].visibleOffset;
 }
 
 // One thread per instance slot, tested against every view in _Views. Each
@@ -1115,59 +1119,44 @@ void ViewCull(uint3 groupId : SV_GroupID, uint3 groupThreadId : SV_GroupThreadID
 		worldExtents = mul(abs((float3x3)objectToWorld), batch.localBoundsExtents);
 	}
 
-	// A point light's face views share its sphere and LOD tests, so they run
-	// once, on its first face, for all six. The loop runs every slot so the
-	// barriers stay in uniform flow control.
-	bool passesLight = false;
-	uint remainingFaces = 0;
+
+	// The loop runs every slot so the barriers stay in uniform flow control.
 	[loop]
 	for (uint viewSlot = 0; viewSlot < _ViewCount; viewSlot += 1)
 	{
-		ViewData face = _Views[viewSlot];
-		if (remainingFaces == 0)
+		ViewData view = _Views[viewSlot];
+		bool visible = active && ((view.flags & VIEW_SHADOW_CASTERS_ONLY_FLAG) == 0 || castsShadows);
+		if (visible && view.sphere.w > 0.0)
 		{
-			remainingFaces = (face.flags & VIEW_CUBE_FACES_FLAG) != 0 ? CUBE_FACE_COUNT : 1;
-			passesLight = active &&
-				((face.flags & VIEW_SHADOW_CASTERS_ONLY_FLAG) == 0 || castsShadows);
-			if (passesLight && face.sphere.w > 0.0)
-			{
-				float3 closest = max(0.0, abs(worldCenter - face.sphere.xyz) - worldExtents);
-				passesLight = dot(closest, closest) <= face.sphere.w * face.sphere.w;
-			}
-
-			if (passesLight)
-			{
-				passesLight = IsInLodRange(lodRange, face.lodParameters);
-			}
+			float3 closest = max(0.0, abs(worldCenter - view.sphere.xyz) - worldExtents);
+			visible = dot(closest, closest) <= view.sphere.w * view.sphere.w;
 		}
 
-		remainingFaces -= 1;
-
-		bool visible = passesLight;
+		visible = visible && IsInLodRange(lodRange, view.lodParameters);
 		[unroll]
 		for (uint planeIndex = 0; planeIndex < 6; planeIndex += 1)
 		{
-			visible = visible && !IsOutsidePlane(face.planes[planeIndex], worldCenter, worldExtents);
+			visible = visible && !IsOutsidePlane(view.planes[planeIndex], worldCenter, worldExtents);
 		}
 
-		if (visible && (face.flags & VIEW_SCREEN_SIZE_FLAG) != 0)
+		if (visible && (view.flags & VIEW_SCREEN_SIZE_FLAG) != 0)
 		{
 			visible = IsLargeEnoughUsingProjectedBounds(worldCenter, worldExtents);
 		}
 
-		uint drawIndex = face.viewIndex * _BatchCount + batchIndex;
+		uint drawIndex = view.viewIndex * _BatchCount + batchIndex;
 		uint localVisibleIndex = ReserveVisibleIndex(visible, entry, isOwner, drawIndex * 5 + 1);
 		// No continue in this loop: fxc treats it as varying flow control
 		// around the barriers.
 		if (visible && localVisibleIndex < visibleCapacity)
 		{
-			_VisibleInstanceIndices[face.viewIndex * _VisibleStride + visibleOffset + localVisibleIndex] =
+			_VisibleInstanceIndices[view.viewIndex * _VisibleStride + visibleOffset + localVisibleIndex] =
 				instanceIndex;
 		}
 		else if (visible && _CullDiagnosticsEnabled != 0)
 		{
 			InterlockedAdd(
-				_CullDiagnostics[face.viewIndex == 0
+				_CullDiagnostics[view.viewIndex == 0
 					? CULL_DIAGNOSTICS_CAMERA_OVERFLOW_INDEX
 					: CULL_DIAGNOSTICS_VIEW_OVERFLOW_INDEX],
 				1);

@@ -3,6 +3,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace IndirectRendering.Burst
 {
@@ -37,16 +38,34 @@ namespace IndirectRendering.Burst
 		public float LodScale;
 		public int PlaneStart;
 		public int PlaneCount;
-		public int OutputOffset;
+		// The view's draws go in row Row of the outputs.
+		public int Row;
+		// Batches draw only with all of these BatchFlags.
+		public int RequiredFlags;
+		// Batches with any of these BatchFlags are left out of the row's draws.
+		public int ExcludedFlags;
 	}
 
 	/// <summary>
-	/// For each view, writes Visibility[OutputOffset + batch] = 1 for every
-	/// batch with instances in a cell that passes the view's inward-facing
-	/// planes, its sphere and the batch's LOD distances scaled by LodScale from
-	/// LodOrigin, and 0 for the other batches. BoundsMinimum and BoundsMaximum
-	/// at the same index get the union of the batch's entry bounds that pass the
-	/// view, or float.MaxValue and -float.MaxValue when none does.
+	/// A batch to submit and the bounds of its instances that a view sees.
+	/// </summary>
+	[StructLayout(LayoutKind.Sequential)]
+	public struct BatchDraw
+	{
+		public Bounds Bounds;
+		// -1 for row bounds with no batches.
+		public int BatchIndex;
+	}
+
+	/// <summary>
+	/// For each view, finds the batches with instances in a cell that passes
+	/// the view's inward-facing planes, its sphere and the batch's LOD
+	/// distances scaled by LodScale from LodOrigin, with the bounds of the
+	/// batch's entries that pass. Of those with the view's RequiredFlags, it
+	/// writes the ones without its ExcludedFlags to Draws, compacted in batch
+	/// order from Row * BatchCount, with their count in DrawCounts[Row], and
+	/// unites all of them, excluded or not, into RowBounds[Row], under the first
+	/// one's index.
 	/// </summary>
 	[BurstCompile]
 	public struct MarkVisibleBatchesJob : IJobParallelFor
@@ -55,22 +74,25 @@ namespace IndirectRendering.Burst
 		[ReadOnly] public NativeArray<BatchCullEntry> Entries;
 		[ReadOnly] public NativeArray<BatchCullView> Views;
 		[ReadOnly] public NativeArray<float4> Planes;
+		[ReadOnly] public NativeArray<byte> BatchFlags;
 		[ReadOnly] public int CellCount;
 		[ReadOnly] public int BatchCount;
 
 		// Views write disjoint rows.
-		[NativeDisableParallelForRestriction] public NativeArray<byte> Visibility;
-		[NativeDisableParallelForRestriction] public NativeArray<float3> BoundsMinimum;
-		[NativeDisableParallelForRestriction] public NativeArray<float3> BoundsMaximum;
+		[NativeDisableParallelForRestriction] public NativeArray<BatchDraw> Draws;
+		[NativeDisableParallelForRestriction] public NativeArray<int> DrawCounts;
+		[NativeDisableParallelForRestriction] public NativeArray<BatchDraw> RowBounds;
 
 		public void Execute(int viewIndex)
 		{
 			var view = Views[viewIndex];
+			// A batch no entry passes keeps a minimum above its maximum.
+			var boundsMinimum = new NativeArray<float3>(BatchCount, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+			var boundsMaximum = new NativeArray<float3>(BatchCount, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 			for (var batchIndex = 0; batchIndex < BatchCount; batchIndex += 1)
 			{
-				Visibility[view.OutputOffset + batchIndex] = 0;
-				BoundsMinimum[view.OutputOffset + batchIndex] = float.MaxValue;
-				BoundsMaximum[view.OutputOffset + batchIndex] = -float.MaxValue;
+				boundsMinimum[batchIndex] = float.MaxValue;
+				boundsMaximum[batchIndex] = -float.MaxValue;
 			}
 
 			var sphereCenter = view.Sphere.xyz;
@@ -105,12 +127,52 @@ namespace IndirectRendering.Burst
 						continue;
 					}
 
-					var outputIndex = view.OutputOffset + entry.BatchIndex;
-					Visibility[outputIndex] = 1;
-					BoundsMinimum[outputIndex] = math.min(BoundsMinimum[outputIndex], entry.BoundsMinimum);
-					BoundsMaximum[outputIndex] = math.max(BoundsMaximum[outputIndex], entry.BoundsMaximum);
+					var batch = entry.BatchIndex;
+					boundsMinimum[batch] = math.min(boundsMinimum[batch], entry.BoundsMinimum);
+					boundsMaximum[batch] = math.max(boundsMaximum[batch], entry.BoundsMaximum);
 				}
 			}
+
+			var rowStart = view.Row * BatchCount;
+			var drawCount = 0;
+			var firstBatch = -1;
+			var rowMinimum = new float3(float.MaxValue);
+			var rowMaximum = new float3(-float.MaxValue);
+			for (var batchIndex = 0; batchIndex < BatchCount; batchIndex += 1)
+			{
+				var minimum = boundsMinimum[batchIndex];
+				var maximum = boundsMaximum[batchIndex];
+				var flags = (int)BatchFlags[batchIndex];
+				if (minimum.x > maximum.x || (flags & view.RequiredFlags) != view.RequiredFlags)
+				{
+					continue;
+				}
+
+				firstBatch = firstBatch < 0 ? batchIndex : firstBatch;
+				rowMinimum = math.min(rowMinimum, minimum);
+				rowMaximum = math.max(rowMaximum, maximum);
+				if ((flags & view.ExcludedFlags) != 0)
+				{
+					continue;
+				}
+
+				Draws[rowStart + drawCount] = new BatchDraw
+				{
+					Bounds = ToBounds(minimum, maximum), BatchIndex = batchIndex,
+				};
+				drawCount += 1;
+			}
+
+			DrawCounts[view.Row] = drawCount;
+			RowBounds[view.Row] = new BatchDraw
+			{
+				Bounds = firstBatch < 0 ? default : ToBounds(rowMinimum, rowMaximum), BatchIndex = firstBatch,
+			};
+		}
+
+		private static Bounds ToBounds(float3 minimum, float3 maximum)
+		{
+			return new Bounds((minimum + maximum) * 0.5f, maximum - minimum);
 		}
 
 		private bool IntersectsView(
@@ -143,42 +205,6 @@ namespace IndirectRendering.Burst
 			}
 
 			return true;
-		}
-	}
-
-	/// <summary>
-	/// ORs the rows at RowOffsets into Result, one batch per index, and unions
-	/// their bounds into ResultMinimum and ResultMaximum.
-	/// </summary>
-	[BurstCompile]
-	public struct MergeBatchVisibilityJob : IJobParallelFor
-	{
-		[ReadOnly] public NativeArray<byte> Visibility;
-		[ReadOnly] public NativeArray<float3> BoundsMinimum;
-		[ReadOnly] public NativeArray<float3> BoundsMaximum;
-		[ReadOnly] public NativeArray<int> RowOffsets;
-		[ReadOnly] public int RowCount;
-
-		[WriteOnly] public NativeArray<byte> Result;
-		[WriteOnly] public NativeArray<float3> ResultMinimum;
-		[WriteOnly] public NativeArray<float3> ResultMaximum;
-
-		public void Execute(int batchIndex)
-		{
-			byte visible = 0;
-			var minimum = new float3(float.MaxValue);
-			var maximum = new float3(-float.MaxValue);
-			for (var row = 0; row < RowCount; row += 1)
-			{
-				var index = RowOffsets[row] + batchIndex;
-				visible |= Visibility[index];
-				minimum = math.min(minimum, BoundsMinimum[index]);
-				maximum = math.max(maximum, BoundsMaximum[index]);
-			}
-
-			Result[batchIndex] = visible;
-			ResultMinimum[batchIndex] = minimum;
-			ResultMaximum[batchIndex] = maximum;
 		}
 	}
 }

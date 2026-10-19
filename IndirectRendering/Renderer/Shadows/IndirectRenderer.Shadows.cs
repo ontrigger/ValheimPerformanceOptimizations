@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using IndirectRendering.Burst;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -10,11 +12,6 @@ public sealed partial class IndirectRenderer
 {
 	private static readonly int ShadowCullingPlanesId = Shader.PropertyToID("_ShadowCullingPlanes");
 	private static readonly int ShadowCullParametersId = Shader.PropertyToID("_ShadowCullParameters");
-	private static readonly int ShadowRenderArgumentsId = Shader.PropertyToID("_ShadowRenderArguments");
-	private static readonly int ShadowRenderVisibleOffsetsId = Shader.PropertyToID("_ShadowRenderVisibleOffsets");
-	private static readonly int ShadowPrepareViewIndexId = Shader.PropertyToID("_ShadowPrepareViewIndex");
-	private static readonly int ShadowPrepareFaceCountId = Shader.PropertyToID("_ShadowPrepareFaceCount");
-	private static readonly int ShadowFaceCaptureId = Shader.PropertyToID("_ShadowFaceCapture");
 	private static readonly int ShadowCascadeCountId = Shader.PropertyToID("_ShadowCascadeCount");
 
 	[StructLayout(LayoutKind.Sequential)]
@@ -33,8 +30,6 @@ public sealed partial class IndirectRenderer
 
 	private int shadowCascadeCount;
 
-	private CommandBuffer shadowResetCommandBuffer;
-
 	private readonly ShadowCullParameters[] shadowCullParameters = new ShadowCullParameters[1];
 	private readonly uint[] shadowDispatchArguments = [0, 1, 1];
 	private GraphicsBuffer shadowCullParametersBuffer;
@@ -46,11 +41,12 @@ public sealed partial class IndirectRenderer
 	private GraphicsBuffer shadowCascadeSpheresBuffer;
 	private readonly Vector4[] shadowCascadeSpheresReset = new Vector4[ShadowCascadeSphereCaptureCount];
 	private Material shadowCascadeCaptureMaterial;
-	// The cube face a point light is rendering, written by pass 1 of the
-	// capture material before each face.
-	private GraphicsBuffer shadowFaceCaptureBuffer;
 
 	private int recordedShadowVersion = -1;
+	private int recordedShadowCullingMask;
+	// The batches the cascades' command buffers draw one by one.
+	private List<int> recordedShadowBatches = new();
+	private List<int> shadowBatchesScratch = new();
 	private readonly CommandBuffer[] shadowCommandBuffers = new CommandBuffer[MaxDirectionalCascades];
 	private Light shadowCommandBufferLight;
 
@@ -63,11 +59,6 @@ public sealed partial class IndirectRenderer
 		"VPO Indirect Directional Shadow Cascade 2",
 		"VPO Indirect Directional Shadow Cascade 3",
 	};
-
-	private void RecordShadowRenderReset(CommandBuffer commandBuffer)
-	{
-		RecordClearInstanceCounts(commandBuffer, shadowRenderArgumentsBuffer, 0, runtimeBatches.Count);
-	}
 
 	private void UpdateShadowCommandBufferAttachments(Light directionalLight, bool hasShadowWork)
 	{
@@ -93,24 +84,39 @@ public sealed partial class IndirectRenderer
 				GetShadowMapPass(index));
 		}
 
-		// Leaves the shadow-render buffers empty for the local lights rendered after the sun.
-		shadowResetCommandBuffer ??= new CommandBuffer { name = "VPO Indirect Directional Shadow Reset" };
-		directionalLight.AddCommandBuffer(
-			LightEvent.AfterShadowMapPass,
-			shadowResetCommandBuffer,
-			ShadowMapPass.Directional);
 		shadowCommandBufferLight = directionalLight;
 		attachedShadowCascadeCount = shadowCascadeCount;
 		InvalidateShadowRecordings();
 	}
 
-	private void RecordShadowPreparationCommandBuffers()
+	/// <param name="cullingMask">The directional light's.</param>
+	private void RecordShadowPreparationCommandBuffers(int cullingMask)
 	{
-		if (recordedShadowVersion == shadowRecordingVersion) { return; }
+		// The batch cull left only shadow casters in the directional row, and with
+		// multiDrawActive, only the ones that do not multi-draw.
+		var batches = shadowBatchesScratch;
+		batches.Clear();
+		var drawCount = CopyViewDraws(DirectionalShadowCullRow, ref viewDrawsScratch);
+		var draws = viewDrawsScratch;
+		for (var index = 0; index < drawCount; index += 1)
+		{
+			var batchIndex = draws[index].BatchIndex;
+			if ((cullingMask & (1 << runtimeBatches[batchIndex].ShadowRenderParams.layer)) != 0)
+			{
+				batches.Add(batchIndex);
+			}
+		}
 
+		if (recordedShadowVersion == shadowRecordingVersion &&
+		    recordedShadowCullingMask == cullingMask && SameBatches(recordedShadowBatches, batches))
+		{
+			return;
+		}
+
+		shadowBatchesScratch = recordedShadowBatches;
+		recordedShadowBatches = batches;
 		// The draw ranges are recorded into the command buffers, so a layout
 		// change re-records them.
-		var batchCount = runtimeBatches.Count;
 		for (var cascadeIndex = 0; cascadeIndex < shadowCascadeCount; cascadeIndex += 1)
 		{
 			var commandBuffer = shadowCommandBuffers[cascadeIndex];
@@ -119,51 +125,60 @@ public sealed partial class IndirectRenderer
 
 			if (cascadeIndex == 0)
 			{
-				// The cascades are views 1-4, right after the camera's draws.
-				RecordClearInstanceCounts(
-					commandBuffer, indirectArgumentsBuffer, batchCount, shadowCascadeCount * batchCount);
-				commandBuffer.BeginSample("VPO Shadow Cull All");
-				var computeShader = shaders.FrustumCullShader;
-				commandBuffer.SetComputeIntParam(computeShader, ShadowCascadeCountId, shadowCascadeCount);
-				RecordShadowCascadeCapture(commandBuffer);
-				RecordShadowReceiverMap(commandBuffer, computeShader);
-				var kernel = shaders.ShadowFrustumCullKernel;
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowInputInstancesId, instanceBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowCullingPlanesId, shadowCullingPlanesBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, BatchDataId, batchDataBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowCullParametersId, shadowCullParametersBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, CullVisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, IndirectArgumentsId, indirectArgumentsBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowReceiverParametersId, shadowReceiverParametersBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowReceiverMapId, shadowReceiverMapBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, ShadowCascadeSpheresId, shadowCascadeSpheresBuffer);
-				commandBuffer.SetComputeBufferParam(
-					computeShader, kernel, CullDiagnosticsId, cullDiagnosticsBuffer);
-				commandBuffer.SetComputeIntParam(computeShader, CullDiagnosticsEnabledId, CullDiagnosticsEnabled);
-				commandBuffer.DispatchCompute(computeShader, kernel, shadowDispatchArgumentsBuffer, 0);
-				commandBuffer.EndSample("VPO Shadow Cull All");
+				RecordShadowCull(commandBuffer);
 			}
 
-			RecordShadowCascadePreparation(commandBuffer, 1 + cascadeIndex);
+			if (multiDrawActive)
+			{
+				RecordMultiDrawPass(commandBuffer, cascadeMultiDrawPasses[cascadeIndex], 1 + cascadeIndex, cullingMask);
+			}
 
+			RecordCascadeDraws(commandBuffer, 1 + cascadeIndex, batches);
 			commandBuffer.EndSample(ShadowCascadeCommandBufferNames[cascadeIndex]);
 		}
 
-		shadowResetCommandBuffer.Clear();
-		RecordShadowRenderReset(shadowResetCommandBuffer);
 		recordedShadowVersion = shadowRecordingVersion;
+		recordedShadowCullingMask = cullingMask;
 	#if DEBUG
 		shadowPreparationRerecordCount += 1;
 	#endif
+	}
+
+	// Culls every cascade's view, which are rows 1-4, right after the camera's.
+	private void RecordShadowCull(CommandBuffer commandBuffer)
+	{
+		var batchCount = runtimeBatches.Count;
+		RecordClearInstanceCounts(
+			commandBuffer, indirectArgumentsBuffer, batchCount, shadowCascadeCount * batchCount);
+		commandBuffer.BeginSample("VPO Shadow Cull All");
+		var computeShader = shaders.FrustumCullShader;
+		commandBuffer.SetComputeIntParam(computeShader, ShadowCascadeCountId, shadowCascadeCount);
+		RecordShadowCascadeCapture(commandBuffer);
+		RecordShadowReceiverMap(commandBuffer, computeShader);
+		var kernel = shaders.ShadowFrustumCullKernel;
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowInputInstancesId, instanceBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowCullingPlanesId, shadowCullingPlanesBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, BatchDataId, batchDataBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowCullParametersId, shadowCullParametersBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, CullVisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, IndirectArgumentsId, indirectArgumentsBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowReceiverParametersId, shadowReceiverParametersBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowReceiverMapId, shadowReceiverMapBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, ShadowCascadeSpheresId, shadowCascadeSpheresBuffer);
+		commandBuffer.SetComputeBufferParam(
+			computeShader, kernel, CullDiagnosticsId, cullDiagnosticsBuffer);
+		commandBuffer.SetComputeIntParam(computeShader, CullDiagnosticsEnabledId, CullDiagnosticsEnabled);
+		commandBuffer.DispatchCompute(computeShader, kernel, shadowDispatchArgumentsBuffer, 0);
+		commandBuffer.EndSample("VPO Shadow Cull All");
 	}
 
 	private void RecordShadowCascadeCapture(CommandBuffer commandBuffer)
@@ -183,75 +198,51 @@ public sealed partial class IndirectRenderer
 		commandBuffer.EndSample("VPO Shadow Cascade Capture");
 	}
 
-	// Copies a cascade's or local light's view into the shadow-render buffers.
-	// With six faces, viewIndex is the first and the captured face picks one.
-	private void RecordShadowCascadePreparation(CommandBuffer commandBuffer, int viewIndex, int faceCount = 1)
+	// The directional row covers the casters of every cascade, so a batch
+	// outside this cascade has no instances in its draw and draws nothing.
+	private void RecordCascadeDraws(CommandBuffer commandBuffer, int viewIndex, List<int> batches)
 	{
-		var computeShader = shaders.FrustumCullShader;
-		var kernel = shaders.PrepareShadowCascadeDrawsKernel;
-		commandBuffer.BeginSample("VPO Prepare Shadow Cascade Draws");
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, IndirectArgumentsId, indirectArgumentsBuffer);
-		commandBuffer.SetComputeBufferParam(computeShader, kernel, BatchDataId, batchDataBuffer);
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowRenderArgumentsId, shadowRenderArgumentsBuffer);
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowRenderVisibleOffsetsId, shadowRenderVisibleOffsetsBuffer);
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowFaceCaptureId, shadowFaceCaptureBuffer);
-		// These are fixed for a recording; a batch count or visible stride
-		// change re-records.
-		commandBuffer.SetComputeIntParam(computeShader, ShadowPrepareViewIndexId, viewIndex);
-		commandBuffer.SetComputeIntParam(computeShader, ShadowPrepareFaceCountId, faceCount);
-		commandBuffer.SetComputeIntParam(computeShader, BatchCountId, runtimeBatches.Count);
-		commandBuffer.SetComputeIntParam(computeShader, VisibleStrideId, visibleStride);
-		commandBuffer.DispatchCompute(
-			computeShader,
-			kernel,
-			Mathf.Max(1, ComputeDispatch.GetThreadGroupCount(
-				runtimeBatches.Count, shaders.PrepareShadowCascadeDrawsGroupSize)),
-			1,
-			1);
-		commandBuffer.EndSample("VPO Prepare Shadow Cascade Draws");
-	}
-
-	private void SubmitShadowDraws(Camera camera)
-	{
-		Profiler.BeginSample("ShadowDraws");
-		for (var batchIndex = 0; batchIndex < runtimeBatches.Count; batchIndex += 1)
+		foreach (var batchIndex in batches)
 		{
 			var runtimeBatch = runtimeBatches[batchIndex];
-			if (!runtimeBatch.ShadowEligible || runtimeBatch.RegisteredInstanceCount == 0 ||
-			    !IsShadowBatchVisible(batchIndex))
-			{
-				continue;
-			}
-
-			// Shadow draws read the cascade copy prepared before each cascade.
-			BindInstanceBuffers(
-				runtimeBatch.ShadowRenderProperties,
-				shadowRenderVisibleOffsetsBuffer,
-				runtimeBatch.Index,
-				0);
-			// The views prepared into the shadow-render buffers are culled for
-			// this camera's shadows, the sun's and the local lights'.
-			var renderParams = runtimeBatch.ShadowRenderParams;
-			renderParams.camera = camera;
-			// Unity culls each cascade and light against these, so a batch
-			// only gets a draw in the shadow maps its visible instances reach.
-			renderParams.worldBounds = GetShadowBatchBounds(batchIndex, runtimeBatch.WorldBounds);
-			ValidateShadowSubmission(renderParams.worldBounds);
-			Graphics.RenderMeshIndirect(
-				renderParams,
+			commandBuffer.DrawMeshInstancedIndirect(
 				runtimeBatch.Mesh,
-				shadowRenderArgumentsBuffer,
-				1,
-				runtimeBatch.Index);
-		#if DEBUG
-			unityShadowSubmissionCount += 1;
-		#endif
+				runtimeBatch.SubMeshIndex,
+				runtimeBatch.ShadowRenderParams.material,
+				runtimeBatch.ShadowCasterPass,
+				indirectArgumentsBuffer,
+				(viewIndex * runtimeBatches.Count + batchIndex) * GraphicsBuffer.IndirectDrawIndexedArgs.size,
+				GetViewMaterialProperties(runtimeBatch, viewIndex));
 		}
+	}
+
+	// Unity renders a cascade, and runs its command buffer, only when it finds
+	// casters in it, and fits the shadow depth range to the casters' bounds. An
+	// empty draw over every visible caster's bounds keeps both as their own draws
+	// would.
+	private void SubmitDirectionalShadowPlaceholder(Camera camera)
+	{
+		Profiler.BeginSample("DirectionalShadowPlaceholder");
+		var rowBounds = GetRowBounds(DirectionalShadowCullRow);
+		if (rowBounds.BatchIndex >= 0)
+		{
+			SubmitEmptyShadowDraw(camera, runtimeBatches[rowBounds.BatchIndex], rowBounds.Bounds);
+		}
+
 		Profiler.EndSample();
+	}
+
+	private void SubmitEmptyShadowDraw(Camera camera, RuntimeBatch runtimeBatch, Bounds bounds)
+	{
+		var renderParams = runtimeBatch.ShadowRenderParams;
+		renderParams.camera = camera;
+		renderParams.matProps = GetViewMaterialProperties(runtimeBatch, 0);
+		renderParams.worldBounds = bounds;
+		ValidateShadowSubmission(bounds);
+		Graphics.RenderMeshIndirect(renderParams, runtimeBatch.Mesh, GetEmptyShadowArgumentsBuffer());
+	#if DEBUG
+		unityShadowSubmissionCount += 1;
+	#endif
 	}
 
 	private void EnsureShadowFixedBuffers()
@@ -284,7 +275,6 @@ public sealed partial class IndirectRenderer
 			GraphicsBuffer.Target.Structured,
 			ShadowCascadeSphereCaptureCount,
 			sizeof(float) * 4);
-		shadowFaceCaptureBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, sizeof(uint));
 		shadowCascadeCaptureMaterial = new Material(shaders.ShadowCascadeCaptureShader)
 		{
 			hideFlags = HideFlags.HideAndDontSave,
@@ -337,15 +327,12 @@ public sealed partial class IndirectRenderer
 					shadowCommandBuffers[index]);
 			}
 
-			shadowCommandBufferLight.RemoveCommandBuffer(LightEvent.AfterShadowMapPass, shadowResetCommandBuffer);
 		}
 
-		for (var index = 0; index < recordedLights.Count; index += 1)
+		foreach (var buffer in localShadowBuffers)
 		{
-			DetachLocalShadowCommandBuffers(index);
+			DetachLocalShadowBuffer(buffer);
 		}
-
-		recordedLights.Clear();
 
 		shadowCommandBufferLight = null;
 		attachedShadowCascadeCount = 0;
@@ -361,14 +348,7 @@ public sealed partial class IndirectRenderer
 			shadowCommandBuffers[index] = null;
 		}
 
-		shadowResetCommandBuffer?.Release();
-		shadowResetCommandBuffer = null;
-		foreach (var commandBuffer in localShadowCommandBuffers)
-		{
-			commandBuffer.Release();
-		}
-
-		localShadowCommandBuffers.Clear();
+		DisposeLocalShadowBuffers();
 		replacementCommandBuffer?.Release();
 		replacementCommandBuffer = null;
 	}

@@ -1,28 +1,38 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 
 namespace IndirectRendering;
 
 public sealed partial class IndirectRenderer
 {
-	private const int CubeFaceCount = 6;
+	// What Unity's spot and point caster jobs draw with (D3D11 DepthBias -1,
+	// SlopeScaledDepthBias -1 under reversed Z).
+	private const float LocalShadowDepthBias = 1f;
+	private const float LocalShadowSlopeDepthBias = 1f;
 
-	// Shadowed light i takes command buffers 2i (before each of its shadow
-	// passes) and 2i + 1 (after), and its views start at shadowedLightViews[i]:
-	// one for a spot light, six cube faces for a point light.
+	// Shadowed light i has view firstShadowedLightView + i: a frustum for a
+	// spot light, everything in range for a point light.
 	private readonly List<Light> shadowedLights = new();
-	private readonly List<int> shadowedLightViews = new();
-	private readonly List<RecordedLight> recordedLights = new();
-	private readonly List<CommandBuffer> localShadowCommandBuffers = new();
-	private int recordedLocalShadowVersion = -1;
+	private int firstShadowedLightView;
+	// Shadowed light i draws through localShadowBuffers[i].
+	private readonly List<LocalShadowBuffer> localShadowBuffers = new();
+	private List<int> localShadowBatchesScratch = new();
 
-	// What a shadowed light's command buffers were recorded for.
-	private struct RecordedLight
+	private GraphicsBuffer emptyShadowArgumentsBuffer;
+
+	// Draws a light's view before each of its shadow passes: once for a spot
+	// light, before every cube face for a point light.
+	private sealed class LocalShadowBuffer
 	{
+		internal readonly CommandBuffer Buffer = new() { name = "VPO Indirect Local Shadow Draws" };
 		internal Light Light;
-		internal int ViewIndex;
-		internal int FaceCount;
+		internal int RecordedVersion = -1;
+		internal int RecordedViewIndex;
+		internal int RecordedCullingMask;
+		internal List<int> RecordedBatches = new();
+		internal readonly MultiDrawPass MultiDraw = new();
 	}
 
 	private void CollectShadowedLights(IReadOnlyList<Light> candidates)
@@ -40,146 +50,193 @@ public sealed partial class IndirectRenderer
 			}
 		}
 
-		shadowedLightViews.Clear();
+		firstShadowedLightView = FixedViewCount + views.Count;
 		foreach (var light in shadowedLights)
 		{
-			shadowedLightViews.Add(FixedViewCount + views.Count);
 			var lightTransform = light.transform;
-			var near = Mathf.Max(0.01f, light.shadowNearPlane);
-			if (light.type == LightType.Spot)
-			{
-				AddShadowedLightView(IndirectView.Perspective(
+			var view = light.type == LightType.Spot
+				? IndirectView.Perspective(
 					lightTransform.position,
 					lightTransform.rotation,
 					Mathf.Min(light.spotAngle + 2f, 179f),
-					near,
+					Mathf.Max(0.01f, light.shadowNearPlane),
 					light.range,
-					0f));
-				continue;
-			}
-
-			for (var face = 0; face < CubeFaceCount; face += 1)
-			{
-				AddShadowedLightView(IndirectView.CubeFace(lightTransform.position, face, near, light.range, 0f));
-			}
+					0f)
+				: IndirectView.InSphere(lightTransform.position, light.range, 0f);
+			view.LodOrigin = cameraLodParameters;
+			view.LodScale = cameraLodParameters.w;
+			view.ShadowCastersOnly = true;
+			views.Add(view);
 		}
 	}
 
-	private void AddShadowedLightView(IndirectView view)
-	{
-		view.LodOrigin = cameraLodParameters;
-		view.LodScale = cameraLodParameters.w;
-		view.ShadowCastersOnly = true;
-		views.Add(view);
-	}
-
-	// Each selected light copies its view into the shadow-render buffers before
-	// its shadow passes and empties them after. The sun empties them after its
-	// passes too, so every other light finds them empty and draws no indirect
-	// casters without recording anything.
 	private void RecordLocalShadowCommandBuffers(bool hasShadowWork)
 	{
 		var lightCount = hasShadowWork ? shadowedLights.Count : 0;
-		// The recordings hold buffers and the batch count, which the version tracks.
-		var versionChanged = recordedLocalShadowVersion != shadowRecordingVersion;
-		recordedLocalShadowVersion = shadowRecordingVersion;
-		for (var index = 0; index < recordedLights.Count; index += 1)
+		for (var index = 0; index < localShadowBuffers.Count; index += 1)
 		{
-			if (index >= lightCount || recordedLights[index].Light != shadowedLights[index])
+			var buffer = localShadowBuffers[index];
+			if (index >= lightCount || buffer.Light != shadowedLights[index])
 			{
-				DetachLocalShadowCommandBuffers(index);
+				DetachLocalShadowBuffer(buffer);
 			}
 		}
+
+		if (lightCount == 0) { return; }
 
 		for (var index = 0; index < lightCount; index += 1)
 		{
+			if (localShadowBuffers.Count == index)
+			{
+				localShadowBuffers.Add(new LocalShadowBuffer());
+			}
+
+			var buffer = localShadowBuffers[index];
 			var light = shadowedLights[index];
-			var recording = new RecordedLight
-			{
-				Light = light,
-				ViewIndex = shadowedLightViews[index],
-				FaceCount = light.type == LightType.Point ? CubeFaceCount : 1,
-			};
-			var attached = index < recordedLights.Count && recordedLights[index].Light == light;
-			if (attached && recordedLights[index].FaceCount != recording.FaceCount)
-			{
-				// The light changed type, so its buffers move to the other pass.
-				DetachLocalShadowCommandBuffers(index);
-				attached = false;
-			}
-
-			if (attached && !versionChanged && recordedLights[index].ViewIndex == recording.ViewIndex)
-			{
-				continue;
-			}
-
-			if (localShadowCommandBuffers.Count <= index * 2)
-			{
-				localShadowCommandBuffers.Add(new CommandBuffer { name = "VPO Indirect Local Shadow Prepare" });
-				localShadowCommandBuffers.Add(new CommandBuffer { name = "VPO Indirect Local Shadow Reset" });
-			}
-
-			var before = localShadowCommandBuffers[index * 2];
-			var after = localShadowCommandBuffers[index * 2 + 1];
-			before.Clear();
-			after.Clear();
-			if (recording.FaceCount != 1)
-			{
-				RecordShadowFaceCapture(before);
-			}
-
-			RecordShadowCascadePreparation(before, recording.ViewIndex, recording.FaceCount);
-			RecordShadowRenderReset(after);
-
-			if (!attached)
+			if (buffer.Light != light)
 			{
 				var pass = light.type == LightType.Spot ? ShadowMapPass.Spotlight : ShadowMapPass.Pointlight;
-				light.AddCommandBuffer(LightEvent.BeforeShadowMapPass, before, pass);
-				light.AddCommandBuffer(LightEvent.AfterShadowMapPass, after, pass);
+				light.AddCommandBuffer(LightEvent.BeforeShadowMapPass, buffer.Buffer, pass);
+				buffer.Light = light;
 			}
 
-			if (index < recordedLights.Count)
-			{
-				recordedLights[index] = recording;
-			}
-			else
-			{
-				recordedLights.Add(recording);
-			}
-		}
-
-		if (recordedLights.Count > lightCount)
-		{
-			recordedLights.RemoveRange(lightCount, recordedLights.Count - lightCount);
+			RecordLocalShadowDraws(buffer, light.cullingMask, index);
 		}
 	}
 
-	private void DetachLocalShadowCommandBuffers(int index)
+	// Re-records only when the view's batches, its index or the recorded
+	// buffers changed; the draws' instance counts are read on the GPU. With
+	// multiDrawActive, the multi-draw batches go in the light's native multi-draws
+	// and the rest draw one by one.
+	private void RecordLocalShadowDraws(LocalShadowBuffer buffer, int cullingMask, int lightIndex)
 	{
-		var light = recordedLights[index].Light;
-		var before = localShadowCommandBuffers[index * 2];
-		var after = localShadowCommandBuffers[index * 2 + 1];
-		if (light)
+		var batches = localShadowBatchesScratch;
+		batches.Clear();
+		var viewIndex = firstShadowedLightView + lightIndex;
+		// The batch cull left only shadow casters in the view, and with
+		// multiDrawActive, only the ones that do not multi-draw.
+		var drawCount = CopyViewDraws(viewIndex, ref viewDrawsScratch);
+		var draws = viewDrawsScratch;
+		for (var index = 0; index < drawCount; index += 1)
 		{
-			light.RemoveCommandBuffer(LightEvent.BeforeShadowMapPass, before);
-			light.RemoveCommandBuffer(LightEvent.AfterShadowMapPass, after);
+			var batchIndex = draws[index].BatchIndex;
+			if ((cullingMask & (1 << runtimeBatches[batchIndex].ShadowRenderParams.layer)) != 0)
+			{
+				batches.Add(batchIndex);
+			}
 		}
 
-		before.Clear();
-		after.Clear();
+		// copetimizations
+		if (buffer.RecordedVersion == shadowRecordingVersion && buffer.RecordedViewIndex == viewIndex &&
+		    buffer.RecordedCullingMask == cullingMask &&
+		    SameBatches(buffer.RecordedBatches, batches))
+		{
+			return;
+		}
+
+		Profiler.BeginSample("LocalShadowRerecord");
+		localShadowBatchesScratch = buffer.RecordedBatches;
+		buffer.RecordedBatches = batches;
+		buffer.RecordedVersion = shadowRecordingVersion;
+		buffer.RecordedViewIndex = viewIndex;
+		buffer.RecordedCullingMask = cullingMask;
+		var commandBuffer = buffer.Buffer;
+		commandBuffer.Clear();
+		// Unity sets its caster depth bias only inside the shadow job, after this
+		// buffer runs; without it the indirect casters shadow themselves.
+		commandBuffer.SetGlobalDepthBias(LocalShadowDepthBias, LocalShadowSlopeDepthBias);
+		if (multiDrawActive)
+		{
+			RecordMultiDrawPass(commandBuffer, buffer.MultiDraw, viewIndex, cullingMask);
+		}
+
+		foreach (var batchIndex in batches)
+		{
+			var runtimeBatch = runtimeBatches[batchIndex];
+			commandBuffer.DrawMeshInstancedIndirect(
+				runtimeBatch.Mesh,
+				runtimeBatch.SubMeshIndex,
+				runtimeBatch.ShadowRenderParams.material,
+				runtimeBatch.ShadowCasterPass,
+				indirectArgumentsBuffer,
+				(viewIndex * runtimeBatches.Count + batchIndex) * GraphicsBuffer.IndirectDrawIndexedArgs.size,
+				GetViewMaterialProperties(runtimeBatch, viewIndex));
+		}
+
+		commandBuffer.SetGlobalDepthBias(0f, 0f);
+		Profiler.EndSample();
 	}
 
-	// Like RecordShadowCascadeCapture, for the face matrices that are only bound
-	// inside the face's pass.
-	private void RecordShadowFaceCapture(CommandBuffer commandBuffer)
+	private static bool SameBatches(List<int> recorded, List<int> current)
 	{
-		commandBuffer.SetRandomWriteTarget(ShadowCascadeCaptureWriteTarget, shadowFaceCaptureBuffer);
-		commandBuffer.DrawProcedural(
-			Matrix4x4.identity,
-			shadowCascadeCaptureMaterial,
-			1,
-			MeshTopology.Points,
-			1);
-		commandBuffer.ClearRandomWriteTargets();
+		if (recorded.Count != current.Count) { return false; }
+
+		for (var index = 0; index < current.Count; index += 1)
+		{
+			if (recorded[index] != current[index]) { return false; }
+		}
+
+		return true;
+	}
+
+	// Unity skips the shadow map of a light, or a cube face, it finds no
+	// casters for, and with them the command buffers that draw the indirect
+	// casters. One empty draw over each light's range keeps them all.
+	private void SubmitLocalShadowPlaceholders(Camera camera)
+	{
+		for (var index = 0; index < shadowedLights.Count; index += 1)
+		{
+			// A light that sees no caster has no shadow map to keep.
+			var batchIndex = GetRowBounds(firstShadowedLightView + index).BatchIndex;
+			if (batchIndex < 0) { continue; }
+
+			// Past the near plane on every side, but small enough to stay out of
+			// most other lights' shadow maps.
+			var light = shadowedLights[index];
+			SubmitEmptyShadowDraw(
+				camera,
+				runtimeBatches[batchIndex],
+				new Bounds(
+					light.transform.position,
+					Vector3.one * (Mathf.Max(0.01f, light.shadowNearPlane) * 2f + 0.5f)));
+		}
+	}
+
+	private GraphicsBuffer GetEmptyShadowArgumentsBuffer()
+	{
+		if (emptyShadowArgumentsBuffer == null)
+		{
+			emptyShadowArgumentsBuffer = new GraphicsBuffer(
+				GraphicsBuffer.Target.IndirectArguments,
+				1,
+				GraphicsBuffer.IndirectDrawIndexedArgs.size);
+			emptyShadowArgumentsBuffer.SetData(new GraphicsBuffer.IndirectDrawIndexedArgs[1]);
+		}
+
+		return emptyShadowArgumentsBuffer;
+	}
+
+	private static void DetachLocalShadowBuffer(LocalShadowBuffer buffer)
+	{
+		if (buffer.Light)
+		{
+			buffer.Light.RemoveCommandBuffer(LightEvent.BeforeShadowMapPass, buffer.Buffer);
+		}
+
+		buffer.Light = null;
+		buffer.Buffer.Clear();
+		buffer.RecordedVersion = -1;
+	}
+
+	private void DisposeLocalShadowBuffers()
+	{
+		foreach (var buffer in localShadowBuffers)
+		{
+			DetachLocalShadowBuffer(buffer);
+			buffer.Buffer.Release();
+			ReleaseMultiDrawPass(buffer.MultiDraw);
+		}
+
+		localShadowBuffers.Clear();
 	}
 }

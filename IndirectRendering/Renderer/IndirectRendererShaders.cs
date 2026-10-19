@@ -4,13 +4,6 @@ using UnityEngine;
 
 namespace IndirectRendering;
 
-/// <summary>
-/// The renderer's own shaders: PieceFrustumCull.compute and
-/// Hidden/VPO/ShadowCascadeCapture. They ship in the indirect_renderer bundle
-/// embedded in this assembly. A game on another Unity version can rebuild
-/// that bundle with its version and pass FromBundle's result in
-/// IndirectRendererSettings.Shaders.
-/// </summary>
 public sealed class IndirectRendererShaders
 {
 	private const string EmbeddedBundleName = "indirect_renderer";
@@ -48,7 +41,6 @@ public sealed class IndirectRendererShaders
 		FrustumCullShader = frustumCullShader;
 		ShadowCascadeCaptureShader = shadowCascadeCaptureShader;
 		ShadowFrustumCullKernel = frustumCullShader.FindKernel("ShadowFrustumCull");
-		PrepareShadowCascadeDrawsKernel = frustumCullShader.FindKernel("PrepareShadowCascadeDraws");
 		ClearShadowReceiverMapKernel = frustumCullShader.FindKernel("ClearShadowReceiverMap");
 		BuildShadowDepthTilesKernel = frustumCullShader.FindKernel("BuildShadowDepthTiles");
 		ScatterShadowReceiversKernel = frustumCullShader.FindKernel("ScatterShadowReceivers");
@@ -57,12 +49,13 @@ public sealed class IndirectRendererShaders
 		ClearInstanceCountsKernel = frustumCullShader.FindKernel("ClearInstanceCounts");
 		ScatterInstancesKernel = frustumCullShader.FindKernel("ScatterInstances");
 		CopyInstancesKernel = frustumCullShader.FindKernel("CopyInstances");
+		PrepareMultiDrawArgumentsKernel = frustumCullShader.FindKernel("PrepareMultiDrawArguments");
 		ShadowFrustumCullGroupSize = GetThreadGroupSize(ShadowFrustumCullKernel).x;
 		ViewCullGroupSize = GetThreadGroupSize(ViewCullKernel).x;
 		ClearInstanceCountsGroupSize = GetThreadGroupSize(ClearInstanceCountsKernel).x;
 		ScatterInstancesGroupSize = GetThreadGroupSize(ScatterInstancesKernel).x;
 		CopyInstancesGroupSize = GetThreadGroupSize(CopyInstancesKernel).x;
-		PrepareShadowCascadeDrawsGroupSize = GetThreadGroupSize(PrepareShadowCascadeDrawsKernel).x;
+		PrepareMultiDrawArgumentsGroupSize = GetThreadGroupSize(PrepareMultiDrawArgumentsKernel).x;
 		ClearShadowReceiverMapGroupSize = GetThreadGroupSize(ClearShadowReceiverMapKernel).x;
 		ScatterShadowReceiversGroupSize = GetThreadGroupSize(ScatterShadowReceiversKernel);
 	}
@@ -70,7 +63,6 @@ public sealed class IndirectRendererShaders
 	internal ComputeShader FrustumCullShader { get; }
 	internal Shader ShadowCascadeCaptureShader { get; }
 	internal int ShadowFrustumCullKernel { get; }
-	internal int PrepareShadowCascadeDrawsKernel { get; }
 	internal int ClearShadowReceiverMapKernel { get; }
 	internal int BuildShadowDepthTilesKernel { get; }
 	internal int ScatterShadowReceiversKernel { get; }
@@ -79,12 +71,13 @@ public sealed class IndirectRendererShaders
 	internal int ClearInstanceCountsKernel { get; }
 	internal int ScatterInstancesKernel { get; }
 	internal int CopyInstancesKernel { get; }
+	internal int PrepareMultiDrawArgumentsKernel { get; }
 	internal int ShadowFrustumCullGroupSize { get; }
 	internal int ViewCullGroupSize { get; }
 	internal int ClearInstanceCountsGroupSize { get; }
 	internal int ScatterInstancesGroupSize { get; }
 	internal int CopyInstancesGroupSize { get; }
-	internal int PrepareShadowCascadeDrawsGroupSize { get; }
+	internal int PrepareMultiDrawArgumentsGroupSize { get; }
 	internal int ClearShadowReceiverMapGroupSize { get; }
 	internal Vector2Int ScatterShadowReceiversGroupSize { get; }
 

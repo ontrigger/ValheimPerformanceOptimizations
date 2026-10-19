@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace IndirectRendering;
 
 /// <summary>
@@ -24,4 +26,21 @@ public sealed class IndirectRendererSettings
 	/// with IndirectRenderer.SetMinimumScreenFraction.
 	/// </summary>
 	public float MinimumScreenFraction { get; set; }
+
+	/// <summary>
+	/// Picks the shadow casters that shadowed lights draw through native
+	/// multi-draw; see MultiDrawCasterResolver. Null draws every caster on its
+	/// own.
+	/// </summary>
+	public MultiDrawCasterResolver MultiDrawCasterResolver { get; set; }
 }
+
+/// <summary>
+/// Returns the material that draws a batch's shadow caster through native
+/// multi-draw, or false to draw the batch on its own. Batches whose caster
+/// materials are the same object share one multi-draw per light. The caster
+/// shader reads its geometry and instances through VPOMultiDraw.cginc, which
+/// also hands it the batch's parameters. The caller owns the caster materials.
+/// </summary>
+/// <param name="material">The batch's shadow caster material.</param>
+public delegate bool MultiDrawCasterResolver(Material material, out Material casterMaterial, out Vector4 batchParameters);

@@ -18,8 +18,6 @@ public sealed partial class IndirectRenderer
 
 	// Set on ViewData.Flags for views that only draw shadow casters.
 	private const uint ViewShadowCastersOnlyFlag = 1u;
-	// Set on ViewData.Flags for the first of a point light's six face views.
-	private const uint ViewCubeFacesFlag = 2u;
 	// Set on the camera's ViewData.Flags; see IsLargeEnoughUsingProjectedBounds.
 	private const uint ViewScreenSizeFlag = 4u;
 
@@ -151,18 +149,16 @@ public sealed partial class IndirectRenderer
 
 		var viewSlot = viewIndex - FixedViewCount;
 		var shadowsOnly = viewSlot >= 0 && viewSlot < views.Count && views[viewSlot].ShadowCastersOnly;
-		var submissionCount = 0;
-		for (var batchIndex = 0; batchIndex < runtimeBatches.Count; batchIndex += 1)
+		// The batch cull left only shadow casters in a shadowsOnly view.
+		var drawCount = CopyViewDraws(viewIndex, ref viewDrawsScratch);
+		var draws = viewDrawsScratch;
+		var drawStart = viewIndex * runtimeBatches.Count;
+		for (var index = 0; index < drawCount; index += 1)
 		{
+			var batchIndex = draws[index].BatchIndex;
 			var runtimeBatch = runtimeBatches[batchIndex];
-			if (runtimeBatch.RegisteredInstanceCount == 0 || !IsBatchVisible(viewIndex, batchIndex) ||
-			    shadowsOnly && !runtimeBatch.ShadowEligible)
-			{
-				continue;
-			}
-
 			var renderParams = shadowsOnly ? runtimeBatch.ShadowRenderParams : runtimeBatch.CameraRenderParams;
-			renderParams.worldBounds = GetViewBatchBounds(viewIndex, batchIndex, runtimeBatch.WorldBounds);
+			renderParams.worldBounds = draws[index].Bounds;
 			renderParams.camera = camera;
 			renderParams.matProps = GetViewMaterialProperties(runtimeBatch, viewIndex);
 			Graphics.RenderMeshIndirect(
@@ -170,11 +166,10 @@ public sealed partial class IndirectRenderer
 				runtimeBatch.Mesh,
 				indirectArgumentsBuffer,
 				1,
-				viewIndex * runtimeBatches.Count + batchIndex);
-			submissionCount += 1;
+				drawStart + batchIndex);
 		}
 
-		return submissionCount;
+		return drawCount;
 	}
 
 	/// <summary>
@@ -204,14 +199,12 @@ public sealed partial class IndirectRenderer
 	// on copies of each batch's material, for batches on cullingMask's layers.
 	private void RecordViewDraws(int viewIndex, CommandBuffer commandBuffer, Shader shader, int cullingMask)
 	{
-		for (var batchIndex = 0; batchIndex < runtimeBatches.Count; batchIndex += 1)
+		var drawCount = CopyViewDraws(viewIndex, ref viewDrawsScratch);
+		var draws = viewDrawsScratch;
+		for (var index = 0; index < drawCount; index += 1)
 		{
+			var batchIndex = draws[index].BatchIndex;
 			var runtimeBatch = runtimeBatches[batchIndex];
-			if (runtimeBatch.RegisteredInstanceCount == 0 || !IsBatchVisible(viewIndex, batchIndex))
-			{
-				continue;
-			}
-
 			var renderParams = runtimeBatch.CameraRenderParams;
 			if ((cullingMask & (1 << renderParams.layer)) == 0)
 			{
@@ -357,9 +350,8 @@ public sealed partial class IndirectRenderer
 			var data = new ViewData
 			{
 				LodParameters = new Vector4(view.LodOrigin.x, view.LodOrigin.y, view.LodOrigin.z, view.LodScale),
-				Sphere = view.Sphere, ViewIndex = (uint)(FixedViewCount + index), Flags
-					= (view.ShadowCastersOnly ? ViewShadowCastersOnlyFlag : 0u)
-					| (view.CubeFaces ? ViewCubeFacesFlag : 0u),
+				Sphere = view.Sphere, ViewIndex = (uint)(FixedViewCount + index),
+				Flags = view.ShadowCastersOnly ? ViewShadowCastersOnlyFlag : 0u,
 			};
 			var start = index * ViewPlaneCount;
 			data.Plane0 = viewFrustumPlanes[start];

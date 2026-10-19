@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -9,30 +10,32 @@ namespace IndirectRendering;
 
 public sealed partial class IndirectRenderer
 {
-	// Row 0 of the visibility is the camera and row 1 the directional shadow
+	// Row 0 of the draws is the camera and row 1 the directional shadow
 	// volume; view i's row is FixedViewCount + i, so rows index like the draws.
 	private const int DirectionalShadowCullRow = 1;
+
+	private const int ShadowCasterCullFlag = 1;
+	private const int MultiDrawCasterCullFlag = 2;
 
 	private BatchCellGrid batchCells;
 
 	private NativeArray<BatchCullView> batchCullViews;
 	private NativeArray<float4> batchCullPlanes;
-	private NativeArray<int> shadowCullRows;
-	private NativeArray<byte> batchVisibility;
-	private NativeArray<float3> batchBoundsMinimum;
-	private NativeArray<float3> batchBoundsMaximum;
-	// The directional cascades and local shadow lights, which share one
-	// shadow-casting draw per batch.
-	private NativeArray<byte> shadowBatchVisibility;
-	// The union of the batch's instance bounds in the cells the shadow views
-	// see, which Unity culls each cascade and light against.
-	private NativeArray<float3> shadowBatchBoundsMinimum;
-	private NativeArray<float3> shadowBatchBoundsMaximum;
+	private NativeArray<byte> batchCullFlags;
+	private byte[] batchCullFlagsSource = [];
+	// The lowest batch whose flags changed or that was added since the last
+	// upload; see MarkBatchCullFlagsDirty.
+	private int batchCullFlagsDirtyStart;
+	private NativeArray<BatchDraw> batchDraws;
+	private NativeArray<int> batchDrawCounts;
+	private NativeArray<BatchDraw> rowBounds;
 	private JobHandle batchCullHandle;
 	private bool batchCullScheduled;
-	// Zero when this frame's batches were not culled, so every batch draws;
+	// Zero when this frame's batches were not culled, so nothing draws;
 	// batches added after the cull have no draws this frame.
 	private int culledBatchCount;
+	private int culledRowCount;
+	private BatchDraw[] viewDrawsScratch = [];
 #if DEBUG
 	private int cameraSubmissionCount;
 #endif
@@ -45,7 +48,9 @@ public sealed partial class IndirectRenderer
 	/// <summary>
 	/// Starts culling the batches for the camera, the directional shadows and
 	/// the collected views, or with viewsOnly, the collected views alone. Call
-	/// after the views are collected.
+	/// after the views are collected. While multiDrawActive, the directional shadows
+	/// and the shadowed lights' views leave their multi-draw casters out of
+	/// their draws; see PrepareMultiDrawCasters.
 	/// </summary>
 	private void ScheduleBatchCull(bool viewsOnly = false)
 	{
@@ -59,82 +64,106 @@ public sealed partial class IndirectRenderer
 
 		var fixedCullViewCount = viewsOnly ? 0 : 2;
 		var cullViewCount = fixedCullViewCount + views.Count;
+		var rowCount = FixedViewCount + views.Count;
 		batchCullViews.EnsureCapacity(cullViewCount);
 		batchCullPlanes.EnsureCapacity(cameraFrustumPlanes.Length + MaxShadowCullingPlanes + views.Count * 6);
-		shadowCullRows.EnsureCapacity(1 + views.Count);
-		batchVisibility.EnsureCapacity((FixedViewCount + views.Count) * batchCount);
-		batchBoundsMinimum.EnsureCapacity((FixedViewCount + views.Count) * batchCount);
-		batchBoundsMaximum.EnsureCapacity((FixedViewCount + views.Count) * batchCount);
-		shadowBatchVisibility.EnsureCapacity(batchCount);
-		shadowBatchBoundsMinimum.EnsureCapacity(batchCount);
-		shadowBatchBoundsMaximum.EnsureCapacity(batchCount);
+		batchDraws.EnsureCapacity(rowCount * batchCount);
+		batchDrawCounts.EnsureCapacity(rowCount);
+		rowBounds.EnsureCapacity(rowCount);
+		UploadBatchCullFlags(batchCount);
+		for (var row = 0; row < FixedViewCount; row += 1)
+		{
+			batchDrawCounts[row] = 0;
+			rowBounds[row] = new BatchDraw { BatchIndex = -1 };
+		}
 
+		var excludedFlags = multiDrawActive ? MultiDrawCasterCullFlag : 0;
 		var lodOrigin = (Vector3)cameraLodParameters;
 		var lodScale = cameraLodParameters.w;
 		var planeCount = 0;
-		var shadowRowCount = 0;
 		if (!viewsOnly)
 		{
-			shadowCullRows[shadowRowCount] = DirectionalShadowCullRow * batchCount;
-			shadowRowCount += 1;
 			batchCullViews[0] = CreateCullView(
-				cameraFrustumPlanes, cameraFrustumPlanes.Length, default, lodOrigin, lodScale, 0, ref planeCount);
+				cameraFrustumPlanes, cameraFrustumPlanes.Length, lodOrigin, lodScale, 0, 0, 0, ref planeCount);
 			batchCullViews[1] = CreateCullView(
-				shadowPlanes, shadowPlaneCount, default, lodOrigin, lodScale,
-				DirectionalShadowCullRow * batchCount, ref planeCount);
+				shadowPlanes, shadowPlaneCount, lodOrigin, lodScale, DirectionalShadowCullRow,
+				ShadowCasterCullFlag, excludedFlags, ref planeCount);
 		}
 
 		for (var index = 0; index < views.Count; index += 1)
 		{
 			var view = views[index];
-			var outputOffset = (FixedViewCount + index) * batchCount;
 			var viewPlaneCount = view.HasFrustum ? ViewPlaneCount : 0;
 			for (var plane = 0; plane < viewPlaneCount; plane += 1)
 			{
 				batchCullPlanes[planeCount + plane] = viewFrustumPlanes[index * ViewPlaneCount + plane];
 			}
 
+			var isShadowedLight = !viewsOnly && index < shadowedLights.Count;
 			batchCullViews[fixedCullViewCount + index] = new BatchCullView
 			{
 				Sphere = view.Sphere, LodOrigin = view.LodOrigin, LodScale = view.LodScale,
-				PlaneStart = planeCount, PlaneCount = viewPlaneCount, OutputOffset = outputOffset,
+				PlaneStart = planeCount, PlaneCount = viewPlaneCount, Row = FixedViewCount + index,
+				RequiredFlags = view.ShadowCastersOnly ? ShadowCasterCullFlag : 0,
+				ExcludedFlags = isShadowedLight ? excludedFlags : 0,
 			};
 			planeCount += viewPlaneCount;
-			if (view.ShadowCastersOnly)
-			{
-				// Local shadow lights draw through the shared shadow draws.
-				shadowCullRows[shadowRowCount] = outputOffset;
-				shadowRowCount += 1;
-			}
 		}
 
 		batchCells.Pack(out var cells, out var entries);
-		var markHandle = new MarkVisibleBatchesJob
+		batchCullHandle = new MarkVisibleBatchesJob
 		{
 			Cells = cells, Entries = entries, Views = batchCullViews, Planes = batchCullPlanes,
-			CellCount = batchCells.CellCount, BatchCount = batchCount, Visibility = batchVisibility,
-			BoundsMinimum = batchBoundsMinimum, BoundsMaximum = batchBoundsMaximum,
+			BatchFlags = batchCullFlags, CellCount = batchCells.CellCount, BatchCount = batchCount,
+			Draws = batchDraws, DrawCounts = batchDrawCounts, RowBounds = rowBounds,
 		}.Schedule(cullViewCount, 1);
-		// The shared shadow draws are only submitted by Render.
-		batchCullHandle = viewsOnly ? markHandle : new MergeBatchVisibilityJob
-		{
-			Visibility = batchVisibility, BoundsMinimum = batchBoundsMinimum, BoundsMaximum = batchBoundsMaximum,
-			RowOffsets = shadowCullRows, RowCount = shadowRowCount,
-			Result = shadowBatchVisibility, ResultMinimum = shadowBatchBoundsMinimum,
-			ResultMaximum = shadowBatchBoundsMaximum,
-		}.Schedule(batchCount, 64, markHandle);
 		JobHandle.ScheduleBatchedJobs();
 		batchCullScheduled = true;
 		culledBatchCount = batchCount;
+		culledRowCount = rowCount;
+	}
+
+	private void MarkBatchCullFlagsDirty(int batchIndex)
+	{
+		batchCullFlagsDirtyStart = Mathf.Min(batchCullFlagsDirtyStart, batchIndex);
+	}
+
+	private void UploadBatchCullFlags(int batchCount)
+	{
+		var start = batchCullFlagsDirtyStart;
+		if (!batchCullFlags.IsCreated || batchCullFlags.Length < batchCount)
+		{
+			start = 0;
+			batchCullFlags.EnsureCapacity(batchCount);
+		}
+
+		if (start >= batchCount) { return; }
+
+		if (batchCullFlagsSource.Length < batchCount)
+		{
+			Array.Resize(ref batchCullFlagsSource, Mathf.NextPowerOfTwo(batchCount));
+		}
+
+		for (var batchIndex = start; batchIndex < batchCount; batchIndex += 1)
+		{
+			var runtimeBatch = runtimeBatches[batchIndex];
+			batchCullFlagsSource[batchIndex] = (byte)(
+				(runtimeBatch.ShadowEligible ? ShadowCasterCullFlag : 0) |
+				(runtimeBatch.MultiDrawCaster ? MultiDrawCasterCullFlag : 0));
+		}
+
+		NativeArray<byte>.Copy(batchCullFlagsSource, start, batchCullFlags, start, batchCount - start);
+		batchCullFlagsDirtyStart = batchCount;
 	}
 
 	private BatchCullView CreateCullView(
 		Plane[] planes,
 		int planeCount,
-		Vector4 sphere,
 		Vector3 lodOrigin,
 		float lodScale,
-		int outputOffset,
+		int row,
+		int requiredFlags,
+		int excludedFlags,
 		ref int planeStart)
 	{
 		for (var index = 0; index < planeCount; index += 1)
@@ -145,15 +174,15 @@ public sealed partial class IndirectRenderer
 
 		var view = new BatchCullView
 		{
-			Sphere = sphere, LodOrigin = lodOrigin, LodScale = lodScale,
-			PlaneStart = planeStart, PlaneCount = planeCount, OutputOffset = outputOffset,
+			LodOrigin = lodOrigin, LodScale = lodScale, PlaneStart = planeStart, PlaneCount = planeCount,
+			Row = row, RequiredFlags = requiredFlags, ExcludedFlags = excludedFlags,
 		};
 		planeStart += planeCount;
 		return view;
 	}
 
 	/// <summary>
-	/// Waits for the batch cull; call before reading batch visibility.
+	/// Waits for the batch cull; call before reading its draws.
 	/// </summary>
 	private void CompleteBatchCull()
 	{
@@ -163,59 +192,39 @@ public sealed partial class IndirectRenderer
 		batchCullScheduled = false;
 	}
 
-	private bool IsBatchVisible(int viewIndex, int batchIndex)
+	/// <summary>
+	/// Copies the view's draws out of the batch cull into draws, growing it,
+	/// and returns their count; reading them one by one from managed code
+	/// costs more than the copy.
+	/// </summary>
+	private int CopyViewDraws(int viewIndex, ref BatchDraw[] draws)
 	{
-		if (culledBatchCount == 0)
+		if (culledBatchCount == 0 || viewIndex >= culledRowCount) { return 0; }
+
+		var count = batchDrawCounts[viewIndex];
+		if (draws.Length < count)
 		{
-			return true;
+			draws = new BatchDraw[Mathf.NextPowerOfTwo(count)];
 		}
 
-		return batchIndex < culledBatchCount && batchVisibility[viewIndex * culledBatchCount + batchIndex] != 0;
-	}
-
-	private bool IsShadowBatchVisible(int batchIndex)
-	{
-		if (culledBatchCount == 0)
+		if (count != 0)
 		{
-			return true;
+			NativeArray<BatchDraw>.Copy(batchDraws, viewIndex * culledBatchCount, draws, 0, count);
 		}
 
-		return batchIndex < culledBatchCount && shadowBatchVisibility[batchIndex] != 0;
+		return count;
 	}
 
 	/// <summary>
-	/// The bounds of the batch's instances the shadow views can see, or its
-	/// registered bounds when this frame's batches were not culled. Only valid
-	/// for a batch IsShadowBatchVisible accepts.
+	/// The union of the bounds of the view's visible batches with its required
+	/// flags, whether excluded from its draws or not; BatchIndex is the first
+	/// such batch, or -1 when there are none.
 	/// </summary>
-	private Bounds GetShadowBatchBounds(int batchIndex, in Bounds registeredBounds)
+	private BatchDraw GetRowBounds(int viewIndex)
 	{
-		if (culledBatchCount == 0)
-		{
-			return registeredBounds;
-		}
-
-		var bounds = default(Bounds);
-		bounds.SetMinMax(shadowBatchBoundsMinimum[batchIndex], shadowBatchBoundsMaximum[batchIndex]);
-		return bounds;
-	}
-
-	/// <summary>
-	/// The bounds of the batch's instances in the cells the view sees, or its
-	/// registered bounds when this frame's batches were not culled. Only valid
-	/// for a batch IsBatchVisible accepts.
-	/// </summary>
-	private Bounds GetViewBatchBounds(int viewIndex, int batchIndex, in Bounds registeredBounds)
-	{
-		if (culledBatchCount == 0)
-		{
-			return registeredBounds;
-		}
-
-		var index = viewIndex * culledBatchCount + batchIndex;
-		var bounds = default(Bounds);
-		bounds.SetMinMax(batchBoundsMinimum[index], batchBoundsMaximum[index]);
-		return bounds;
+		return culledBatchCount == 0 || viewIndex >= culledRowCount
+			? new BatchDraw { BatchIndex = -1 }
+			: rowBounds[viewIndex];
 	}
 
 	private void DisposeBatchCulling()
@@ -224,13 +233,10 @@ public sealed partial class IndirectRenderer
 		culledBatchCount = 0;
 		batchCullViews.DisposeIfCreated();
 		batchCullPlanes.DisposeIfCreated();
-		shadowCullRows.DisposeIfCreated();
-		batchVisibility.DisposeIfCreated();
-		batchBoundsMinimum.DisposeIfCreated();
-		batchBoundsMaximum.DisposeIfCreated();
-		shadowBatchVisibility.DisposeIfCreated();
-		shadowBatchBoundsMinimum.DisposeIfCreated();
-		shadowBatchBoundsMaximum.DisposeIfCreated();
+		batchCullFlags.DisposeIfCreated();
+		batchDraws.DisposeIfCreated();
+		batchDrawCounts.DisposeIfCreated();
+		rowBounds.DisposeIfCreated();
 		batchCells.Dispose();
 	}
 }

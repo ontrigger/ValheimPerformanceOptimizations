@@ -48,8 +48,9 @@ public sealed partial class IndirectRenderer
 		internal RenderParams ShadowRenderParams;
 		internal Bounds MeshBounds;
 		internal bool ShadowEligible;
+		internal int ShadowCasterPass;
+		internal bool MultiDrawCaster;
 		internal GraphicsBuffer.IndirectDrawIndexedArgs DrawArguments;
-		internal readonly BoundProperties ShadowRenderProperties = new();
 		// Indexed by view
 		internal readonly List<BoundProperties> ViewProperties = new();
 
@@ -78,9 +79,6 @@ public sealed partial class IndirectRenderer
 	private GraphicsBuffer indirectArgumentsBuffer;
 	private GraphicsBuffer visibleInstanceIndicesBuffer;
 
-	// Unity-facing copies of one cascade's draws, refilled before each cascade.
-	private GraphicsBuffer shadowRenderArgumentsBuffer;
-	private GraphicsBuffer shadowRenderVisibleOffsetsBuffer;
 	private int batchCapacity;
 	private int visibleStride;
 	private int viewCapacity = FixedViewCount;
@@ -187,16 +185,6 @@ public sealed partial class IndirectRenderer
 				GraphicsBuffer.Target.Structured | GraphicsBuffer.Target.IndirectArguments,
 				viewCapacity * this.batchCapacity * IndirectArgumentWordCount,
 				sizeof(uint));
-			shadowRenderArgumentsBuffer = new GraphicsBuffer(
-				GraphicsBuffer.Target.Structured | GraphicsBuffer.Target.IndirectArguments,
-				this.batchCapacity * IndirectArgumentWordCount,
-				sizeof(uint));
-			shadowRenderVisibleOffsetsBuffer = new GraphicsBuffer(
-				GraphicsBuffer.Target.Structured,
-				this.batchCapacity,
-				sizeof(uint));
-			// Zero instances until a shadow pass prepares its view.
-			shadowRenderArgumentsBuffer.SetData(new uint[this.batchCapacity * IndirectArgumentWordCount]);
 			InvalidateMaterialBindings();
 		}
 
@@ -260,8 +248,6 @@ public sealed partial class IndirectRenderer
 		ReleaseBuffer(ref visibleOffsetsBuffer);
 		ReleaseBuffer(ref batchArgumentsBuffer);
 		ReleaseBuffer(ref indirectArgumentsBuffer);
-		ReleaseBuffer(ref shadowRenderArgumentsBuffer);
-		ReleaseBuffer(ref shadowRenderVisibleOffsetsBuffer);
 	}
 
 	// The draw reads its instances from the visible range that starts at
@@ -304,6 +290,7 @@ public sealed partial class IndirectRenderer
 		{
 			Index = runtimeBatches.Count, SubMeshIndex = definition.SubMeshIndex, Mesh = definition.Mesh,
 			MeshBounds = definition.Mesh.bounds, ShadowEligible = definition.HasShadowCasterPass,
+			ShadowCasterPass = definition.RenderParams.material.FindPass("ShadowCaster"),
 			DrawArguments = new GraphicsBuffer.IndirectDrawIndexedArgs
 			{
 				indexCountPerInstance = definition.Mesh.GetIndexCount(definition.SubMeshIndex),
@@ -315,12 +302,12 @@ public sealed partial class IndirectRenderer
 		cameraRenderParams.shadowCastingMode = ShadowCastingMode.Off;
 		runtimeBatch.CameraRenderParams = cameraRenderParams;
 		var shadowRenderParams = definition.RenderParams;
-		shadowRenderParams.matProps = runtimeBatch.ShadowRenderProperties.Block;
 		shadowRenderParams.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
 		shadowRenderParams.receiveShadows = false;
 		runtimeBatch.ShadowRenderParams = shadowRenderParams;
 		runtimeBatches.Add(runtimeBatch);
 		transformTracker.SetBatchBounds(runtimeBatch.Index, runtimeBatch.MeshBounds);
 		layoutDirty = true;
+		MarkBatchCullFlagsDirty(runtimeBatch.Index);
 	}
 }

@@ -17,7 +17,8 @@ public static class BuildVPOAssetBundles
 		"Assets/Shaders/Vegetation.shader",
 		"Assets/Shaders/Creature.shader",
 		"Assets/Shaders/VPOStandard.shader",
-		"Assets/Shaders/SkyDepth.shader");
+		"Assets/Shaders/SkyDepth.shader",
+		"Assets/Shaders/MultiDrawShadowCaster.shader");
 
 	private static readonly Bundle IndirectRendererBundle = new(
 		"indirect_renderer",
