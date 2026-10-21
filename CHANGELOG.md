@@ -1,3 +1,14 @@
+# Changes in 2.0.0
+
+* Added the indirect renderer: building pieces, trees, rocks, pickables and dropped items are now culled and drawn
+  on the GPU, which takes most of their rendering cost off the CPU.
+* Press F8 to switch between the indirect renderer and vanilla rendering in game
+* Reflection probes now draw building pieces through the indirect renderer
+* Fixed lagspikes in ZoneSystem when vanilla wanted to unload a zone
+* Character animations skip animator calls when the values have not changed
+* Added character transform lookups
+* Mod files moved to `BepInEx/plugins/VPO`
+
 # Changes in 1.2.3
 
 * Added Linux server support

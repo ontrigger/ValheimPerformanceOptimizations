@@ -96,13 +96,21 @@ public sealed partial class IndirectRenderer
 			var viewPlaneCount = view.HasFrustum ? ViewPlaneCount : 0;
 			for (var plane = 0; plane < viewPlaneCount; plane += 1)
 			{
-				batchCullPlanes[planeCount + plane] = viewFrustumPlanes[index * ViewPlaneCount + plane];
+				var frustumPlane = viewFrustumPlanes[index * ViewPlaneCount + plane];
+				frustumPlane.w += view.CullPadding;
+				batchCullPlanes[planeCount + plane] = frustumPlane;
 			}
 
-			var isShadowedLight = !viewsOnly && index < shadowedLights.Count;
+			var sphere = view.Sphere;
+			if (sphere.w > 0f)
+			{
+				sphere.w += view.CullPadding;
+			}
+
+			var isShadowedLight = !viewsOnly && index < shadowedLightViews.Count;
 			batchCullViews[fixedCullViewCount + index] = new BatchCullView
 			{
-				Sphere = view.Sphere, LodOrigin = view.LodOrigin, LodScale = view.LodScale,
+				Sphere = sphere, LodOrigin = view.LodOrigin, LodScale = view.LodScale,
 				PlaneStart = planeCount, PlaneCount = viewPlaneCount, Row = FixedViewCount + index,
 				RequiredFlags = view.ShadowCastersOnly ? ShadowCasterCullFlag : 0,
 				ExcludedFlags = isShadowedLight ? excludedFlags : 0,

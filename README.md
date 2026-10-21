@@ -6,6 +6,8 @@ VPO does not disable, throttle or change vanilla gameplay. You can install it on
 
 ## Introducing the Indirect renderer
 
+[![Indirect renderer showcase](https://img.youtube.com/vi/A9DMHjrkumo/maxresdefault.jpg)](https://www.youtube.com/watch?v=A9DMHjrkumo)
+
 Version 2.0 adds a new way of rendering that takes work off the CPU:
 
 * Much less CPU time spent preparing each frame, especially around thousands of building pieces

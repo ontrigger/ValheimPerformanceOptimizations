@@ -19,6 +19,9 @@ public struct IndirectView
 	// xyz center, w radius; w <= 0 disables the test.
 	public Vector4 Sphere;
 	public bool ShadowCastersOnly;
+	// Moves the planes and sphere this far out for the batch cull only; the
+	// instance cull stays exact.
+	public float CullPadding;
 
 	public static IndirectView FromCamera(Camera camera, float lodScale)
 	{

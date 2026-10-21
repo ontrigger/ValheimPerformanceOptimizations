@@ -50,6 +50,18 @@ internal static class MultiDraw
 	}
 
 	private static readonly int ParamsSize = Marshal.SizeOf<NativeParams>();
+	// StructureToPtr boxes the struct, so ParamsBlock writes its fields itself.
+	private static readonly int ArgsBufferOffset = FieldOffset(nameof(NativeParams.ArgsBuffer));
+	private static readonly int IndexBufferOffset = FieldOffset(nameof(NativeParams.IndexBuffer));
+	private static readonly int ArgsOffsetBytesOffset = FieldOffset(nameof(NativeParams.ArgsOffsetBytes));
+	private static readonly int MaxDrawCountOffset = FieldOffset(nameof(NativeParams.MaxDrawCount));
+	private static readonly int IndexFormatOffset = FieldOffset(nameof(NativeParams.IndexFormat));
+	private static readonly int TopologyOffset = FieldOffset(nameof(NativeParams.Topology));
+
+	private static int FieldOffset(string field)
+	{
+		return (int)Marshal.OffsetOf<NativeParams>(field);
+	}
 
 	[DllImport(DllName)] private static extern int MDI_IsSupported();
 	[DllImport(DllName)] private static extern int MDI_GetBaseEventID();
@@ -168,19 +180,13 @@ internal static class MultiDraw
 			int drawCount,
 			GraphicsBuffer indexBuffer)
 		{
-			var pointer = memory + index * ParamsSize;
-			Marshal.StructureToPtr(
-				new NativeParams
-				{
-					ArgsBuffer = arguments.GetNativeBufferPtr(),
-					IndexBuffer = indexBuffer.GetNativeBufferPtr(),
-					ArgsOffsetBytes = (uint)(firstDraw * GraphicsBuffer.IndirectDrawIndexedArgs.size),
-					MaxDrawCount = (uint)drawCount,
-					IndexFormat = 1u,
-					Topology = (uint)MeshTopology.Triangles,
-				},
-				pointer,
-				false);
+			var pointer = Clear(index);
+			Marshal.WriteIntPtr(pointer, ArgsBufferOffset, arguments.GetNativeBufferPtr());
+			Marshal.WriteIntPtr(pointer, IndexBufferOffset, indexBuffer.GetNativeBufferPtr());
+			Marshal.WriteInt32(pointer, ArgsOffsetBytesOffset, firstDraw * GraphicsBuffer.IndirectDrawIndexedArgs.size);
+			Marshal.WriteInt32(pointer, MaxDrawCountOffset, drawCount);
+			Marshal.WriteInt32(pointer, IndexFormatOffset, 1);
+			Marshal.WriteInt32(pointer, TopologyOffset, (int)MeshTopology.Triangles);
 			return pointer;
 		}
 
@@ -189,8 +195,20 @@ internal static class MultiDraw
 		/// </summary>
 		internal IntPtr WritePrepare(int index, GraphicsBuffer arguments)
 		{
+			var pointer = Clear(index);
+			Marshal.WriteIntPtr(pointer, ArgsBufferOffset, arguments.GetNativeBufferPtr());
+			return pointer;
+		}
+
+		// Zeroes the parameters at index, the fields' defaults, and returns them.
+		private IntPtr Clear(int index)
+		{
 			var pointer = memory + index * ParamsSize;
-			Marshal.StructureToPtr(new NativeParams { ArgsBuffer = arguments.GetNativeBufferPtr() }, pointer, false);
+			for (var offset = 0; offset < ParamsSize; offset += sizeof(int))
+			{
+				Marshal.WriteInt32(pointer, offset, 0);
+			}
+
 			return pointer;
 		}
 

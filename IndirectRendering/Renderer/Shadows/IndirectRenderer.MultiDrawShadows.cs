@@ -252,8 +252,6 @@ public sealed partial class IndirectRenderer
 	// Records the dispatch that prepares viewIndex's multi-draw arguments, then
 	// one multi-draw per caster material over them. The arguments hold no
 	// instances for batches outside the view or the layers of cullingMask.
-	// Point lights run their buffer once per cube face, which repeats the
-	// dispatch with identical results; it is small enough not to matter.
 	private void RecordMultiDrawPass(CommandBuffer commandBuffer, MultiDrawPass pass, int viewIndex, int cullingMask)
 	{
 		// The command buffer was cleared before this, so nothing recorded still

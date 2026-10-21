@@ -12,22 +12,46 @@ public sealed partial class IndirectRenderer
 	private const float LocalShadowDepthBias = 1f;
 	private const float LocalShadowSlopeDepthBias = 1f;
 
-	// Shadowed light i has view firstShadowedLightView + i: a frustum for a
-	// spot light, everything in range for a point light.
+	private const float PointShadowFaceFieldOfView = 91f;
+
+	private const float PointShadowCullPadding = 0.4f;
+
+	private static readonly ShadowMapPass[] PointShadowFacePasses =
+	{
+		ShadowMapPass.PointlightPositiveX, ShadowMapPass.PointlightNegativeX,
+		ShadowMapPass.PointlightPositiveY, ShadowMapPass.PointlightNegativeY,
+		ShadowMapPass.PointlightPositiveZ, ShadowMapPass.PointlightNegativeZ,
+	};
+
+	private static readonly Quaternion[] PointShadowFaceRotations =
+	{
+		Quaternion.LookRotation(Vector3.right, Vector3.up),
+		Quaternion.LookRotation(Vector3.left, Vector3.up),
+		Quaternion.LookRotation(Vector3.up, Vector3.forward),
+		Quaternion.LookRotation(Vector3.down, Vector3.forward),
+		Quaternion.LookRotation(Vector3.forward, Vector3.up),
+		Quaternion.LookRotation(Vector3.back, Vector3.up),
+	};
+
 	private readonly List<Light> shadowedLights = new();
+	private readonly List<ShadowedLightView> shadowedLightViews = new();
 	private int firstShadowedLightView;
-	// Shadowed light i draws through localShadowBuffers[i].
 	private readonly List<LocalShadowBuffer> localShadowBuffers = new();
 	private List<int> localShadowBatchesScratch = new();
 
 	private GraphicsBuffer emptyShadowArgumentsBuffer;
 
-	// Draws a light's view before each of its shadow passes: once for a spot
-	// light, before every cube face for a point light.
+	private struct ShadowedLightView
+	{
+		internal Light Light;
+		internal ShadowMapPass Pass;
+	}
+
 	private sealed class LocalShadowBuffer
 	{
 		internal readonly CommandBuffer Buffer = new() { name = "VPO Indirect Local Shadow Draws" };
 		internal Light Light;
+		internal ShadowMapPass Pass;
 		internal int RecordedVersion = -1;
 		internal int RecordedViewIndex;
 		internal int RecordedCullingMask;
@@ -50,41 +74,68 @@ public sealed partial class IndirectRenderer
 			}
 		}
 
+		shadowedLightViews.Clear();
 		firstShadowedLightView = FixedViewCount + views.Count;
 		foreach (var light in shadowedLights)
 		{
 			var lightTransform = light.transform;
-			var view = light.type == LightType.Spot
-				? IndirectView.Perspective(
-					lightTransform.position,
-					lightTransform.rotation,
-					Mathf.Min(light.spotAngle + 2f, 179f),
-					Mathf.Max(0.01f, light.shadowNearPlane),
+			var position = lightTransform.position;
+			var near = Mathf.Max(0.01f, light.shadowNearPlane);
+			if (light.type == LightType.Spot)
+			{
+				AddShadowedLightView(
+					light,
+					ShadowMapPass.Spotlight,
+					IndirectView.Perspective(
+						position,
+						lightTransform.rotation,
+						Mathf.Min(light.spotAngle + 2f, 179f),
+						near,
+						light.range,
+						0f));
+				continue;
+			}
+
+			for (var face = 0; face < PointShadowFacePasses.Length; face += 1)
+			{
+				var view = IndirectView.Perspective(
+					position,
+					PointShadowFaceRotations[face],
+					PointShadowFaceFieldOfView,
+					near,
 					light.range,
-					0f)
-				: IndirectView.InSphere(lightTransform.position, light.range, 0f);
-			view.LodOrigin = cameraLodParameters;
-			view.LodScale = cameraLodParameters.w;
-			view.ShadowCastersOnly = true;
-			views.Add(view);
+					0f);
+				view.CullPadding = PointShadowCullPadding;
+				AddShadowedLightView(light, PointShadowFacePasses[face], view);
+			}
 		}
+	}
+
+	private void AddShadowedLightView(Light light, ShadowMapPass pass, IndirectView view)
+	{
+		view.LodOrigin = cameraLodParameters;
+		view.LodScale = cameraLodParameters.w;
+		view.ShadowCastersOnly = true;
+		views.Add(view);
+		shadowedLightViews.Add(new ShadowedLightView { Light = light, Pass = pass });
 	}
 
 	private void RecordLocalShadowCommandBuffers(bool hasShadowWork)
 	{
-		var lightCount = hasShadowWork ? shadowedLights.Count : 0;
+		var viewCount = hasShadowWork ? shadowedLightViews.Count : 0;
 		for (var index = 0; index < localShadowBuffers.Count; index += 1)
 		{
 			var buffer = localShadowBuffers[index];
-			if (index >= lightCount || buffer.Light != shadowedLights[index])
+			if (index >= viewCount || buffer.Light != shadowedLightViews[index].Light ||
+			    buffer.Pass != shadowedLightViews[index].Pass)
 			{
 				DetachLocalShadowBuffer(buffer);
 			}
 		}
 
-		if (lightCount == 0) { return; }
+		if (viewCount == 0) { return; }
 
-		for (var index = 0; index < lightCount; index += 1)
+		for (var index = 0; index < viewCount; index += 1)
 		{
 			if (localShadowBuffers.Count == index)
 			{
@@ -92,27 +143,28 @@ public sealed partial class IndirectRenderer
 			}
 
 			var buffer = localShadowBuffers[index];
-			var light = shadowedLights[index];
-			if (buffer.Light != light)
+			var lightView = shadowedLightViews[index];
+			if (buffer.Light != lightView.Light)
 			{
-				var pass = light.type == LightType.Spot ? ShadowMapPass.Spotlight : ShadowMapPass.Pointlight;
-				light.AddCommandBuffer(LightEvent.BeforeShadowMapPass, buffer.Buffer, pass);
-				buffer.Light = light;
+				lightView.Light.AddCommandBuffer(LightEvent.BeforeShadowMapPass, buffer.Buffer, lightView.Pass);
+				buffer.Light = lightView.Light;
+				buffer.Pass = lightView.Pass;
 			}
 
-			RecordLocalShadowDraws(buffer, light.cullingMask, index);
+			RecordLocalShadowDraws(buffer, lightView.Light.cullingMask, index);
 		}
 	}
 
-	// Re-records only when the view's batches, its index or the recorded
-	// buffers changed; the draws' instance counts are read on the GPU. With
+	// Re-records only when the view gained a batch, or its index or the
+	// recorded buffers changed; the draws' instance counts are read on the GPU,
+	// so batches that left the view draw nothing until then. With
 	// multiDrawActive, the multi-draw batches go in the light's native multi-draws
 	// and the rest draw one by one.
-	private void RecordLocalShadowDraws(LocalShadowBuffer buffer, int cullingMask, int lightIndex)
+	private void RecordLocalShadowDraws(LocalShadowBuffer buffer, int cullingMask, int lightViewIndex)
 	{
 		var batches = localShadowBatchesScratch;
 		batches.Clear();
-		var viewIndex = firstShadowedLightView + lightIndex;
+		var viewIndex = firstShadowedLightView + lightViewIndex;
 		// The batch cull left only shadow casters in the view, and with
 		// multiDrawActive, only the ones that do not multi-draw.
 		var drawCount = CopyViewDraws(viewIndex, ref viewDrawsScratch);
@@ -129,7 +181,7 @@ public sealed partial class IndirectRenderer
 		// copetimizations
 		if (buffer.RecordedVersion == shadowRecordingVersion && buffer.RecordedViewIndex == viewIndex &&
 		    buffer.RecordedCullingMask == cullingMask &&
-		    SameBatches(buffer.RecordedBatches, batches))
+		    ContainsBatches(buffer.RecordedBatches, batches))
 		{
 			return;
 		}
@@ -179,20 +231,48 @@ public sealed partial class IndirectRenderer
 		return true;
 	}
 
+	private static bool ContainsBatches(List<int> recorded, List<int> current)
+	{
+		var recordedIndex = 0;
+		for (var index = 0; index < current.Count; index += 1)
+		{
+			var batchIndex = current[index];
+			while (recordedIndex < recorded.Count && recorded[recordedIndex] < batchIndex)
+			{
+				recordedIndex += 1;
+			}
+
+			if (recordedIndex == recorded.Count || recorded[recordedIndex] != batchIndex) { return false; }
+		}
+
+		return true;
+	}
+
 	// Unity skips the shadow map of a light, or a cube face, it finds no
 	// casters for, and with them the command buffers that draw the indirect
 	// casters. One empty draw over each light's range keeps them all.
 	private void SubmitLocalShadowPlaceholders(Camera camera)
 	{
-		for (var index = 0; index < shadowedLights.Count; index += 1)
+		var index = 0;
+		while (index < shadowedLightViews.Count)
 		{
-			// A light that sees no caster has no shadow map to keep.
-			var batchIndex = GetRowBounds(firstShadowedLightView + index).BatchIndex;
+			var light = shadowedLightViews[index].Light;
+			// A light none of whose views sees a caster has no shadow map to keep.
+			var batchIndex = -1;
+			while (index < shadowedLightViews.Count && shadowedLightViews[index].Light == light)
+			{
+				if (batchIndex < 0)
+				{
+					batchIndex = GetRowBounds(firstShadowedLightView + index).BatchIndex;
+				}
+
+				index += 1;
+			}
+
 			if (batchIndex < 0) { continue; }
 
 			// Past the near plane on every side, but small enough to stay out of
 			// most other lights' shadow maps.
-			var light = shadowedLights[index];
 			SubmitEmptyShadowDraw(
 				camera,
 				runtimeBatches[batchIndex],
