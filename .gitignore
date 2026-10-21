@@ -8,11 +8,8 @@ VPOUnity/.*
 /VPOUnityCacheRecovery-*/
 
 # Unity asset-bundle build metadata (the named runtime bundles are kept).
-/ValheimPerformanceOptimizations/AssetBundles/AssetBundles
-/ValheimPerformanceOptimizations/AssetBundles/AssetBundles.manifest
-/ValheimPerformanceOptimizations/AssetBundles/*.manifest
-/IndirectRendering/AssetBundles/AssetBundles
-/IndirectRendering/AssetBundles/*.manifest
+/ValheimPerformanceOptimizations/AssetBundles/
+/IndirectRendering/AssetBundles/
 
 riderModule.iml
 /_ReSharper.Caches/

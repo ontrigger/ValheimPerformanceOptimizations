@@ -16,13 +16,6 @@ public sealed partial class IndirectRenderer
 	private static readonly int CasterVerticesId = Shader.PropertyToID("_VPOCasterVertices");
 	private static readonly int CasterBatchParametersId = Shader.PropertyToID("_VPOCasterBatchParameters");
 
-	[StructLayout(LayoutKind.Sequential)]
-	private struct CasterVertex
-	{
-		internal Vector3 Position;
-		internal Vector3 Normal;
-	}
-
 	// Must match PieceFrustumCull.compute's MultiDrawBatch.
 	[StructLayout(LayoutKind.Sequential)]
 	private struct MultiDrawBatch
@@ -53,18 +46,10 @@ public sealed partial class IndirectRenderer
 	}
 
 	// Casters that multiDrawCasterResolver gives a caster material, with
-	// readable meshes, draw through one native multi-draw per caster material
-	// and light; see MultiDraw. Their vertices and indices are copied into the
-	// shared caster buffers once per mesh, with the indices rebased to address
-	// the shared vertices.
+	// triangle meshes that have normals, draw through one native multi-draw
+	// per caster material and light; see MultiDraw and CasterGeometry.
 	private readonly MultiDrawCasterResolver multiDrawCasterResolver;
-	private readonly List<CasterVertex> casterVertices = new();
-	private readonly List<int> casterIndices = new();
-	private readonly Dictionary<Mesh, int> casterVertexBaseByMesh = new();
-	private readonly Dictionary<(Mesh, int), (int StartIndex, int IndexCount)> casterIndexRangeByMeshAndSubMesh = new();
-	private readonly List<Vector3> casterPositionsScratch = new();
-	private readonly List<Vector3> casterNormalsScratch = new();
-	private readonly List<int> casterIndicesScratch = new();
+	private readonly CasterGeometry casterGeometry = new();
 	private readonly List<MultiDrawGroup> multiDrawGroups = new();
 	private readonly List<MultiDrawBatch> multiDrawBatchesScratch = new();
 	// Indexed by batch: the resolver's batch parameters, read by the caster
@@ -75,8 +60,6 @@ public sealed partial class IndirectRenderer
 	private int multiDrawBatchCount;
 	private bool multiDrawGeometryDirty;
 	private bool multiDrawOverflowLogged;
-	private GraphicsBuffer casterVertexBuffer;
-	private GraphicsBuffer casterIndexBuffer;
 	private GraphicsBuffer casterBatchParameterBuffer;
 	private GraphicsBuffer multiDrawBatchBuffer;
 	private readonly MultiDrawPass[] cascadeMultiDrawPasses = CreateMultiDrawPasses(MaxDirectionalCascades);
@@ -141,7 +124,7 @@ public sealed partial class IndirectRenderer
 			    !multiDrawCasterResolver(
 				    runtimeBatch.ShadowRenderParams.material, out var casterMaterial, out var batchParameters) ||
 			    !casterMaterial ||
-			    !TryGetCasterIndexRange(runtimeBatch.Mesh, runtimeBatch.SubMeshIndex, out var indexRange))
+			    !casterGeometry.TryGetIndexRange(runtimeBatch.Mesh, runtimeBatch.SubMeshIndex, out var indexRange))
 			{
 				continue;
 			}
@@ -173,49 +156,11 @@ public sealed partial class IndirectRenderer
 		}
 	}
 
-	private bool TryGetCasterIndexRange(Mesh mesh, int subMeshIndex, out (int StartIndex, int IndexCount) indexRange)
-	{
-		if (casterIndexRangeByMeshAndSubMesh.TryGetValue((mesh, subMeshIndex), out indexRange)) { return true; }
-
-		if (!mesh.isReadable || mesh.GetTopology(subMeshIndex) != MeshTopology.Triangles ||
-		    !mesh.HasVertexAttribute(VertexAttribute.Normal))
-		{
-			return false;
-		}
-
-		if (!casterVertexBaseByMesh.TryGetValue(mesh, out var vertexBase))
-		{
-			vertexBase = casterVertices.Count;
-			mesh.GetVertices(casterPositionsScratch);
-			mesh.GetNormals(casterNormalsScratch);
-			for (var index = 0; index < casterPositionsScratch.Count; index += 1)
-			{
-				casterVertices.Add(new CasterVertex
-				{
-					Position = casterPositionsScratch[index], Normal = casterNormalsScratch[index],
-				});
-			}
-
-			casterVertexBaseByMesh.Add(mesh, vertexBase);
-		}
-
-		mesh.GetIndices(casterIndicesScratch, subMeshIndex, true);
-		indexRange = (casterIndices.Count, casterIndicesScratch.Count);
-		foreach (var index in casterIndicesScratch)
-		{
-			casterIndices.Add(vertexBase + index);
-		}
-
-		casterIndexRangeByMeshAndSubMesh.Add((mesh, subMeshIndex), indexRange);
-		return true;
-	}
-
 	// Rebuilds every shared buffer; batches are added rarely after loading.
 	private void UploadMultiDrawGeometry()
 	{
 		multiDrawGeometryDirty = false;
-		ReleaseBuffer(ref casterVertexBuffer);
-		ReleaseBuffer(ref casterIndexBuffer);
+		casterGeometry.Upload();
 		ReleaseBuffer(ref casterBatchParameterBuffer);
 		ReleaseBuffer(ref multiDrawBatchBuffer);
 		casterBatchParameterBuffer = new GraphicsBuffer(
@@ -223,13 +168,6 @@ public sealed partial class IndirectRenderer
 			casterBatchParameters.Count,
 			sizeof(float) * 4);
 		casterBatchParameterBuffer.SetData(casterBatchParameters);
-		casterVertexBuffer = new GraphicsBuffer(
-			GraphicsBuffer.Target.Structured,
-			casterVertices.Count,
-			Marshal.SizeOf<CasterVertex>());
-		casterVertexBuffer.SetData(casterVertices);
-		casterIndexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Index, casterIndices.Count, sizeof(int));
-		casterIndexBuffer.SetData(casterIndices);
 
 		var batches = multiDrawBatchesScratch;
 		batches.Clear();
@@ -290,7 +228,7 @@ public sealed partial class IndirectRenderer
 		commandBuffer.EndSample("VPO Prepare Multi-Draw Arguments");
 
 		var properties = pass.Properties;
-		properties.SetBuffer(CasterVerticesId, casterVertexBuffer);
+		properties.SetBuffer(CasterVerticesId, casterGeometry.VertexBuffer);
 		properties.SetBuffer(CasterBatchParametersId, casterBatchParameterBuffer);
 		properties.SetBuffer(InstanceDataId, instanceBuffer);
 		properties.SetBuffer(VisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
@@ -304,8 +242,8 @@ public sealed partial class IndirectRenderer
 				pass.Arguments,
 				group.FirstBatch,
 				group.Batches.Count,
-				casterIndexBuffer);
-			MultiDraw.Record(commandBuffer, parameters, casterIndexBuffer, group.Material, 0, properties);
+				casterGeometry.IndexBuffer);
+			MultiDraw.Record(commandBuffer, parameters, casterGeometry.IndexBuffer, group.Material, 0, properties);
 		}
 	}
 
@@ -317,8 +255,7 @@ public sealed partial class IndirectRenderer
 
 	private void ReleaseMultiDrawShadows()
 	{
-		ReleaseBuffer(ref casterVertexBuffer);
-		ReleaseBuffer(ref casterIndexBuffer);
+		casterGeometry.Release();
 		ReleaseBuffer(ref casterBatchParameterBuffer);
 		ReleaseBuffer(ref multiDrawBatchBuffer);
 		foreach (var pass in cascadeMultiDrawPasses)
@@ -330,10 +267,6 @@ public sealed partial class IndirectRenderer
 		multiDrawScannedBatchCount = 0;
 		multiDrawBatchCount = 0;
 		multiDrawGeometryDirty = false;
-		casterVertices.Clear();
-		casterIndices.Clear();
 		casterBatchParameters.Clear();
-		casterVertexBaseByMesh.Clear();
-		casterIndexRangeByMeshAndSubMesh.Clear();
 	}
 }

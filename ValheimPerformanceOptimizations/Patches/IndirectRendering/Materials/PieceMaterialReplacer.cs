@@ -22,6 +22,25 @@ internal static class PieceMaterialReplacer
 	// location copies registered later must resolve to the same batch definitions.
 	private static readonly Dictionary<Material, Material> ReplacementByMaterial = new();
 
+	// Vanilla materials whose albedo stores alpha but never drops below the
+	// cutoff.
+	internal const string DefaultOpaqueAlphaMaterials =
+		"PlayerMaterialArmorStandLeather, AnviExtension_mat, ArtisanTable_Mat, ArtisanTableWorn_Mat, " +
+		"Bench_Worn_Mat, BlastFurnace_mat, BlastFurnace_Broken_mat, bonfire_Unfueled_mat, Chair_Mat, " +
+		"Chair_worn_Mat, DarkWood_mat, DarkWood_worn_mat, DarkWood_rotated_mat, DragonBed_Mat, " +
+		"DragonBed_worn_Mat, fi_village_kitchen_cauldron, Forge_mat, ForgeWorn, Grill_mat, Ironbeam_mat, " +
+		"JulKlapp_mat, JulKlapp_2_mat, LogBench_mat, LogBenchWorn_mat, logwall, logwall_worn, logwall_broken, " +
+		"logwall_67_mat, logwall_67_worn_mat, logwall_67_broken_mat, morkhallafurniture_mat, raft_log, " +
+		"raft_log_Worn, raft_log_Broken, RavenThrone_Mat, RavenThrone_Worn_Mat, RoofShingles, RoofShingles_worn, " +
+		"roundlog_new, roundlog_worn, roundlog_broken, smallboat, SpinningWheel_mat, SpinningWheel_worn, " +
+		"Table_Mat, Table_Worn_Mat, Table_oak_mat, Table_oak_worn_mat, Tanningrack_mat, Workbench_mat, " +
+		"WorkbenchWorn_mat, FrozenGD_mat, GoblinBrute_mat, greydwarf, seagal, SerpentFleshCooked, " +
+		"ShipTent2beam_mat, Bark3-2Snow, birch_bark, Bush01_wood, Bush02_wood, Firetree_log, frostwood_mat, " +
+		"frostwood_worn_mat, hugeroot, onion_stalk, onion_stalk_unhealthy, ShipTent_mat, ShipTent2_mat, " +
+		"Shoot_Stump_mat, Shoot_Trunk_mat, Stump_tip_snow, StumpHut_mat, swamptree1_bark, swamptree_stump, trunk";
+
+	private static HashSet<string> _opaqueAlphaMaterialNames;
+
 	private static readonly string[] PieceFeatureKeywords =
 	{
 		"_TWOSIDEDNORMALS_ON", "_VALUENOISEVERTEX_ON", "_ADDRAIN_ON", "_ADDSNOW_ON",
@@ -111,8 +130,8 @@ internal static class PieceMaterialReplacer
 
 		if (shader == PieceShaderBundle.VegetationShader)
 		{
-			// Leaves are always cut out.
-			SetKeyword(replacement, AlphaTestKeyword, true);
+			// Leaves are always cut out; only listed bark and trunks are not.
+			SetKeyword(replacement, AlphaTestKeyword, !IsOpaqueAlpha(source));
 		}
 		else if (shader == PieceShaderBundle.StandardShader)
 		{
@@ -121,7 +140,10 @@ internal static class PieceMaterialReplacer
 				SetKeyword(replacement, keyword, source.IsKeywordEnabled(keyword));
 			}
 
-			SetKeyword(replacement, AlphaTestKeyword, source.IsKeywordEnabled(StandardAlphaTestKeyword));
+			SetKeyword(
+				replacement,
+				AlphaTestKeyword,
+				source.IsKeywordEnabled(StandardAlphaTestKeyword) && !IsOpaqueAlpha(source));
 		}
 		else if (shader == PieceShaderBundle.CreatureShader)
 		{
@@ -130,7 +152,7 @@ internal static class PieceMaterialReplacer
 				SetKeyword(replacement, keyword, source.IsKeywordEnabled(keyword));
 			}
 
-			SetKeyword(replacement, AlphaTestKeyword, NeedsAlphaTest(replacement));
+			SetKeyword(replacement, AlphaTestKeyword, !IsOpaqueAlpha(source) && NeedsAlphaTest(replacement));
 		}
 		else
 		{
@@ -143,7 +165,7 @@ internal static class PieceMaterialReplacer
 			if (!isStaticRock)
 			{
 				SetTriplanarKeyword(replacement);
-				SetKeyword(replacement, AlphaTestKeyword, NeedsAlphaTest(replacement));
+				SetKeyword(replacement, AlphaTestKeyword, !IsOpaqueAlpha(source) && NeedsAlphaTest(replacement));
 			}
 		}
 
@@ -202,6 +224,25 @@ internal static class PieceMaterialReplacer
 		}
 
 		return alpha < cutoff;
+	}
+
+	private static bool IsOpaqueAlpha(Material material)
+	{
+		if (_opaqueAlphaMaterialNames == null)
+		{
+			_opaqueAlphaMaterialNames = new HashSet<string>();
+			var names = IndirectRendererPatches.OpaqueAlphaMaterials?.Value ?? DefaultOpaqueAlphaMaterials;
+			foreach (var name in names.Split(','))
+			{
+				var trimmed = name.Trim();
+				if (trimmed.Length > 0)
+				{
+					_opaqueAlphaMaterialNames.Add(trimmed);
+				}
+			}
+		}
+
+		return _opaqueAlphaMaterialNames.Contains(material.name);
 	}
 
 	// DXT1 maps to RGBA_DXT1, whose 1-bit alpha may count as an alpha channel,

@@ -20,6 +20,7 @@ internal static class IndirectRendererPatches
 	private static ConfigEntry<KeyboardShortcut> _toggleShortcut;
 	internal static ConfigEntry<bool> Enabled { get; private set; }
 	internal static ConfigEntry<float> MinimumScreenPercentage { get; private set; }
+	internal static ConfigEntry<string> OpaqueAlphaMaterials { get; private set; }
 
 	private static bool _initialized;
 
@@ -46,6 +47,12 @@ internal static class IndirectRendererPatches
 			"Minimum screen percentage",
 			0.1f,
 			"Skip indirect instances whose projected bounds span less than this percentage of both screen dimensions. Set to 0 to disable.");
+		OpaqueAlphaMaterials = configFile.Bind(
+			section,
+			"Opaque alpha materials",
+			PieceMaterialReplacer.DefaultOpaqueAlphaMaterials,
+			"Comma-separated material names whose albedo has an alpha channel that never falls below the cutoff. " +
+			"They draw without the alpha test, which also lets their shadows use multi-draw. Takes effect after a restart.");
 		Enabled.SettingChanged += (_, _) => ApplyEnabled();
 		MinimumScreenPercentage.SettingChanged += (_, _) =>
 			VPOIndirectRenderer.Renderer?.SetMinimumScreenFraction(MinimumScreenPercentage.Value * 0.01f);
