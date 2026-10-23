@@ -38,7 +38,7 @@ internal sealed class VPOIndirectRenderer : MonoBehaviour
 	private void LateUpdate()
 	{
 		if (Game.instance == null || Game.instance.m_shuttingDown || Player.m_localPlayer == null
-		    || Player.m_localPlayer.IsTeleporting() || !EnvMan.instance)
+		    || !EnvMan.instance)
 		{
 			indirectRenderer.SkipFrame();
 			return;
