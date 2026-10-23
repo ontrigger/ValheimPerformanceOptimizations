@@ -24,10 +24,8 @@ internal sealed class InstanceTransformTracker : IDisposable
 	private NativeParallelMultiHashMap<int, int> slotsByInstanceId;
 	private int trackedCount;
 
-	// Indexed by slot.
 	private NativeArray<InstanceSlot> slots;
 
-	// Indexed by batch.
 	private NativeArray<float3> batchBoundsCenters;
 	private NativeArray<float3> batchBoundsExtents;
 
@@ -50,9 +48,6 @@ internal sealed class InstanceTransformTracker : IDisposable
 		batchBoundsExtents[batchIndex] = meshBounds.extents;
 	}
 
-	/// <summary>
-	/// data.ComponentId must not be 0.
-	/// </summary>
 	internal void Track(int slot, in InstanceSlot data)
 	{
 		slots.GrowCapacity(slot + 1, MinimumCapacity);
@@ -145,9 +140,6 @@ internal sealed class InstanceTransformTracker : IDisposable
 		return movedCount[0];
 	}
 
-	/// <summary>
-	/// Forgets every tracked slot and the moves not collected yet.
-	/// </summary>
 	internal void Clear()
 	{
 		slotsByInstanceId.Clear();

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using IndirectRendering.Extensions;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -181,7 +182,7 @@ public sealed partial class IndirectRenderer
 		// copetimizations
 		if (buffer.RecordedVersion == shadowRecordingVersion && buffer.RecordedViewIndex == viewIndex &&
 		    buffer.RecordedCullingMask == cullingMask &&
-		    ContainsBatches(buffer.RecordedBatches, batches))
+		    buffer.RecordedBatches.ContainsSorted(batches))
 		{
 			return;
 		}
@@ -217,35 +218,6 @@ public sealed partial class IndirectRenderer
 
 		commandBuffer.SetGlobalDepthBias(0f, 0f);
 		Profiler.EndSample();
-	}
-
-	private static bool SameBatches(List<int> recorded, List<int> current)
-	{
-		if (recorded.Count != current.Count) { return false; }
-
-		for (var index = 0; index < current.Count; index += 1)
-		{
-			if (recorded[index] != current[index]) { return false; }
-		}
-
-		return true;
-	}
-
-	private static bool ContainsBatches(List<int> recorded, List<int> current)
-	{
-		var recordedIndex = 0;
-		for (var index = 0; index < current.Count; index += 1)
-		{
-			var batchIndex = current[index];
-			while (recordedIndex < recorded.Count && recorded[recordedIndex] < batchIndex)
-			{
-				recordedIndex += 1;
-			}
-
-			if (recordedIndex == recorded.Count || recorded[recordedIndex] != batchIndex) { return false; }
-		}
-
-		return true;
 	}
 
 	// Unity skips the shadow map of a light, or a cube face, it finds no

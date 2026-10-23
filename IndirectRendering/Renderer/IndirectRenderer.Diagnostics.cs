@@ -157,10 +157,10 @@ public sealed partial class IndirectRenderer
 	{
 		Debug.Assert(Marshal.SizeOf<BatchData>() == 32, "Batch data stride must be 32 bytes.");
 		Debug.Assert(Marshal.SizeOf<ShadowCullParameters>() == 32, "Shadow parameter stride must be 32 bytes.");
-		Debug.Assert(Marshal.SizeOf<ShadowDepthTile>() == 8, "Shadow depth tile stride must be 8 bytes.");
+		Debug.Assert(Marshal.SizeOf<ShadowReceiverMap.DepthTile>() == 8, "Shadow depth tile stride must be 8 bytes.");
 		Debug.Assert(Marshal.SizeOf<ViewData>() == 144, "View data stride must be 144 bytes.");
 		Debug.Assert(
-			Marshal.SizeOf<ShadowReceiverParameters>() == 144,
+			Marshal.SizeOf<ShadowReceiverMap.Parameters>() == 144,
 			"Shadow receiver parameter stride must be 144 bytes.");
 		Debug.Assert(IndirectArgumentWordCount == 5, "Indirect indexed draw arguments must contain five uints.");
 	}

@@ -10,7 +10,7 @@ namespace IndirectRendering;
 /// so casters of different meshes can share a native multi-draw. Each mesh's
 /// vertices are copied once, with its indices rebased to address them.
 /// </summary>
-internal sealed class CasterGeometry
+internal sealed class CasterGeometryBuffer
 {
 	[StructLayout(LayoutKind.Sequential)]
 	private struct CasterVertex

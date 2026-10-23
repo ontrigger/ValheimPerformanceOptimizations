@@ -8,15 +8,9 @@ using IndirectRendering.Extensions;
 
 namespace IndirectRendering;
 
-/// <summary>
-/// Draws registered instances with GPU-culled indirect draws, for the camera,
-/// the directional shadow cascades, shadowed local lights and queued views.
-/// The host calls Render once a frame, after the camera and lights have moved
-/// and before they render, and Dispose when it is done with it.
-/// </summary>
 public sealed partial class IndirectRenderer : IDisposable
 {
-	private const int MaxDirectionalCascades = 4;
+	internal const int MaxDirectionalCascades = 4;
 	// View 0 is the camera; views 1-4 are the directional shadow cascades. The
 	// views queued or tracked this frame follow, see CollectViews.
 	private const int FixedViewCount = 1 + MaxDirectionalCascades;
@@ -27,8 +21,6 @@ public sealed partial class IndirectRenderer : IDisposable
 	private static readonly int IndirectArgumentsId = Shader.PropertyToID("_IndirectArguments");
 	private static readonly int InstanceCountId = Shader.PropertyToID("_InstanceCount");
 	private static readonly int ShadowInputInstancesId = Shader.PropertyToID("_InputInstances");
-	private static readonly int ShadowReceiverParametersId = Shader.PropertyToID("_ShadowReceiverParameters");
-	private static readonly int ShadowReceiverMapId = Shader.PropertyToID("_ShadowReceiverMap");
 	private static readonly int ShadowCascadeSpheresId = Shader.PropertyToID("_ShadowCascadeSpheres");
 	private static readonly int CullDiagnosticsId = Shader.PropertyToID("_CullDiagnostics");
 	private static readonly int CullDiagnosticsEnabledId = Shader.PropertyToID("_CullDiagnosticsEnabled");
@@ -61,7 +53,9 @@ public sealed partial class IndirectRenderer : IDisposable
 		shaders = settings.Shaders ?? IndirectRendererShaders.LoadEmbedded();
 		this.overrideStore = overrideStore;
 		minimumScreenFraction = settings.MinimumScreenFraction;
-		multiDrawCasterResolver = settings.MultiDrawCasterResolver;
+		gpuInstances = new GpuInstanceBuffer(shaders);
+		shadowReceiverMap = new ShadowReceiverMap(shaders);
+		multiDrawCasters = new MultiDrawCasterSet(settings.MultiDrawCasterResolver);
 		batchCells = new BatchCellGrid(settings.BatchCellSize);
 		ValidateShadowBufferStrides();
 		Current = this;
@@ -103,9 +97,6 @@ public sealed partial class IndirectRenderer : IDisposable
 		RunQueuedViews(false);
 	}
 
-	/// <summary>
-	/// See IndirectRendererSettings.MinimumScreenFraction.
-	/// </summary>
 	public void SetMinimumScreenFraction(float fraction)
 	{
 		minimumScreenFraction = fraction;
@@ -221,7 +212,7 @@ public sealed partial class IndirectRenderer : IDisposable
 		// Moves are drained every frame, so a disabled renderer resumes with
 		// current transforms.
 		ApplyMovedInstances();
-		if (ScatterInstances())
+		if (gpuInstances.Flush(instanceSlots.HighWaterMark))
 		{
 			InvalidateMaterialBindings();
 		}
@@ -245,7 +236,7 @@ public sealed partial class IndirectRenderer : IDisposable
 
 	private void UploadInstanceChanges()
 	{
-		var instanceBufferReplaced = ScatterInstances();
+		var instanceBufferReplaced = gpuInstances.Flush(instanceSlots.HighWaterMark);
 		var overrideBufferReplaced = overrideStore.TryUpload();
 		if (instanceBufferReplaced || overrideBufferReplaced)
 		{
@@ -256,31 +247,22 @@ public sealed partial class IndirectRenderer : IDisposable
 	private void DisposeGpuResources()
 	{
 		ReleaseBatchBuffers();
-		ReleaseBuffer(ref visibleInstanceIndicesBuffer);
-		ReleaseBuffer(ref shadowCullParametersBuffer);
-		ReleaseBuffer(ref shadowCullingPlanesBuffer);
-		ReleaseBuffer(ref viewDataBuffer);
-		foreach (var replacement in replacementBySourceAndShader.Values)
-		{
-			if (replacement)
-			{
-				UnityEngine.Object.Destroy(replacement);
-			}
-		}
-		replacementBySourceAndShader.Clear();
-		ReleaseBuffer(ref shadowDispatchArgumentsBuffer);
-		ReleaseBuffer(ref shadowReceiverParametersBuffer);
-		ReleaseBuffer(ref shadowReceiverMapBuffer);
-		ReleaseBuffer(ref shadowDepthTilesBuffer);
-		ReleaseBuffer(ref shadowCascadeSpheresBuffer);
-		ReleaseBuffer(ref emptyShadowArgumentsBuffer);
+		GraphicsBufferX.Release(ref visibleInstanceIndicesBuffer);
+		GraphicsBufferX.Release(ref shadowCullParametersBuffer);
+		GraphicsBufferX.Release(ref shadowCullingPlanesBuffer);
+		GraphicsBufferX.Release(ref viewDataBuffer);
+		replacementMaterials.Clear();
+		GraphicsBufferX.Release(ref shadowDispatchArgumentsBuffer);
+		shadowReceiverMap.Release();
+		GraphicsBufferX.Release(ref shadowCascadeSpheresBuffer);
+		GraphicsBufferX.Release(ref emptyShadowArgumentsBuffer);
 		ReleaseMultiDrawShadows();
 		if (shadowCascadeCaptureMaterial)
 		{
 			UnityEngine.Object.Destroy(shadowCascadeCaptureMaterial);
 		}
 		shadowCascadeCaptureMaterial = null;
-		ReleaseBuffer(ref cullDiagnosticsBuffer);
+		GraphicsBufferX.Release(ref cullDiagnosticsBuffer);
 
 		batchData = Array.Empty<BatchData>();
 		batchVisibleOffsets = Array.Empty<uint>();
@@ -291,18 +273,9 @@ public sealed partial class IndirectRenderer : IDisposable
 		layoutBatchCount = 0;
 		layoutDirty = true;
 		InvalidateMaterialBindings();
-		shadowReceiverTileCountX = 0;
-		shadowReceiverTileCountY = 0;
-		shadowReceiverShadowFar = 0f;
 	#if DEBUG
 		unityShadowSubmissionCount = 0;
 	#endif
-	}
-
-	private static void ReleaseBuffer(ref GraphicsBuffer buffer)
-	{
-		buffer?.Release();
-		buffer = null;
 	}
 
 	/// <summary>
@@ -356,7 +329,7 @@ public sealed partial class IndirectRenderer : IDisposable
 		var bounds = runtimeBatch.MeshBounds.TransformBy(objectToWorld);
 		float3 boundsMinimum = bounds.min;
 		float3 boundsMaximum = bounds.max;
-		batchCells.Add(runtimeBatch.Index, GetInstancePosition(objectToWorld), boundsMinimum, boundsMaximum, lodRange);
+		batchCells.Add(runtimeBatch.Index, objectToWorld.GetPosition(),boundsMinimum, boundsMaximum, lodRange);
 		if (runtimeBatch.RegisteredInstanceCount == 0)
 		{
 			runtimeBatch.WorldBoundsMinimum = boundsMinimum;

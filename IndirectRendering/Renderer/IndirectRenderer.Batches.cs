@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
+using IndirectRendering.Extensions;
 
 namespace IndirectRendering;
 
@@ -244,10 +245,10 @@ public sealed partial class IndirectRenderer
 
 	private void ReleaseBatchBuffers()
 	{
-		ReleaseBuffer(ref batchDataBuffer);
-		ReleaseBuffer(ref visibleOffsetsBuffer);
-		ReleaseBuffer(ref batchArgumentsBuffer);
-		ReleaseBuffer(ref indirectArgumentsBuffer);
+		GraphicsBufferX.Release(ref batchDataBuffer);
+		GraphicsBufferX.Release(ref visibleOffsetsBuffer);
+		GraphicsBufferX.Release(ref batchArgumentsBuffer);
+		GraphicsBufferX.Release(ref indirectArgumentsBuffer);
 	}
 
 	// The draw reads its instances from the visible range that starts at
@@ -265,7 +266,7 @@ public sealed partial class IndirectRenderer
 			return block;
 		}
 
-		block.SetBuffer(InstanceDataId, instanceBuffer);
+		block.SetBuffer(InstanceDataId, gpuInstances.Buffer);
 		block.SetBuffer(InstanceOverridesId, overrideStore.Buffer);
 		block.SetBuffer(VisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
 		block.SetBuffer(VisibleInstanceOffsetsId, visibleOffsets);

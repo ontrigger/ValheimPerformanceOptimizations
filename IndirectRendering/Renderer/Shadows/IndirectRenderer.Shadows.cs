@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using IndirectRendering.Burst;
+using IndirectRendering.Extensions;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -29,6 +30,8 @@ public sealed partial class IndirectRenderer
 	private const int ShadowCascadeCaptureWriteTarget = 1;
 
 	private int shadowCascadeCount;
+	private readonly DirectionalShadowVolume shadowVolume = new();
+	private readonly ShadowReceiverMap shadowReceiverMap;
 
 	private readonly ShadowCullParameters[] shadowCullParameters = new ShadowCullParameters[1];
 	private readonly uint[] shadowDispatchArguments = [0, 1, 1];
@@ -59,6 +62,23 @@ public sealed partial class IndirectRenderer
 		"VPO Indirect Directional Shadow Cascade 2",
 		"VPO Indirect Directional Shadow Cascade 3",
 	};
+
+	private void BuildShadowCullingPlanes(Camera camera, Light directionalLight)
+	{
+		shadowCascadeCount = Mathf.Clamp(QualitySettings.shadowCascades, 1, MaxDirectionalCascades);
+		shadowVolume.Build(camera, directionalLight);
+	}
+
+	private void UpdateShadowReceiverResources(Camera camera, Light directionalLight, bool hasShadowWork)
+	{
+		if (!hasShadowWork) { return; }
+
+		shadowCascadeSpheresBuffer.SetData(shadowCascadeSpheresReset);
+		if (shadowReceiverMap.TryUpdate(camera, directionalLight, shadowVolume.ShadowFar))
+		{
+			InvalidateShadowRecordings();
+		}
+	}
 
 	private void UpdateShadowCommandBufferAttachments(Light directionalLight, bool hasShadowWork)
 	{
@@ -107,8 +127,9 @@ public sealed partial class IndirectRenderer
 			}
 		}
 
+		// copetimizations
 		if (recordedShadowVersion == shadowRecordingVersion &&
-		    recordedShadowCullingMask == cullingMask && SameBatches(recordedShadowBatches, batches))
+		    recordedShadowCullingMask == cullingMask && recordedShadowBatches.SequenceEquals(batches))
 		{
 			return;
 		}
@@ -154,10 +175,10 @@ public sealed partial class IndirectRenderer
 		var computeShader = shaders.FrustumCullShader;
 		commandBuffer.SetComputeIntParam(computeShader, ShadowCascadeCountId, shadowCascadeCount);
 		RecordShadowCascadeCapture(commandBuffer);
-		RecordShadowReceiverMap(commandBuffer, computeShader);
+		shadowReceiverMap.Record(commandBuffer, computeShader, shadowCascadeCount, shadowCascadeSpheresBuffer);
 		var kernel = shaders.ShadowFrustumCullKernel;
 		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowInputInstancesId, instanceBuffer);
+			computeShader, kernel, ShadowInputInstancesId, gpuInstances.Buffer);
 		commandBuffer.SetComputeBufferParam(
 			computeShader, kernel, ShadowCullingPlanesId, shadowCullingPlanesBuffer);
 		commandBuffer.SetComputeBufferParam(
@@ -168,10 +189,7 @@ public sealed partial class IndirectRenderer
 			computeShader, kernel, CullVisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
 		commandBuffer.SetComputeBufferParam(
 			computeShader, kernel, IndirectArgumentsId, indirectArgumentsBuffer);
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowReceiverParametersId, shadowReceiverParametersBuffer);
-		commandBuffer.SetComputeBufferParam(
-			computeShader, kernel, ShadowReceiverMapId, shadowReceiverMapBuffer);
+		shadowReceiverMap.Bind(commandBuffer, computeShader, kernel);
 		commandBuffer.SetComputeBufferParam(
 			computeShader, kernel, ShadowCascadeSpheresId, shadowCascadeSpheresBuffer);
 		commandBuffer.SetComputeBufferParam(
@@ -255,7 +273,7 @@ public sealed partial class IndirectRenderer
 			Marshal.SizeOf<ShadowCullParameters>());
 		shadowCullingPlanesBuffer = new GraphicsBuffer(
 			GraphicsBuffer.Target.Structured,
-			MaxShadowCullingPlanes,
+			DirectionalShadowVolume.MaxPlanes,
 			sizeof(float) * 4);
 		shadowDispatchArgumentsBuffer = new GraphicsBuffer(
 			GraphicsBuffer.Target.IndirectArguments,
@@ -263,14 +281,7 @@ public sealed partial class IndirectRenderer
 			sizeof(uint));
 		// No group count is 0, so the next UploadShadowBuffers writes the new buffer.
 		shadowDispatchArguments[0] = 0;
-		shadowReceiverParametersBuffer = new GraphicsBuffer(
-			GraphicsBuffer.Target.Structured,
-			1,
-			Marshal.SizeOf<ShadowReceiverParameters>());
-		shadowReceiverMapBuffer = new GraphicsBuffer(
-			GraphicsBuffer.Target.Structured,
-			ShadowReceiverMapElementCount,
-			sizeof(uint));
+		shadowReceiverMap.EnsureBuffers();
 		shadowCascadeSpheresBuffer = new GraphicsBuffer(
 			GraphicsBuffer.Target.Structured,
 			ShadowCascadeSphereCaptureCount,
@@ -287,7 +298,7 @@ public sealed partial class IndirectRenderer
 		shadowCullParameters[0] = new ShadowCullParameters
 		{
 			InstanceCount = (uint)instanceCount, BatchCount = (uint)runtimeBatches.Count,
-			VisibleStride = (uint)visibleStride, PlaneCount = (uint)shadowPlaneCount,
+			VisibleStride = (uint)visibleStride, PlaneCount = (uint)shadowVolume.PlaneCount,
 			LodParameters = cameraLodParameters,
 		};
 		ComputeDispatch.GetDimensions(
@@ -301,7 +312,7 @@ public sealed partial class IndirectRenderer
 		}
 
 		shadowCullParametersBuffer.SetData(shadowCullParameters);
-		shadowCullingPlanesBuffer.SetData(encodedShadowPlanes, 0, 0, shadowPlaneCount);
+		shadowCullingPlanesBuffer.SetData(shadowVolume.EncodedPlanes, 0, 0, shadowVolume.PlaneCount);
 	}
 
 	private static ShadowMapPass GetShadowMapPass(int cascadeIndex)

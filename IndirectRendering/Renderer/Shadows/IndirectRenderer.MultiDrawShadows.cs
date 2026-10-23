@@ -1,5 +1,4 @@
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using IndirectRendering.Extensions;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Rendering;
@@ -16,52 +15,18 @@ public sealed partial class IndirectRenderer
 	private static readonly int CasterVerticesId = Shader.PropertyToID("_VPOCasterVertices");
 	private static readonly int CasterBatchParametersId = Shader.PropertyToID("_VPOCasterBatchParameters");
 
-	// Must match PieceFrustumCull.compute's MultiDrawBatch.
-	[StructLayout(LayoutKind.Sequential)]
-	private struct MultiDrawBatch
-	{
-		internal uint BatchIndex;
-		internal uint IndexCount;
-		internal uint StartIndex;
-		internal uint LayerMask;
-	}
-
 	// What one shadow pass's multi-draws need: its own prepared arguments and
 	// the plugin parameters and material properties of its draws.
 	private sealed class MultiDrawPass
 	{
 		internal readonly MultiDraw.ParamsBlock Params = new();
 		internal readonly MaterialPropertyBlock Properties = new();
-		// multiDrawBatchCount draws, prepared by the pass's own dispatch.
+		// One draw per multi-draw batch, prepared by the pass's own dispatch.
 		internal GraphicsBuffer Arguments;
 	}
 
-	// The batches whose casters share a caster material.
-	private sealed class MultiDrawGroup
-	{
-		internal Material Material;
-		internal readonly List<MultiDrawBatch> Batches = new();
-		// Where Batches start in multiDrawBatchBuffer.
-		internal int FirstBatch;
-	}
-
-	// Casters that multiDrawCasterResolver gives a caster material, with
-	// triangle meshes that have normals, draw through one native multi-draw
-	// per caster material and light; see MultiDraw and CasterGeometry.
-	private readonly MultiDrawCasterResolver multiDrawCasterResolver;
-	private readonly CasterGeometry casterGeometry = new();
-	private readonly List<MultiDrawGroup> multiDrawGroups = new();
-	private readonly List<MultiDrawBatch> multiDrawBatchesScratch = new();
-	// Indexed by batch: the resolver's batch parameters, read by the caster
-	// shader through the batch index its instances carry.
-	private readonly List<Vector4> casterBatchParameters = new();
-	// Batches below this index were checked for multi-draw.
-	private int multiDrawScannedBatchCount;
-	private int multiDrawBatchCount;
-	private bool multiDrawGeometryDirty;
+	private readonly MultiDrawCasterSet multiDrawCasters;
 	private bool multiDrawOverflowLogged;
-	private GraphicsBuffer casterBatchParameterBuffer;
-	private GraphicsBuffer multiDrawBatchBuffer;
 	private readonly MultiDrawPass[] cascadeMultiDrawPasses = CreateMultiDrawPasses(MaxDirectionalCascades);
 
 	private static MultiDrawPass[] CreateMultiDrawPasses(int count)
@@ -90,18 +55,25 @@ public sealed partial class IndirectRenderer
 	/// <returns>Whether this frame's shadows draw their multi-draw batches through native multi-draw.</returns>
 	private bool PrepareMultiDrawCasters()
 	{
-		if (!MultiDraw.Supported || multiDrawCasterResolver == null) { return false; }
+		if (!MultiDraw.Supported || !multiDrawCasters.HasResolver) { return false; }
 
 		Profiler.BeginSample("MultiDrawCasterPreparation");
-		ScanMultiDrawBatches();
-		if (multiDrawGeometryDirty)
+		var firstAdded = multiDrawCasters.Scan(runtimeBatches);
+		if (firstAdded >= 0)
 		{
-			UploadMultiDrawGeometry();
+			MarkBatchCullFlagsDirty(firstAdded);
+		}
+
+		// The recordings hold the index buffer and each group's draw range.
+		if (multiDrawCasters.TryUpload())
+		{
+			InvalidateShadowRecordings();
 		}
 
 		// The plugin's identity buffer holds the instances' visible indices.
-		var usable = multiDrawBatchCount != 0 && visibleStride <= MultiDraw.MaxInstanceCount;
-		if (!usable && multiDrawBatchCount != 0 && !multiDrawOverflowLogged)
+		var batchCount = multiDrawCasters.BatchCount;
+		var usable = batchCount != 0 && visibleStride <= MultiDraw.MaxInstanceCount;
+		if (!usable && batchCount != 0 && !multiDrawOverflowLogged)
 		{
 			multiDrawOverflowLogged = true;
 			Debug.LogWarning(
@@ -113,91 +85,20 @@ public sealed partial class IndirectRenderer
 		return usable;
 	}
 
-	private void ScanMultiDrawBatches()
-	{
-		if (multiDrawScannedBatchCount == runtimeBatches.Count) { return; }
-
-		for (; multiDrawScannedBatchCount < runtimeBatches.Count; multiDrawScannedBatchCount += 1)
-		{
-			var runtimeBatch = runtimeBatches[multiDrawScannedBatchCount];
-			if (!runtimeBatch.ShadowEligible ||
-			    !multiDrawCasterResolver(
-				    runtimeBatch.ShadowRenderParams.material, out var casterMaterial, out var batchParameters) ||
-			    !casterMaterial ||
-			    !casterGeometry.TryGetIndexRange(runtimeBatch.Mesh, runtimeBatch.SubMeshIndex, out var indexRange))
-			{
-				continue;
-			}
-
-			var group = multiDrawGroups.Find(candidate => candidate.Material == casterMaterial);
-			if (group == null)
-			{
-				group = new MultiDrawGroup { Material = casterMaterial };
-				multiDrawGroups.Add(group);
-			}
-
-			while (casterBatchParameters.Count <= runtimeBatch.Index)
-			{
-				casterBatchParameters.Add(Vector4.zero);
-			}
-
-			casterBatchParameters[runtimeBatch.Index] = batchParameters;
-
-			group.Batches.Add(new MultiDrawBatch
-			{
-				BatchIndex = (uint)runtimeBatch.Index,
-				IndexCount = (uint)indexRange.IndexCount,
-				StartIndex = (uint)indexRange.StartIndex,
-				LayerMask = 1u << runtimeBatch.ShadowRenderParams.layer,
-			});
-			runtimeBatch.MultiDrawCaster = true;
-			MarkBatchCullFlagsDirty(runtimeBatch.Index);
-			multiDrawGeometryDirty = true;
-		}
-	}
-
-	// Rebuilds every shared buffer; batches are added rarely after loading.
-	private void UploadMultiDrawGeometry()
-	{
-		multiDrawGeometryDirty = false;
-		casterGeometry.Upload();
-		ReleaseBuffer(ref casterBatchParameterBuffer);
-		ReleaseBuffer(ref multiDrawBatchBuffer);
-		casterBatchParameterBuffer = new GraphicsBuffer(
-			GraphicsBuffer.Target.Structured,
-			casterBatchParameters.Count,
-			sizeof(float) * 4);
-		casterBatchParameterBuffer.SetData(casterBatchParameters);
-
-		var batches = multiDrawBatchesScratch;
-		batches.Clear();
-		foreach (var group in multiDrawGroups)
-		{
-			group.FirstBatch = batches.Count;
-			batches.AddRange(group.Batches);
-		}
-
-		multiDrawBatchCount = batches.Count;
-		multiDrawBatchBuffer = new GraphicsBuffer(
-			GraphicsBuffer.Target.Structured,
-			multiDrawBatchCount,
-			Marshal.SizeOf<MultiDrawBatch>());
-		multiDrawBatchBuffer.SetData(batches);
-		// The recordings hold the index buffer and each group's draw range.
-		InvalidateShadowRecordings();
-	}
-
 	// Records the dispatch that prepares viewIndex's multi-draw arguments, then
 	// one multi-draw per caster material over them. The arguments hold no
 	// instances for batches outside the view or the layers of cullingMask.
 	private void RecordMultiDrawPass(CommandBuffer commandBuffer, MultiDrawPass pass, int viewIndex, int cullingMask)
 	{
+		var batchCount = multiDrawCasters.BatchCount;
+		var groups = multiDrawCasters.Groups;
+		var geometry = multiDrawCasters.GeometryBuffer;
 		// The command buffer was cleared before this, so nothing recorded still
 		// reads the old arguments.
-		var wordCount = multiDrawBatchCount * IndirectArgumentWordCount;
+		var wordCount = batchCount * IndirectArgumentWordCount;
 		if (pass.Arguments == null || pass.Arguments.count != wordCount)
 		{
-			ReleaseBuffer(ref pass.Arguments);
+			GraphicsBufferX.Release(ref pass.Arguments);
 			pass.Arguments = new GraphicsBuffer(
 				GraphicsBuffer.Target.Structured | GraphicsBuffer.Target.IndirectArguments,
 				wordCount,
@@ -205,68 +106,60 @@ public sealed partial class IndirectRenderer
 		}
 
 		// One parameter slot per group, then the prepare event's.
-		pass.Params.EnsureCapacity(multiDrawGroups.Count + 1);
+		pass.Params.EnsureCapacity(groups.Count + 1);
 
 		var computeShader = shaders.FrustumCullShader;
 		var kernel = shaders.PrepareMultiDrawArgumentsKernel;
 		commandBuffer.BeginSample("VPO Prepare Multi-Draw Arguments");
-		commandBuffer.SetComputeBufferParam(computeShader, kernel, MultiDrawBatchesId, multiDrawBatchBuffer);
+		commandBuffer.SetComputeBufferParam(computeShader, kernel, MultiDrawBatchesId, multiDrawCasters.BatchBuffer);
 		commandBuffer.SetComputeBufferParam(computeShader, kernel, MultiDrawArgumentsId, pass.Arguments);
 		commandBuffer.SetComputeBufferParam(computeShader, kernel, IndirectArgumentsId, indirectArgumentsBuffer);
 		commandBuffer.SetComputeBufferParam(computeShader, kernel, BatchDataId, batchDataBuffer);
 		// These are fixed for a recording; a multi-draw batch or batch count
 		// change re-records.
-		commandBuffer.SetComputeIntParam(computeShader, MultiDrawBatchCountId, multiDrawBatchCount);
+		commandBuffer.SetComputeIntParam(computeShader, MultiDrawBatchCountId, batchCount);
 		commandBuffer.SetComputeIntParam(computeShader, MultiDrawViewIndexId, viewIndex);
 		commandBuffer.SetComputeIntParam(computeShader, MultiDrawCullingMaskId, cullingMask);
 		commandBuffer.SetComputeIntParam(computeShader, BatchCountId, runtimeBatches.Count);
 		ComputeDispatch.GetDimensions(
-			ComputeDispatch.GetThreadGroupCount(multiDrawBatchCount, shaders.PrepareMultiDrawArgumentsGroupSize),
+			ComputeDispatch.GetThreadGroupCount(batchCount, shaders.PrepareMultiDrawArgumentsGroupSize),
 			out var dispatchX, out var dispatchY);
 		commandBuffer.DispatchCompute(computeShader, kernel, dispatchX, dispatchY, 1);
-		MultiDraw.RecordPrepare(commandBuffer, pass.Params.WritePrepare(multiDrawGroups.Count, pass.Arguments));
+		MultiDraw.RecordPrepare(commandBuffer, pass.Params.WritePrepare(groups.Count, pass.Arguments));
 		commandBuffer.EndSample("VPO Prepare Multi-Draw Arguments");
 
 		var properties = pass.Properties;
-		properties.SetBuffer(CasterVerticesId, casterGeometry.VertexBuffer);
-		properties.SetBuffer(CasterBatchParametersId, casterBatchParameterBuffer);
-		properties.SetBuffer(InstanceDataId, instanceBuffer);
+		properties.SetBuffer(CasterVerticesId, geometry.VertexBuffer);
+		properties.SetBuffer(CasterBatchParametersId, multiDrawCasters.BatchParameterBuffer);
+		properties.SetBuffer(InstanceDataId, gpuInstances.Buffer);
 		properties.SetBuffer(VisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
 		// SetInt stores a float, which loses view bases past 2^24.
 		properties.SetInteger(VisibleViewBaseId, viewIndex * visibleStride);
-		for (var groupIndex = 0; groupIndex < multiDrawGroups.Count; groupIndex += 1)
+		for (var groupIndex = 0; groupIndex < groups.Count; groupIndex += 1)
 		{
-			var group = multiDrawGroups[groupIndex];
+			var group = groups[groupIndex];
 			var parameters = pass.Params.Write(
 				groupIndex,
 				pass.Arguments,
 				group.FirstBatch,
 				group.Batches.Count,
-				casterGeometry.IndexBuffer);
-			MultiDraw.Record(commandBuffer, parameters, casterGeometry.IndexBuffer, group.Material, 0, properties);
+				geometry.IndexBuffer);
+			MultiDraw.Record(commandBuffer, parameters, geometry.IndexBuffer, group.Material, 0, properties);
 		}
 	}
 
 	private static void ReleaseMultiDrawPass(MultiDrawPass pass)
 	{
-		ReleaseBuffer(ref pass.Arguments);
+		GraphicsBufferX.Release(ref pass.Arguments);
 		pass.Params.Dispose();
 	}
 
 	private void ReleaseMultiDrawShadows()
 	{
-		casterGeometry.Release();
-		ReleaseBuffer(ref casterBatchParameterBuffer);
-		ReleaseBuffer(ref multiDrawBatchBuffer);
+		multiDrawCasters.Release();
 		foreach (var pass in cascadeMultiDrawPasses)
 		{
 			ReleaseMultiDrawPass(pass);
 		}
-
-		multiDrawGroups.Clear();
-		multiDrawScannedBatchCount = 0;
-		multiDrawBatchCount = 0;
-		multiDrawGeometryDirty = false;
-		casterBatchParameters.Clear();
 	}
 }

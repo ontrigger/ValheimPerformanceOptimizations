@@ -8,7 +8,7 @@ namespace IndirectRendering;
 /// Sparse per-instance overrides, in a struct the game's shaders define. Most
 /// instances have none; instances point at a slot through their instance data
 /// and slot 0 means "use the material". Writes are rare, so only dirty slots
-/// upload. Create one with InstanceOverrideStore&lt;T&gt;.
+/// upload. Create one with InstanceOverrideStore<T>
 /// </summary>
 public abstract class InstanceOverrideStore : IDisposable
 {
@@ -40,9 +40,6 @@ public abstract class InstanceOverrideStore : IDisposable
 		freeSlots.Push(index);
 	}
 
-	/// <summary>
-	/// Returns whether the buffer was replaced.
-	/// </summary>
 	internal bool TryUpload()
 	{
 		return Upload(highWaterMark);

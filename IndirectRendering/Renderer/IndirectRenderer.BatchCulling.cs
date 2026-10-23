@@ -40,11 +40,6 @@ public sealed partial class IndirectRenderer
 	private int cameraSubmissionCount;
 #endif
 
-	private static Vector3 GetInstancePosition(in Matrix4x4 objectToWorld)
-	{
-		return new Vector3(objectToWorld.m03, objectToWorld.m13, objectToWorld.m23);
-	}
-
 	/// <summary>
 	/// Starts culling the batches for the camera, the directional shadows and
 	/// the collected views, or with viewsOnly, the collected views alone. Call
@@ -66,7 +61,7 @@ public sealed partial class IndirectRenderer
 		var cullViewCount = fixedCullViewCount + views.Count;
 		var rowCount = FixedViewCount + views.Count;
 		batchCullViews.EnsureCapacity(cullViewCount);
-		batchCullPlanes.EnsureCapacity(cameraFrustumPlanes.Length + MaxShadowCullingPlanes + views.Count * 6);
+		batchCullPlanes.EnsureCapacity(cameraFrustumPlanes.Length + DirectionalShadowVolume.MaxPlanes + views.Count * 6);
 		batchDraws.EnsureCapacity(rowCount * batchCount);
 		batchDrawCounts.EnsureCapacity(rowCount);
 		rowBounds.EnsureCapacity(rowCount);
@@ -86,7 +81,7 @@ public sealed partial class IndirectRenderer
 			batchCullViews[0] = CreateCullView(
 				cameraFrustumPlanes, cameraFrustumPlanes.Length, lodOrigin, lodScale, 0, 0, 0, ref planeCount);
 			batchCullViews[1] = CreateCullView(
-				shadowPlanes, shadowPlaneCount, lodOrigin, lodScale, DirectionalShadowCullRow,
+				shadowVolume.Planes, shadowVolume.PlaneCount, lodOrigin, lodScale, DirectionalShadowCullRow,
 				ShadowCasterCullFlag, excludedFlags, ref planeCount);
 		}
 

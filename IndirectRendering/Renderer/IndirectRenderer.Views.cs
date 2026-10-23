@@ -65,7 +65,7 @@ public sealed partial class IndirectRenderer
 	private ViewData[] viewData = [];
 	private GraphicsBuffer viewDataBuffer;
 
-	private readonly Dictionary<(Material, Shader), Material> replacementBySourceAndShader = new();
+	private readonly ReplacementMaterialCache replacementMaterials = new();
 	private CommandBuffer replacementCommandBuffer;
 
 	/// <summary>
@@ -214,7 +214,7 @@ public sealed partial class IndirectRenderer
 			commandBuffer.DrawMeshInstancedIndirect(
 				runtimeBatch.Mesh,
 				runtimeBatch.SubMeshIndex,
-				GetReplacementMaterial(renderParams.material, shader),
+				replacementMaterials.Get(renderParams.material, shader),
 				0,
 				indirectArgumentsBuffer,
 				(viewIndex * runtimeBatches.Count + batchIndex) * GraphicsBuffer.IndirectDrawIndexedArgs.size,
@@ -235,27 +235,6 @@ public sealed partial class IndirectRenderer
 			visibleOffsetsBuffer,
 			runtimeBatch.Index,
 			viewIndex * visibleStride);
-	}
-
-	private Material GetReplacementMaterial(Material source, Shader shader)
-	{
-		if (replacementBySourceAndShader.TryGetValue((source, shader), out var replacement) && replacement)
-		{
-			return replacement;
-		}
-
-		replacement = new Material(shader)
-		{
-			name = $"{source.name} ({shader.name})", hideFlags = HideFlags.HideAndDontSave, enableInstancing = true,
-		};
-		replacement.CopyMatchingPropertiesFromMaterial(source);
-		foreach (var keyword in source.shaderKeywords)
-		{
-			replacement.EnableKeyword(keyword);
-		}
-
-		replacementBySourceAndShader[(source, shader)] = replacement;
-		return replacement;
 	}
 
 	private void CollectViews(IReadOnlyList<Light> shadowedLightCandidates)
@@ -373,7 +352,7 @@ public sealed partial class IndirectRenderer
 		computeShader.SetInt(BatchCountId, batchCount);
 		computeShader.SetInt(ViewCountId, viewCount);
 		computeShader.SetInt(VisibleStrideId, visibleStride);
-		computeShader.SetBuffer(kernel, ShadowInputInstancesId, instanceBuffer);
+		computeShader.SetBuffer(kernel, ShadowInputInstancesId, gpuInstances.Buffer);
 		computeShader.SetBuffer(kernel, BatchDataId, batchDataBuffer);
 		computeShader.SetBuffer(kernel, CullVisibleInstanceIndicesId, visibleInstanceIndicesBuffer);
 		computeShader.SetBuffer(kernel, IndirectArgumentsId, indirectArgumentsBuffer);
