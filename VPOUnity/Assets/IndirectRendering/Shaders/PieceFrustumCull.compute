@@ -232,36 +232,25 @@ float2 ProjectInterval(
 
 bool IsLargeEnoughUsingProjectedBounds(float3 center, float3 extents)
 {
-	if (_MinimumScreenPercentage <= 0.0)
-	{
-		return true;
-	}
-
 	float4 clipCenter = mul(_ViewProjectionMatrix, float4(center, 1.0));
 	float4 clipRadius = GetClipRadius(extents);
-	if (!IsFinite(clipCenter) || !IsFinite(clipRadius))
-	{
-		return true;
-	}
-
 	float minimumW = clipCenter.w - clipRadius.w;
-	if (!(minimumW > 1e-5))
+	bool largeEnough = true;
+	if (_MinimumScreenPercentage > 0.0 && IsFinite(clipCenter) && IsFinite(clipRadius) && minimumW > 1e-5)
 	{
-		return true;
+		float maximumW = clipCenter.w + clipRadius.w;
+		float2 projectedX = ProjectInterval(clipCenter.x, clipRadius.x, minimumW, maximumW);
+		float2 projectedY = ProjectInterval(clipCenter.y, clipRadius.y, minimumW, maximumW);
+		if (IsFinite(float4(projectedX, projectedY)))
+		{
+			float2 minimum = float2(projectedX.x, projectedY.x) * 0.5 + 0.5;
+			float2 maximum = float2(projectedX.y, projectedY.y) * 0.5 + 0.5;
+			float2 screenSize = max(0.0, min(maximum, 1.0) - max(minimum, 0.0));
+			largeEnough = max(screenSize.x, screenSize.y) >= _MinimumScreenPercentage;
+		}
 	}
 
-	float maximumW = clipCenter.w + clipRadius.w;
-	float2 projectedX = ProjectInterval(clipCenter.x, clipRadius.x, minimumW, maximumW);
-	float2 projectedY = ProjectInterval(clipCenter.y, clipRadius.y, minimumW, maximumW);
-	if (!IsFinite(float4(projectedX, projectedY)))
-	{
-		return true;
-	}
-
-	float2 minimum = float2(projectedX.x, projectedY.x) * 0.5 + 0.5;
-	float2 maximum = float2(projectedX.y, projectedY.y) * 0.5 + 0.5;
-	float2 screenSize = max(0.0, min(maximum, 1.0) - max(minimum, 0.0));
-	return max(screenSize.x, screenSize.y) >= _MinimumScreenPercentage;
+	return largeEnough;
 }
 
 uint EncodeOrderableFloat(float value)
@@ -282,17 +271,13 @@ uint GetShadowReceiverMipOffset(uint level)
 // captured spheres every caster is drawn into every cascade.
 bool HasCapturedShadowCascadeSpheres(uint cascadeCount)
 {
-	if (cascadeCount < 2 || cascadeCount > MAX_DIRECTIONAL_CASCADES ||
-		_ShadowCascadeSpheres[MAX_DIRECTIONAL_CASCADES].x != 1.0)
-	{
-		return false;
-	}
-
-	bool valid = true;
-	for (uint cascade = 0; cascade < cascadeCount; cascade++)
+	bool valid = cascadeCount >= 2 && cascadeCount <= MAX_DIRECTIONAL_CASCADES &&
+		_ShadowCascadeSpheres[MAX_DIRECTIONAL_CASCADES].x == 1.0;
+	[unroll]
+	for (uint cascade = 0; cascade < MAX_DIRECTIONAL_CASCADES; cascade += 1)
 	{
 		float4 sphere = _ShadowCascadeSpheres[cascade];
-		valid = valid && IsFinite(sphere) && sphere.w > 0.0;
+		valid = valid && (cascade >= cascadeCount || (IsFinite(sphere) && sphere.w > 0.0));
 	}
 
 	return valid;
@@ -329,22 +314,17 @@ bool CanSampleShadowCascade(
 {
 	float4 sphere = lightSpheres[cascadeIndex];
 	float3 closest = max(0.0, max(minimumLight - sphere.xyz, sphere.xyz - maximumLight));
-	if (dot(closest, closest) > sphere.w * 1.001)
-	{
-		return false;
-	}
-
-	for (uint earlier = 0; earlier < cascadeIndex; earlier++)
+	bool canSample = !(dot(closest, closest) > sphere.w * 1.001);
+	[unroll]
+	for (uint earlier = 0; earlier < MAX_DIRECTIONAL_CASCADES - 1; earlier += 1)
 	{
 		float4 earlierSphere = lightSpheres[earlier];
 		float3 farthest = max(abs(minimumLight - earlierSphere.xyz), abs(maximumLight - earlierSphere.xyz));
-		if (dot(farthest, farthest) < earlierSphere.w * 0.999)
-		{
-			return false;
-		}
+		canSample = canSample &&
+			(earlier >= cascadeIndex || !(dot(farthest, farthest) < earlierSphere.w * 0.999));
 	}
 
-	return true;
+	return canSample;
 }
 
 void GetLightSpaceFootprint(
@@ -404,22 +384,14 @@ bool GetShadowCascadeSlabRange(
 	float a = dot(direction, direction);
 	float halfB = dot(offset, direction);
 	float c = dot(offset, offset) - radius * radius;
-	if (a < 1e-8)
-	{
-		range = float2(0.0, 1.0);
-		return c <= 0.0;
-	}
-
+	// A degenerate slab is a single cross-section, inside the sphere or not.
+	bool degenerate = a < 1e-8;
 	float discriminant = halfB * halfB - a * c;
-	if (discriminant < 0.0)
-	{
-		range = 0.0;
-		return false;
-	}
-
-	float root = sqrt(discriminant);
-	range = float2(max((-halfB - root) / a, 0.0), min((-halfB + root) / a, 1.0));
-	return range.x <= range.y;
+	float root = sqrt(max(discriminant, 0.0));
+	range = degenerate
+		? float2(0.0, 1.0)
+		: float2(max((-halfB - root) / a, 0.0), min((-halfB + root) / a, 1.0));
+	return degenerate ? c <= 0.0 : discriminant >= 0.0 && range.x <= range.y;
 }
 
 bool ReconstructShadowDepthWorldPosition(
@@ -435,14 +407,9 @@ bool ReconstructShadowDepthWorldPosition(
 	// uses the unflipped GPU projection to match.
 	float4 clipPosition = float4(uv * 2.0 - 1.0, rawDepth, 1.0);
 	float4 homogeneousPosition = mul(parameters.inverseViewProjection, clipPosition);
-	if (abs(homogeneousPosition.w) < 1e-5 || !IsFinite(homogeneousPosition))
-	{
-		worldPosition = 0.0;
-		return false;
-	}
-
-	worldPosition = homogeneousPosition.xyz / homogeneousPosition.w;
-	return IsFinite(float4(worldPosition, 1.0));
+	bool valid = abs(homogeneousPosition.w) >= 1e-5 && IsFinite(homogeneousPosition);
+	worldPosition = valid ? homogeneousPosition.xyz / homogeneousPosition.w : 0.0;
+	return valid && IsFinite(float4(worldPosition, 1.0));
 }
 
 // View depth never exceeds camera distance, so this planar test against the raw
@@ -469,22 +436,18 @@ bool GetShadowReceiverTileCorners(
 	uint2 minimumPixel = tileCoordinate * tileSize;
 	uint2 maximumPixel = min(minimumPixel + tileSize - 1, depthSize - 1);
 
+	bool valid = true;
 	[unroll]
-	for (uint corner = 0; corner < 4; corner++)
+	for (uint corner = 0; corner < 4; corner += 1)
 	{
 		uint2 pixel = uint2(
 			(corner & 1) == 0 ? minimumPixel.x : maximumPixel.x,
 			(corner & 2) == 0 ? minimumPixel.y : maximumPixel.y);
 		float3 minimumWorld;
 		float3 maximumWorld;
-		if (!ReconstructShadowDepthWorldPosition(parameters, pixel, minimumDepth, minimumWorld) ||
-			!ReconstructShadowDepthWorldPosition(parameters, pixel, maximumDepth, maximumWorld))
-		{
-			minimumDepthCorners[corner] = 0.0;
-			maximumDepthCorners[corner] = 0.0;
-			return false;
-		}
-
+		bool minimumValid = ReconstructShadowDepthWorldPosition(parameters, pixel, minimumDepth, minimumWorld);
+		bool maximumValid = ReconstructShadowDepthWorldPosition(parameters, pixel, maximumDepth, maximumWorld);
+		valid = valid && minimumValid && maximumValid;
 		minimumDepthCorners[corner] = float3(
 			dot(minimumWorld, parameters.lightBasisX.xyz),
 			dot(minimumWorld, parameters.lightBasisY.xyz),
