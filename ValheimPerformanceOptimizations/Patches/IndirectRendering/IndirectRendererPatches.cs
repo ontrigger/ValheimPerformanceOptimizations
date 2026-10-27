@@ -23,6 +23,7 @@ internal static class IndirectRendererPatches
 	internal static ConfigEntry<string> OpaqueAlphaMaterials { get; private set; }
 
 	private static bool _initialized;
+	private static List<GameObject> _vanillaPrefabs;
 
 	static IndirectRendererPatches()
 	{
@@ -103,6 +104,18 @@ internal static class IndirectRendererPatches
 	[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
 	[HarmonyPriority(Priority.First)]
 	[HarmonyPostfix]
+	private static void ZNetSceneAwakeSnapshotPostfix(ZNetScene __instance)
+	{
+		if (!_initialized)
+		{
+			_vanillaPrefabs = new List<GameObject>(__instance.m_prefabs);
+		}
+	}
+
+	[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
+	[HarmonyPriority(Priority.Last)]
+	[HarmonyAfter("Badgers.HDValheimTextures", "com.jotunn.jotunn")]
+	[HarmonyPostfix]
 	private static void ZNetSceneAwakePostfix(ZNetScene __instance)
 	{
 		if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
@@ -125,7 +138,7 @@ internal static class IndirectRendererPatches
 			return;
 		}
 
-		foreach (var prefab in __instance.m_prefabs)
+		foreach (var prefab in _vanillaPrefabs)
 		{
 			if (!prefab)
 			{
@@ -166,6 +179,7 @@ internal static class IndirectRendererPatches
 		}
 
 		DynamicPieceRenderers.FlushReport();
+		_vanillaPrefabs = null;
 		_initialized = true;
 	}
 
