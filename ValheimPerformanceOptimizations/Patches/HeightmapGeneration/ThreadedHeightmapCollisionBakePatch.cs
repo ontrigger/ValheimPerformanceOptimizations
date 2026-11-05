@@ -1,9 +1,8 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using HarmonyLib;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
-using UnityEngine.Profiling;
 using ValheimPerformanceOptimizations.Burst;
 
 namespace ValheimPerformanceOptimizations.Patches.HeightmapGeneration;
@@ -19,6 +18,11 @@ public static class ThreadedHeightmapCollisionBakePatch
 {
 	public static readonly Dictionary<Heightmap, bool> HeightmapFinished = new();
 	private static readonly Dictionary<Vector2s, GameObject> SpawnedZones = new();
+	private static readonly Dictionary<Vector2s, Heightmap> SkippedHeightmapByZone = new();
+
+	private const int MaxZoneInstantiationsPerFrame = 4;
+	private static int _zoneInstantiationFrame = -1;
+	private static int _zonesInstantiatedThisFrame;
 
 	[HarmonyPatch(typeof(Heightmap), nameof(Heightmap.Awake))]
 	[HarmonyPostfix]
@@ -53,7 +57,6 @@ public static class ThreadedHeightmapCollisionBakePatch
 	[HarmonyPrefix]
 	private static bool RebuildCollisionMeshPatch(Heightmap __instance)
 	{
-		Profiler.BeginSample("RebuildCollisionMesh");
 		// A full regeneration can happen more than once during a heightmap's lifetime.
 		// Invalidate the previous bake before publishing the newly generated mesh.
 		HeightmapFinished[__instance] = false;
@@ -75,7 +78,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 		var verts = new NativeArray<Vector3>(vertCount, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 		var minMax = new NativeArray<float>(2, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 		var indices = default(NativeArray<int>);
-		
+
 		NativeArray<float>.Copy(NoAllocHelpers.ExtractArrayFromList(__instance.m_heights), 0, heights, 0, vertCount);
 
 		var needIndices = mesh.GetIndexCount(0) != indexCount;
@@ -86,10 +89,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 
 		var vertsHandle = new GenerateCollisionVerticesJob
 		{
-			Width = width,
-			Scale = scale,
-			Heights = heights,
-			Verts = verts,
+			Width = width, Scale = scale, Heights = heights, Verts = verts,
 			MinMax = minMax,
 		}.Schedule();
 
@@ -138,8 +138,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 		{
 			indices.Dispose();
 		}
-		
-		Profiler.EndSample();
+
 
 		return false;
 	}
@@ -157,6 +156,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 
 		var zonePos = ZoneSystem.GetZone(__instance.transform.position);
 		SpawnedZones.Remove(zonePos);
+		SkippedHeightmapByZone.Remove(zonePos);
 	}
 
 	// spawn the heightmap GameObject but not call any placement until the heightmap has a collision mesh
@@ -168,10 +168,12 @@ public static class ThreadedHeightmapCollisionBakePatch
 		var zonePos = ZoneSystem.GetZonePos(zoneID);
 
 		var componentInChildren = __instance.m_zonePrefab.GetComponentInChildren<Heightmap>();
-		if (!HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
-			    componentInChildren.m_scale,
-			    componentInChildren.IsDistantLod,
-			    WorldGenerator.instance) || __instance.m_locationInstances.TryGetValue(zoneID, out var location) &&
+		var hmReady = HeightmapBuilder.instance.IsTerrainReady(zonePos, componentInChildren.m_width,
+			componentInChildren.m_scale,
+			componentInChildren.IsDistantLod,
+			WorldGenerator.instance);
+
+		if (!hmReady || __instance.m_locationInstances.TryGetValue(zoneID, out var location) &&
 		    !location.m_placed &&
 		    !__instance.PokeCanSpawnLocation(location.m_location, true))
 		{
@@ -180,11 +182,34 @@ public static class ThreadedHeightmapCollisionBakePatch
 			return false;
 		}
 
+		if (!SpawnedZones.ContainsKey(zoneID))
+		{
+			if (_zoneInstantiationFrame != Time.frameCount)
+			{
+				_zoneInstantiationFrame = Time.frameCount;
+				_zonesInstantiatedThisFrame = 0;
+			}
+
+			if (_zonesInstantiatedThisFrame >= MaxZoneInstantiationsPerFrame)
+			{
+				root = null;
+				__result = false;
+				return false;
+			}
+
+			_zonesInstantiatedThisFrame += 1;
+		}
+
 		root = GetOrCreateZone(__instance.m_zonePrefab, zoneID, zonePos);
 
 		var heightmap = root.GetComponentInChildren<Heightmap>();
 		if (!HeightmapFinished[heightmap])
 		{
+			if (mode != ZoneSystem.SpawnMode.Ghost)
+			{
+				SkippedHeightmapByZone[zoneID] = heightmap;
+			}
+
 			__result = false;
 			return false;
 		}
@@ -212,6 +237,37 @@ public static class ThreadedHeightmapCollisionBakePatch
 			}
 
 			__instance.SetZoneGenerated(zoneID);
+		}
+
+		__result = true;
+		return false;
+	}
+
+	[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.CreateLocalZones))]
+	[HarmonyPrefix]
+	private static bool CreateLocalZonesPatch(ZoneSystem __instance, ref bool __result)
+	{
+		var haveReady = false;
+		var readyZone = default(Vector2s);
+		foreach (KeyValuePair<Vector2s, Heightmap> pair in SkippedHeightmapByZone)
+		{
+			if (pair.Value && HeightmapFinished.TryGetValue(pair.Value, out var finished) && finished)
+			{
+				haveReady = true;
+				readyZone = pair.Key;
+				break;
+			}
+		}
+
+		if (!haveReady)
+		{
+			return true;
+		}
+
+		SkippedHeightmapByZone.Remove(readyZone);
+		if (!__instance.PokeLocalZone(readyZone))
+		{
+			return true;
 		}
 
 		__result = true;
@@ -254,6 +310,7 @@ public static class ThreadedHeightmapCollisionBakePatch
 	public static void ZNetScene_Shutdown_Postfix(ZNetScene __instance)
 	{
 		SpawnedZones.Clear();
+		SkippedHeightmapByZone.Clear();
 		HeightmapFinished.Clear();
 	}
 

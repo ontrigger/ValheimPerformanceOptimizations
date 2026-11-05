@@ -23,6 +23,7 @@ internal static class TerrainPatches
 		}
 
 		harmony.PatchAll(typeof(HeightmapColorGenerationPatch));
+		harmony.PatchAll(typeof(HeightmapGeneratePatch));
 
 		const string key = "Threaded terrain collision baking enabled";
 		const string description =
