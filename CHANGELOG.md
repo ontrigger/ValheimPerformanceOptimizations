@@ -7,6 +7,7 @@
 * Fixed lagspikes in ZoneSystem when vanilla wanted to unload a zone
 * Character animations skip animator calls when the values have not changed
 * Added character transform lookups
+* Significantly reduced hitches caused by terrain
 * Mod files moved to `BepInEx/plugins/VPO`
 
 # Changes in 1.2.3

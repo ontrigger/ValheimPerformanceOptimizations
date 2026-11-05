@@ -25,8 +25,7 @@ It draws:
 
 Everything else including modded content is drawn vanilla
 
-Press **F8** in game to switch the indirect renderer on and off. This lets you compare it against
-vanilla right where you are standing.
+Press **F8** in game to switch the indirect renderer on and off. This lets you compare it against vanilla right where you are standing.
 
 ## Limitations
 
@@ -80,7 +79,7 @@ In a dense forest, trees hide each other a lot, so this wasted work adds up and 
 
 * Rewritten world object streaming for less overhead when moving through the world
 * Burst-accelerated water and terrain generation
-* Threaded terrain collision baking - less hitching when loading new terrain
+* Threaded terrain collision baking - almost entirely eliminated stuttering when loading new terrain
 * Structural integrity caching - better performance in large bases
 * Audiosource culling for distant looping sounds
 * Culled light flicker updates for off-screen lights
