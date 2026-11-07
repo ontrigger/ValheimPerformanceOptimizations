@@ -1,3 +1,11 @@
+# Changes in 2.1.0
+
+* Fixed building piece highlights being too dark
+* Fixed stone floors and other building pieces not getting wet in the rain
+* Possible fix for a phantom triangle casting shadows on DX11
+* Improved compatibility with mods such as PlanBuild
+* Fixed yellow mushrooms and potentially other items being invisible on item stands
+
 # Changes in 2.0.0
 
 * Added the indirect renderer: building pieces, trees, rocks, pickables and dropped items are now culled and drawn
