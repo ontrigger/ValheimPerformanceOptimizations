@@ -276,7 +276,7 @@ internal static class MultiDraw
 			new VertexAttributeDescriptor(VertexAttribute.TexCoord7, VertexAttributeFormat.UInt32, 1, 1));
 		mesh.SetVertexBufferData(new Vector3[3], 0, 0, 3, 0);
 		mesh.SetVertexBufferData(new uint[3], 0, 0, 3, 1);
-		mesh.SetIndices(new[] { 0, 1, 2 }, MeshTopology.Triangles, 0);
+		mesh.SetIndices(new[] { 0, 0, 0 }, MeshTopology.Triangles, 0);
 		return mesh;
 	}
 }
