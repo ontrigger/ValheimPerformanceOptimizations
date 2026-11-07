@@ -17,6 +17,8 @@ internal static class PieceMaterialReplacer
 	private const string TriplanarWorldKeyword = "_VPO_TRIPLANAR_WORLD";
 	private const string TriplanarLocalKeyword = "_VPO_TRIPLANAR_LOCAL";
 	private const string AlphaTestKeyword = "_VPO_ALPHATEST";
+	private const string AddRainKeyword = "_ADDRAIN_ON";
+	private const string AddRainProperty = "_AddRain";
 
 	// Kept across ZNetScene reloads: patched prefabs keep these replacements, so
 	// location copies registered later must resolve to the same batch definitions.
@@ -164,6 +166,7 @@ internal static class PieceMaterialReplacer
 
 			if (!isStaticRock)
 			{
+				SetKeyword(replacement, AddRainKeyword, source.GetFloat(AddRainProperty) > 0.5f);
 				SetTriplanarKeyword(replacement);
 				SetKeyword(replacement, AlphaTestKeyword, !IsOpaqueAlpha(source) && NeedsAlphaTest(replacement));
 			}
