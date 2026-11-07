@@ -15,10 +15,11 @@ internal sealed class VPOBatchedPrefab : MonoBehaviour
 	private static readonly HashSet<VPOBatchedPrefab> Live = new();
 
 	public IndirectInstance[] instances;
-	public MeshRenderer[] disabledRenderers;
+	public MeshRenderer[] toggledRenderers;
 	// This piece's root MaterialMan block; see IndirectRendererPatches.
 	internal MaterialMan.PropertyContainer MaterialContainer;
 
+	private bool pathApplied;
 	private bool fallback;
 	// An unsupported property in the root block; cleared when it is reset.
 	private bool propertyFallback;
@@ -189,15 +190,16 @@ internal sealed class VPOBatchedPrefab : MonoBehaviour
 
 	private void FallbackToUnityRendering()
 	{
-		if (fallback) { return; }
+		if (pathApplied && fallback) { return; }
 
+		pathApplied = true;
 		fallback = true;
 		foreach (var instance in instances)
 		{
 			instance.enabled = false;
 		}
 
-		foreach (var renderer in disabledRenderers)
+		foreach (var renderer in toggledRenderers)
 		{
 			renderer.enabled = true;
 		}
@@ -205,10 +207,11 @@ internal sealed class VPOBatchedPrefab : MonoBehaviour
 
 	private void ResumeIndirectRendering()
 	{
-		if (!fallback) { return; }
+		if (pathApplied && !fallback) { return; }
 
+		pathApplied = true;
 		fallback = false;
-		foreach (var renderer in disabledRenderers)
+		foreach (var renderer in toggledRenderers)
 		{
 			renderer.enabled = false;
 		}

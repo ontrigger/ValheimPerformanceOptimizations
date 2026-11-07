@@ -59,8 +59,6 @@ internal static class IndirectRendererPatches
 			VPOIndirectRenderer.Renderer?.SetMinimumScreenFraction(MinimumScreenPercentage.Value * 0.01f);
 	}
 
-	// Why prefabs, renderers and objects stay on Unity's path. Release builds
-	// drop these calls, including formatting their messages.
 	[Conditional("DEBUG")]
 	internal static void LogDiagnostic(LogLevel level, string message)
 	{
@@ -349,21 +347,18 @@ internal static class IndirectRendererPatches
 		// under their LODGroup, which selects levels by the same distances.
 		LodRanges.Assign(prefab);
 
-		// Renderers vanilla already disabled are left out so fallback never
-		// turns them on.
-		var disabledRenderers = new List<MeshRenderer>();
+		var toggledRenderers = new List<MeshRenderer>();
 		foreach (var childRenderer in prefab.GetComponentsInChildren<MeshRenderer>(true))
 		{
 			if (childRenderer.enabled && !skippedRenderers.Contains(childRenderer))
 			{
-				childRenderer.enabled = false;
-				disabledRenderers.Add(childRenderer);
+				toggledRenderers.Add(childRenderer);
 			}
 		}
 
 		var pieceRoot = prefab.AddComponent<VPOBatchedPrefab>();
 		pieceRoot.instances = instances.ToArray();
-		pieceRoot.disabledRenderers = disabledRenderers.ToArray();
+		pieceRoot.toggledRenderers = toggledRenderers.ToArray();
 
 		// Location copies are already in the scene; copies of prefab assets
 		// are tracked from VPOBatchedPrefab.Awake.
