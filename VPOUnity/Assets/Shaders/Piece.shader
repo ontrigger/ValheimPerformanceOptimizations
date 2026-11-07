@@ -8,7 +8,7 @@ Shader "VPO/Piece"
 		_MainTex ("Albedo (RGB)", 2D) = "white" {}
 		_Color ("Color", Color) = (1,1,1,1)
 		_Cutoff ("Alpha Cutoff", Range(0,1)) = 0.5
-		_EmissionMap ("Glow", 2D) = "black" {}
+		_EmissionMap ("Glow", 2D) = "white" {}
 		[HDR] _EmissionColor ("Emissive", Color) = (0,0,0,1)
 		_MetallicTex ("Metal Mask", 2D) = "white" {}
 		_Metallic ("Metallic", Range(0,1)) = 0

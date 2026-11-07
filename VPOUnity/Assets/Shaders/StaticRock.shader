@@ -4,7 +4,7 @@ Shader "VPO/StaticRock"
 	{
 		_MainTex ("Albedo (RGB)", 2D) = "white" {}
 		_Color ("Color", Color) = (1,1,1,1)
-		_EmissiveTex ("Glow", 2D) = "black" {}
+		_EmissiveTex ("Glow", 2D) = "white" {}
 		[HDR] _EmissionColor ("Emissive color", Color) = (0,0,0,1)
 		_MetalTex ("Metal", 2D) = "white" {}
 		_Metallic ("Metallic", Range(0,1)) = 0

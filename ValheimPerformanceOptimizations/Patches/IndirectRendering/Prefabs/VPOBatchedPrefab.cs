@@ -238,7 +238,7 @@ internal sealed class VPOBatchedPrefab : MonoBehaviour
 	{
 		if (property is MaterialMan.ShaderProperty<Color> color)
 		{
-			value = color.Get();
+			value = color.Get().linear;
 			return true;
 		}
 		if (property is MaterialMan.ShaderProperty<Vector4> vector)
