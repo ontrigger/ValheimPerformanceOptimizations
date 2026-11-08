@@ -132,6 +132,9 @@ public static class PrefabPatches
 				"low_flames" => ParticleSystemCullingMode.PauseAndCatchup,
 				"sparcs (1)" => ParticleSystemCullingMode.PauseAndCatchup,
 				"smoke (1)" => ParticleSystemCullingMode.PauseAndCatchup,
+				"flies" or "Flies" => ParticleSystemCullingMode.Pause,
+				"Particle System" when go.transform.parent?.name == "Flies" => ParticleSystemCullingMode.Pause,
+				"vfx_swamp_mist" or "vfx_swamp_mist (1)" => ParticleSystemCullingMode.Pause,
 				_ => null,
 			};
 
