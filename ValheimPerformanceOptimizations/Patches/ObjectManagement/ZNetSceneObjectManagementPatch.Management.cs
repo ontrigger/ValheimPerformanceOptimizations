@@ -28,7 +28,7 @@ public static partial class ZNetSceneObjectManagementPatch
 	private static readonly List<QueuedZDO> QueuedDistantObjects = new();
 	private static ConfigEntry<int> _destroyBudgetPerTick;
 
-	private static readonly List<QueuedZDO> PendingRemovalObjects = new();
+	private static readonly Queue<QueuedZDO> PendingRemovalObjects = new();
 	private static readonly HashSet<ZDOID> PendingMembershipIds = new();
 	private static readonly HashSet<ZDOID> InvalidatedZdoIds = new();
 	private static readonly Dictionary<ZDOID, int> QueuedNearObjectIndices = new();
@@ -236,12 +236,9 @@ public static partial class ZNetSceneObjectManagementPatch
 		try
 		{
 			var budget = scene.InLoadingScreen() ? int.MaxValue : _destroyBudgetPerTick.Value;
-			var i = PendingRemovalObjects.Count - 1;
-			while (i >= 0 && budget > 0)
+			while (budget > 0 && PendingRemovalObjects.Count > 0)
 			{
-				var entry = PendingRemovalObjects[i];
-				PendingRemovalObjects.RemoveAt(i);
-				i -= 1;
+				var entry = PendingRemovalObjects.Dequeue();
 
 				var zdo = entry.ZDO;
 				if (!IsCurrent(entry) || GetAreaMembership(zdo) != AreaMembership.None)
@@ -357,7 +354,7 @@ public static partial class ZNetSceneObjectManagementPatch
 			RemoveTrackedMembership(id);
 			if (desiredMembership == AreaMembership.None)
 			{
-				PendingRemovalObjects.Add(new QueuedZDO(zdo));
+				PendingRemovalObjects.Enqueue(new QueuedZDO(zdo));
 			}
 			return;
 		}
@@ -394,7 +391,7 @@ public static partial class ZNetSceneObjectManagementPatch
 		{
 			if (nextMembership == AreaMembership.None)
 			{
-				PendingRemovalObjects.Add(new QueuedZDO(zdo));
+				PendingRemovalObjects.Enqueue(new QueuedZDO(zdo));
 			}
 			return;
 		}
