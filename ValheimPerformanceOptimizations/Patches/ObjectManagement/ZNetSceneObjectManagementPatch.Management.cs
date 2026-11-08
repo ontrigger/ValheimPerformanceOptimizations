@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BepInEx.Configuration;
 using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -25,7 +26,9 @@ public static partial class ZNetSceneObjectManagementPatch
 
 	private static readonly List<QueuedZDO> QueuedNearObjects = new();
 	private static readonly List<QueuedZDO> QueuedDistantObjects = new();
-	private static readonly Dictionary<ZDOID, QueuedZDO> PendingRemovalObjects = new();
+	private static ConfigEntry<int> _destroyBudgetPerTick;
+
+	private static readonly List<QueuedZDO> PendingRemovalObjects = new();
 	private static readonly HashSet<ZDOID> PendingMembershipIds = new();
 	private static readonly HashSet<ZDOID> InvalidatedZdoIds = new();
 	private static readonly Dictionary<ZDOID, int> QueuedNearObjectIndices = new();
@@ -232,8 +235,14 @@ public static partial class ZNetSceneObjectManagementPatch
 		DestroyQueuedObjectsMarker.Begin();
 		try
 		{
-			foreach (var entry in PendingRemovalObjects.Values)
+			var budget = scene.InLoadingScreen() ? int.MaxValue : _destroyBudgetPerTick.Value;
+			var i = PendingRemovalObjects.Count - 1;
+			while (i >= 0 && budget > 0)
 			{
+				var entry = PendingRemovalObjects[i];
+				PendingRemovalObjects.RemoveAt(i);
+				i -= 1;
+
 				var zdo = entry.ZDO;
 				if (!IsCurrent(entry) || GetAreaMembership(zdo) != AreaMembership.None)
 				{
@@ -252,11 +261,11 @@ public static partial class ZNetSceneObjectManagementPatch
 					ZDOMan.instance.DestroyZDO(zdo);
 				}
 				scene.m_instances.Remove(zdo);
+				budget -= 1;
 			}
 		}
 		finally
 		{
-			PendingRemovalObjects.Clear();
 			DestroyQueuedObjectsMarker.End();
 		}
 	}
@@ -348,16 +357,11 @@ public static partial class ZNetSceneObjectManagementPatch
 			RemoveTrackedMembership(id);
 			if (desiredMembership == AreaMembership.None)
 			{
-				PendingRemovalObjects[id] = new QueuedZDO(zdo);
-			}
-			else
-			{
-				PendingRemovalObjects.Remove(id);
+				PendingRemovalObjects.Add(new QueuedZDO(zdo));
 			}
 			return;
 		}
 
-		PendingRemovalObjects.Remove(id);
 		if (desiredMembership == AreaMembership.Near)
 		{
 			RemoveQueuedObject(QueuedDistantObjects, QueuedDistantObjectIndices, id);
@@ -390,11 +394,7 @@ public static partial class ZNetSceneObjectManagementPatch
 		{
 			if (nextMembership == AreaMembership.None)
 			{
-				PendingRemovalObjects[id] = new QueuedZDO(zdo);
-			}
-			else if (previousMembership == AreaMembership.None)
-			{
-				PendingRemovalObjects.Remove(id);
+				PendingRemovalObjects.Add(new QueuedZDO(zdo));
 			}
 			return;
 		}

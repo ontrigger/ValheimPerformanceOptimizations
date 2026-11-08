@@ -1,3 +1,4 @@
+using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 
@@ -6,6 +7,24 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 	[HarmonyPatch]
 	public static partial class ZNetSceneObjectManagementPatch
 	{
+		static ZNetSceneObjectManagementPatch()
+		{
+			ValheimPerformanceOptimizations.OnInitialized += Initialize;
+		}
+
+		private static void Initialize(ConfigFile configFile, Harmony harmony)
+		{
+			_destroyBudgetPerTick = configFile.Bind(
+				"Object Management",
+				"Max objects destroyed per tick",
+				100,
+				new ConfigDescription(
+					"Objects that leave the active area are destroyed over several ticks (30 per second) instead of all at once. \n" +
+					"Lower values smooth out hitches when moving between areas, higher values destroy objects sooner. \n" +
+					"2147483647 matches vanilla, which destroys everything in one tick.",
+					new AcceptableValueRange<int>(1, int.MaxValue)));
+		}
+
 		[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.CreateDestroyObjects))]
 		[HarmonyPrefix]
 		private static bool ZNetScene_CreateDestroyObjects_Prefix(ZNetScene __instance)
@@ -40,7 +59,6 @@ namespace ValheimPerformanceOptimizations.Patches.ObjectManagement
 		private static void ZDOMan_HandleDestroyedZDO_Postfix(ZDOID uid)
 		{
 			PendingMembershipIds.Remove(uid);
-			PendingRemovalObjects.Remove(uid);
 			InvalidatedZdoIds.Remove(uid);
 			RemoveTrackedMembership(uid);
 		}
