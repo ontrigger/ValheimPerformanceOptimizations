@@ -1,3 +1,10 @@
+# Changes in 2.2.0
+
+* Faster Mistlands mist updates (roughly 6 ms down to 1.5 ms in testing)
+* Improved perf in swamp by around 1ms
+* ZNetScene object destruction is now time sliced (budget configurable via config, default 100)
+* Faster creature spawning by about 3ms
+
 # Changes in 2.1.0
 
 * Fixed building piece highlights being too dark
