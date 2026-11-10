@@ -243,6 +243,11 @@ internal static class IndirectRendererPatches
 			return;
 		}
 
+		if (__instance.TryGetComponent<VPOBatchedPrefab>(out _))
+		{
+			return;
+		}
+
 		if (__instance.TryGetComponent<ItemDrop>(out _))
 		{
 			TryRegisterItemDrop(__instance.gameObject, __instance.m_zdo.GetPrefab());
@@ -250,7 +255,6 @@ internal static class IndirectRendererPatches
 		}
 
 		if (!RegisteredPrefabHashes.Contains(__instance.m_zdo.GetPrefab()) ||
-		    __instance.TryGetComponent<VPOBatchedPrefab>(out _) ||
 		    !TryGetRegistrationKind(__instance.gameObject, out _))
 		{
 			return;
@@ -263,6 +267,17 @@ internal static class IndirectRendererPatches
 			DynamicPieceRenderers.CollectExcluded(gameObject),
 			false,
 			out _);
+	}
+
+	// Fish hides itself in an extremely retarded way, handle it here
+	[HarmonyPatch(typeof(Fish), nameof(Fish.SetVisible))]
+	[HarmonyPostfix]
+	private static void FishSetVisiblePostfix(Fish __instance, bool visible)
+	{
+		if (__instance.TryGetComponent<VPOBatchedPrefab>(out var batchedPrefab))
+		{
+			batchedPrefab.enabled = visible;
+		}
 	}
 
 	private static void ReplaceCompatibleMaterials(MeshRenderer renderer)

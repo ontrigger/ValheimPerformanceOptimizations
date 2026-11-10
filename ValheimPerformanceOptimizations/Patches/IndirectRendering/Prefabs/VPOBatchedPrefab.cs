@@ -140,9 +140,27 @@ internal sealed class VPOBatchedPrefab : MonoBehaviour
 		}
 	}
 
+	// Disabling this component hands the object back to Unity, as Fish needs.
+	private void OnEnable()
+	{
+		if (pathApplied)
+		{
+			UpdateRenderingPath();
+		}
+	}
+
+	private void OnDisable()
+	{
+		if (pathApplied)
+		{
+			UpdateRenderingPath();
+		}
+	}
+
 	private void UpdateRenderingPath()
 	{
-		if (propertyFallback || childBlockFallback || viewFallback || !IndirectRendererPatches.Enabled.Value)
+		if (!enabled || propertyFallback || childBlockFallback || viewFallback ||
+		    !IndirectRendererPatches.Enabled.Value)
 		{
 			FallbackToUnityRendering();
 		}
