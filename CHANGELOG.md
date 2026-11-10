@@ -1,5 +1,6 @@
 # Changes in 2.2.0
 
+* Fixed fish leaving duplicated copies behind when dropping them or toggling indirect rendering
 * Faster Mistlands mist updates (roughly 6 ms down to 1.5 ms in testing)
 * Improved perf in swamp by around 1ms
 * ZNetScene object destruction is now time sliced (budget configurable via config, default 100)
