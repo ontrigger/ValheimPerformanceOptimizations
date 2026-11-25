@@ -1,172 +1,136 @@
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
-using Unity.Profiling;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Profiling;
-using VPO = ValheimPerformanceOptimizations.ValheimPerformanceOptimizations;
 
 namespace ValheimPerformanceOptimizations.Patches;
 
-/// <summary>
-/// this is barely faster than orig, might remove
-/// </summary>
 [HarmonyPatch]
 public sealed class VPOLightFlicker : LightFlicker, IMonoUpdater
 {
-	private static Camera _cachedCamera;
+	private const float BoundingSphereRangeScale = 1.5f;
+	private static readonly float[] FlickerDistances = { 50f };
 
 	private static CullingGroup _cullingGroup;
 	private static BoundingSphere[] _boundingSpheres = new BoundingSphere[64];
-	private static VPOLightFlicker[] _cullingEntries = new VPOLightFlicker[64];
-	private static int _boundingSphereCount;
-	private static readonly float[] UpdateDistances = { 50f };
+	private static VPOLightFlicker[] _flickers = new VPOLightFlicker[64];
+	private static int[] _inRangeIndices = new int[64];
+	private static int _count;
 
-	private static readonly ProfilerMarker UpdateBoundingSphereMarker = new("VPOLightFlicker.UpdateBoundingSphere");
+	private static readonly ObjectDispatcher Dispatcher = CreateDispatcher();
+	private static readonly Dictionary<int, VPOLightFlicker> FlickerByInstanceId = new();
 
-	private Transform parentTransform;
-	private bool parentHasZSyncTransform;
 	private int boundingSphereIndex = -1;
+	private int inRangeFrame = -1;
 
-	new private void Awake()
+	private static ObjectDispatcher CreateDispatcher()
 	{
-		base.Awake();
-
-		parentTransform = transform.parent;
-		parentHasZSyncTransform = parentTransform && parentTransform.GetComponent<ZSyncTransform>();
+		var dispatcher = new ObjectDispatcher();
+		dispatcher.EnableTransformTracking<VPOLightFlicker>(ObjectDispatcher.TransformTrackingType.GlobalTRS);
+		return dispatcher;
 	}
 
 	new private void OnEnable()
 	{
 		base.OnEnable();
-		RegisterBoundingSphere();
+		Register();
 	}
 
 	new private void OnDisable()
 	{
 		base.OnDisable();
-		UnregisterBoundingSphere();
-	}
-
-	new private void CustomUpdate(float deltaTime, float time)
-	{
-		Profiler.BeginSample("VPOLightFlicker.CustomUpdate");
-		if (IsVisible())
-		{
-			Profiler.BeginSample("VPOLightFlicker.CustomUpdate.Base");
-			base.CustomUpdate(deltaTime, time);
-			Profiler.EndSample();
-			Profiler.EndSample();
-			return;
-		}
-
-		Profiler.BeginSample("VPOLightFlicker.CustomUpdate.UpdateLifetime");
-		UpdateLifetime(deltaTime);
-		Profiler.EndSample();
-		Profiler.EndSample();
+		Unregister();
 	}
 
 	void IMonoUpdater.CustomUpdate(float deltaTime, float time)
 	{
+		if (boundingSphereIndex >= 0 && inRangeFrame != Time.frameCount && m_light.intensity > 0f) { return; }
+
+		Profiler.BeginSample("VPOLightFlicker.CustomUpdate");
 		CustomUpdate(deltaTime, time);
+		Profiler.EndSample();
 	}
 
-	private bool IsVisible()
+	private void Register()
 	{
-		if (!m_light || boundingSphereIndex < 0) { return true; }
+		if (_cullingGroup == null || m_ttl > 0f) { return; }
 
-		UpdateBoundingSphereIfParentMoved();
-		return _cullingGroup.IsVisible(boundingSphereIndex);
-	}
-
-	private void UpdateLifetime(float deltaTime)
-	{
-		if (!m_light)
+		if (_count == _boundingSpheres.Length)
 		{
-			ZLog.LogError("Light was null! This should never happen!");
-			return;
-		}
-
-		if (!m_light.enabled) { return; }
-
-		m_time += deltaTime;
-		if (m_ttl > 0f && m_time > m_ttl)
-		{
-			Destroy(gameObject);
-		}
-	}
-
-	private void UpdateBoundingSphereIfParentMoved()
-	{
-		if (!parentTransform) { return; }
-
-		var parentChanged = parentTransform.hasChanged;
-		if (!parentHasZSyncTransform && !parentChanged) { return; }
-
-		_boundingSpheres[boundingSphereIndex].position = transform.position;
-		if (parentChanged)
-		{
-			parentTransform.hasChanged = false;
-		}
-	}
-
-	private void RegisterBoundingSphere()
-	{
-		if (_cullingGroup == null) { return; }
-
-		if (_boundingSphereCount == _boundingSpheres.Length)
-		{
-			var newCapacity = _boundingSpheres.Length * 2;
+			var newCapacity = _count * 2;
 			Array.Resize(ref _boundingSpheres, newCapacity);
-			Array.Resize(ref _cullingEntries, newCapacity);
+			Array.Resize(ref _flickers, newCapacity);
+			Array.Resize(ref _inRangeIndices, newCapacity);
 			_cullingGroup.SetBoundingSpheres(_boundingSpheres);
 		}
 
-		boundingSphereIndex = _boundingSphereCount;
-		_boundingSphereCount += 1;
-		_boundingSpheres[boundingSphereIndex] = new BoundingSphere(
-			transform.position, m_light.range * 1.2f
-		);
-		_cullingEntries[boundingSphereIndex] = this;
-		_cullingGroup.SetBoundingSphereCount(_boundingSphereCount);
+		// LightLod fades m_light.range between 0 and its base range, so read the base range from it
+		var lightLod = GetComponent<LightLod>();
+		var range = Mathf.Max(m_light.range, lightLod ? lightLod.m_baseRange : 0f);
+
+		boundingSphereIndex = _count;
+		_boundingSpheres[_count] = new BoundingSphere(transform.position, range * BoundingSphereRangeScale);
+		_flickers[_count] = this;
+		_count += 1;
+		_cullingGroup.SetBoundingSphereCount(_count);
+		FlickerByInstanceId[GetInstanceID()] = this;
 	}
 
-	private void UnregisterBoundingSphere()
+	private void Unregister()
 	{
-		if (boundingSphereIndex < 0 || _cullingGroup == null) { return; }
+		if (boundingSphereIndex < 0) { return; }
 
 		var index = boundingSphereIndex;
-		var entryCount = _boundingSphereCount;
-
-		_cullingGroup.EraseSwapBack(index);
-		CullingGroup.EraseSwapBack(index, _boundingSpheres, ref _boundingSphereCount);
-		CullingGroup.EraseSwapBack(index, _cullingEntries, ref entryCount);
-		if (index < _boundingSphereCount)
-		{
-			_cullingEntries[index].boundingSphereIndex = index;
-		}
+		var last = _count - 1;
+		_boundingSpheres[index] = _boundingSpheres[last];
+		_flickers[index] = _flickers[last];
+		_flickers[index].boundingSphereIndex = index;
+		_flickers[last] = null;
+		_count = last;
+		_cullingGroup.SetBoundingSphereCount(_count);
 
 		boundingSphereIndex = -1;
-
-		if (_boundingSphereCount == 0)
-		{
-			_cullingGroup.Dispose();
-			_cullingGroup = null;
-		}
+		FlickerByInstanceId.Remove(GetInstanceID());
 	}
 
-	private static CullingGroup GetOrCreateCullingGroup()
+	private static void UpdateMovedBoundingSpheres()
 	{
-		if (_cullingGroup != null)
+		Profiler.BeginSample("VPOLightFlicker.UpdateMovedBoundingSpheres");
+		var changes = Dispatcher.GetTransformChangesAndClear<VPOLightFlicker>(
+			ObjectDispatcher.TransformTrackingType.GlobalTRS,
+			Allocator.TempJob);
+
+		var ids = changes.transformedID;
+		var matrices = changes.localToWorldMatrices;
+		for (var i = 0; i < ids.Length; i += 1)
 		{
-			return _cullingGroup;
+			if (FlickerByInstanceId.TryGetValue(ids[i], out var flicker) && flicker.boundingSphereIndex >= 0)
+			{
+				_boundingSpheres[flicker.boundingSphereIndex].position = matrices[i].GetPosition();
+			}
 		}
 
-		_cullingGroup = new CullingGroup { targetCamera = _cachedCamera };
-		_cullingGroup.SetBoundingSpheres(_boundingSpheres);
-		_cullingGroup.SetBoundingSphereCount(_boundingSphereCount);
-		_cullingGroup.SetBoundingDistances(UpdateDistances);
-		_cullingGroup.SetDistanceReferencePoint(_cachedCamera.transform);
-		return _cullingGroup;
+		changes.Dispose();
+		Profiler.EndSample();
+	}
+
+	private static void MarkInRangeFlickers()
+	{
+		Profiler.BeginSample("VPOLightFlicker.MarkInRangeFlickers");
+		var frame = Time.frameCount;
+		var inRangeCount = _cullingGroup.QueryIndices(true, 0, _inRangeIndices, 0);
+		for (var i = 0; i < inRangeCount; i += 1)
+		{
+			var index = _inRangeIndices[i];
+			if (index < _count)
+			{
+				_flickers[index].inRangeFrame = frame;
+			}
+		}
+
+		Profiler.EndSample();
 	}
 
 	[HarmonyPatch(typeof(LightFlicker), nameof(Awake))]
@@ -184,7 +148,6 @@ public sealed class VPOLightFlicker : LightFlicker, IMonoUpdater
 			return true;
 		}
 
-		__instance.gameObject.SetActive(false);
 		var flicker = __instance.gameObject.AddComponent<VPOLightFlicker>();
 		flicker.m_flickerIntensity = __instance.m_flickerIntensity;
 		flicker.m_flickerSpeed = __instance.m_flickerSpeed;
@@ -196,29 +159,42 @@ public sealed class VPOLightFlicker : LightFlicker, IMonoUpdater
 		flicker.m_accessibilityBrightnessMultiplier = __instance.m_accessibilityBrightnessMultiplier;
 
 		Destroy(__instance);
-		__instance.gameObject.SetActive(true);
 		return false;
+	}
+
+	[HarmonyPatch(typeof(MonoUpdaters), nameof(MonoUpdaters.Update))]
+	[HarmonyPrefix]
+	private static void MonoUpdaters_Update_Prefix()
+	{
+		if (_cullingGroup == null) { return; }
+
+		UpdateMovedBoundingSpheres();
+		MarkInRangeFlickers();
 	}
 
 	[HarmonyPatch(typeof(GameCamera), nameof(GameCamera.Awake))]
 	[HarmonyPostfix]
 	private static void GameCamera_Awake_Postfix(GameCamera __instance)
 	{
-		_cachedCamera = __instance.m_camera;
-		GetOrCreateCullingGroup();
+		if (_cullingGroup == null)
+		{
+			_cullingGroup = new CullingGroup();
+			_cullingGroup.SetBoundingSpheres(_boundingSpheres);
+			_cullingGroup.SetBoundingSphereCount(_count);
+			_cullingGroup.SetBoundingDistances(FlickerDistances);
+		}
+
+		_cullingGroup.targetCamera = __instance.m_camera;
+		_cullingGroup.SetDistanceReferencePoint(__instance.m_camera.transform);
 	}
 
 	[HarmonyPatch(typeof(GameCamera), nameof(GameCamera.OnDestroy))]
 	[HarmonyPostfix]
 	private static void GameCamera_OnDestroy_Postfix(GameCamera __instance)
 	{
-		if (_cachedCamera == __instance.m_camera)
+		if (_cullingGroup != null && _cullingGroup.targetCamera == __instance.m_camera)
 		{
-			_cachedCamera = null;
-			if (_cullingGroup != null)
-			{
-				_cullingGroup.targetCamera = null;
-			}
+			_cullingGroup.targetCamera = null;
 		}
 	}
 }

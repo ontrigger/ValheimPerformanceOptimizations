@@ -30,6 +30,11 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- For UnityEngine.ObjectDispatcher, which is internal; see VPOLightFlicker. -->
+        <Publicize Include="UnityEngine.CoreModule" PublicizeTarget="All" PublicizeCompilerGenerated="false" IncludeOriginalAttributesAttribute="true" Strip="false" />
+    </ItemGroup>
+
+    <ItemGroup>
         <Reference Include="0Harmony, Culture=neutral, PublicKeyToken=null">
             <HintPath>$(VALHEIM_INSTALL)\BepInEx\core\0Harmony.dll</HintPath>
         </Reference>
