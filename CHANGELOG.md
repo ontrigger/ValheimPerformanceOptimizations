@@ -1,3 +1,8 @@
+# Changes in 2.3.0
+
+* Updated to support Valheim version 1.0.30
+* LightFlicker performance improvements
+
 # Changes in 2.2.0
 
 * Fixed fish leaving duplicated copies behind when dropping them or toggling indirect rendering
