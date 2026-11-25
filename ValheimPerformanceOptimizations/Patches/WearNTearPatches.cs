@@ -19,7 +19,6 @@ internal static class WearNTearPatches
 	private class CachedWearNTear
 	{
 		public readonly HashSet<Collider> Values = new();
-		public readonly List<WearNTear> SupportOwners = new();
 		public bool HasCenterOfMass;
 		public Vector3 CenterOfMass;
 	}
@@ -64,7 +63,6 @@ internal static class WearNTearPatches
 	private static void ReturnWearNTearCache(CachedWearNTear cached)
 	{
 		cached.Values.Clear();
-		cached.SupportOwners.Clear();
 		cached.HasCenterOfMass = false;
 		cached.CenterOfMass = default;
 		WearNTearCachePool.Push(cached);
@@ -136,45 +134,40 @@ internal static class WearNTearPatches
 		var count = __instance.m_supportColliders.Count;
 		if (count > 0)
 		{
-			var cached = GetOrCreateWearNTearCache(__instance);
-			List<WearNTear> supportOwners = cached.SupportOwners;
-			if (supportOwners.Count == count)
+			var num = 0;
+			var num2 = 0f;
+			for (var i = 0; i < count; i++)
 			{
-				var num = 0;
-				var num2 = 0f;
-				for (var i = 0; i < count; i++)
+				var collider = __instance.m_supportColliders[i];
+				if (collider == null)
 				{
-					var collider = __instance.m_supportColliders[i];
-					if (collider == null)
-					{
-						break;
-					}
-
-					var componentInParent = supportOwners[i];
-					if (componentInParent == null || !componentInParent.m_supports)
-					{
-						break;
-					}
-
-					if (collider.transform.position == __instance.m_supportPositions[i])
-					{
-						var support = GetOptimizedSupport(componentInParent);
-						if (support > num2)
-						{
-							num2 = support;
-						}
-
-						if (support.Equals(__instance.m_supportValue[i]))
-						{
-							num++;
-						}
-					}
+					break;
 				}
 
-				if (num == __instance.m_supportPositions.Count && num2 > __instance.m_support)
+				var wearNTear = __instance.m_supportWearNTear[i];
+				if (wearNTear == null || !wearNTear.m_supports ||
+				    collider.transform.position != __instance.m_supportPositions[i])
 				{
-					return false;
+					break;
 				}
+
+				var support = GetOptimizedSupport(wearNTear);
+				if (support > num2)
+				{
+					num2 = support;
+				}
+
+				if (!support.Equals(__instance.m_supportValue[i]))
+				{
+					break;
+				}
+
+				num += 1;
+			}
+
+			if (num == __instance.m_supportPositions.Count && num2 > __instance.m_support)
+			{
+				return false;
 			}
 
 			__instance.ClearCachedSupport();
@@ -186,7 +179,6 @@ internal static class WearNTearPatches
 		}
 
 		HashSet<Collider> ownColliders = GetOwnColliders(__instance);
-		List<WearNTear> supportOwnersList = GetOrCreateWearNTearCache(__instance).SupportOwners;
 		__instance.GetMaterialProperties(out var maxSupport, out _, out var horizontalLoss, out var verticalLoss);
 		WearNTear.s_tempSupportPoints.Clear();
 		WearNTear.s_tempSupportPointValues.Clear();
@@ -304,7 +296,7 @@ internal static class WearNTearPatches
 					__instance.m_supportColliders.Add(collider);
 					__instance.m_supportPositions.Add(collider.transform.position);
 					__instance.m_supportValue.Add(support);
-					supportOwnersList.Add(componentInParent);
+					__instance.m_supportWearNTear.Add(componentInParent);
 				}
 			}
 		}
@@ -358,16 +350,6 @@ internal static class WearNTearPatches
 		}
 
 		return false;
-	}
-
-	[HarmonyPostfix]
-	[HarmonyPatch(typeof(WearNTear), nameof(WearNTear.ClearCachedSupport))]
-	private static void ClearCachedSupportPostfix(WearNTear __instance)
-	{
-		if (WearNTearCaches.TryGetValue(__instance, out var cached))
-		{
-			cached.SupportOwners.Clear();
-		}
 	}
 
 	[HarmonyPostfix]
